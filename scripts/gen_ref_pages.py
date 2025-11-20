@@ -8,7 +8,7 @@ nav = mkdocs_gen_files.Nav()
 
 root = Path(__file__).parent.parent
 src = root
-project = src / "neuralspot_edge"
+project = src / "helia_edge"
 
 for path in sorted(project.rglob("*.py")):
     module_path = path.relative_to(src).with_suffix("")

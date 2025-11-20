@@ -1525,7 +1525,7 @@ wheels = [
 ]
 
 [[package]]
-name = "neuralspot-edge"
+name = "helia-edge"
 version = "0.2.2"
 source = { virtual = "." }
 dependencies = [
