@@ -8,6 +8,9 @@ name: Release to PyPi
 on:
   release:
     types: [published]
+  push:
+    tags:
+      - "v*"
   workflow_dispatch:
 
 jobs:
