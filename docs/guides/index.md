@@ -1,6 +1,6 @@
 # :simple-jupyter: Guides
 
-This section contains guides to help with various aspects of neuralspot-edge. The guides are designed to provide detailed information on how to use NSE for different tasks and workflows.
+This section contains guides to help with various aspects of HeliaEdge. The guides are designed to provide detailed information on how to use **HeliaEdge** for different tasks and workflows.
 
 ## <span class="sk-h2-span">Core Concepts Guides</span>
 

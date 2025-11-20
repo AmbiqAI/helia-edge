@@ -1,9 +1,9 @@
-site_name: neuralSPOT Edge
+site_name: HeliaEdge
 site_dir: "site"
-site_url: "https://ambiqai.github.io/neuralspot-edge"
-site_description: NeuralSPOT Edge, Keras addon targeted towards Ambiq edge SoCs
-repo_name: AmbiqAI/neuralspot-edge
-repo_url: https://github.com/AmbiqAI/neuralspot-edge
+site_url: "https://ambiqai.github.io/helia-edge"
+site_description: HeliaEdge, Keras addon targeted towards Ambiq edge SoCs
+repo_name: AmbiqAI/helia-edge
+repo_url: https://github.com/AmbiqAI/helia-edge
 copyright: Copyright &copy; 2024 Ambiq
 
 nav:
@@ -25,8 +25,8 @@ nav:
 
 theme:
   name: material
-  favicon: assets/nse-logo-128.png
-  logo: assets/nse-logo-128.png
+  favicon: assets/app-logo.png
+  logo: assets/app-logo-white.png
   icon:
       repo: fontawesome/brands/github-alt
   font:

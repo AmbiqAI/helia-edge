@@ -1,7 +1,7 @@
 [project]
-name = "neuralspot-edge"
+name = "helia-edge"
 version = "0.2.2"
-description = "NSE is a Keras add-on targeting Ambiq edge devices."
+description = "HeliaEdge is a Keras add-on targeting Ambiq edge devices."
 authors = [
     {name = "Ambiq AI", email = "support.aitg@ambiq.com"},
 ]
@@ -46,7 +46,7 @@ ci = [
 ]
 
 [tool.setuptools]
-packages = ["neuralspot_edge"]
+packages = ["helia_edge"]
 
 [tool.ruff]
 line-length = 120
