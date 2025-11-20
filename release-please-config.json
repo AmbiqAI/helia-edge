@@ -1,18 +1,12 @@
 {
   "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
-  "bump-minor-pre-major": true,
   "packages": {
     ".": {
       "release-type": "python",
+      "prerelease": true,
       "package-name": "helia-edge",
-      "extra-files": [
-        {
-          "type": "toml",
-          "path": "pyproject.toml",
-          "section": "project",
-          "property": "version"
-        }
-      ]
+      "changelog-path": "CHANGELOG.md",
+      "include-component-in-tag": false
     }
   }
 }

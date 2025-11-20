@@ -12,8 +12,9 @@ jobs:
     permissions:
       contents: write
       pull-requests: write
+      issues: write
     steps:
-      - uses: google-github-actions/release-please-action@v4
+      - uses: googleapis/release-please-action@v4
         with:
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
