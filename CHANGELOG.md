@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.0](https://github.com/AmbiqAI/helia-edge/compare/v0.3.0...v0.4.0) (2025-12-12)
+
+
+### Features
+
+* Add compression techniques ([#4](https://github.com/AmbiqAI/helia-edge/issues/4)) ([5754c8f](https://github.com/AmbiqAI/helia-edge/commit/5754c8faab9039253212f63d1ee6381c5edf4d24))
+
 ## [0.3.0](https://github.com/AmbiqAI/helia-edge/compare/v0.2.2...v0.3.0) (2025-11-20)
 
 
