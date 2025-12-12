@@ -121,7 +121,7 @@ def efficientnet_core(blocks: list[MBConvParams], drop_connect_rate: float = 0) 
         for i, block in enumerate(blocks):
             filters = make_divisible(block.filters, 8)
             for d in range(block.depth):
-                name = f"stage{i+1}_mbconv{d+1}"
+                name = f"stage{i + 1}_mbconv{d + 1}"
                 block_drop_rate = drop_connect_rate * global_block_id / total_blocks
                 x = mbconv_block(
                     filters,

@@ -11,6 +11,7 @@ class VQAutoencoder(keras.Model):
     - Can return discrete code indices from the VQ bottleneck.
     - Exposes VQ layer metrics alongside base model metrics.
     """
+
     def __init__(self, encoder: keras.Model, vq: VectorQuantizer, decoder: keras.Model, **kwargs):
         """Initialize the vector-quantized autoencoder.
 
@@ -21,13 +22,13 @@ class VQAutoencoder(keras.Model):
         """
         super().__init__(**kwargs)
         self.encoder = encoder
-        self.vq      = vq
+        self.vq = vq
         self.decoder = decoder
 
         self._recon_loss = None
         self._extra_loss_fns = []
-        self._extra_metric_objs = []        # Metric trackers
-        self._extra_metric_fns  = []        # (tracker, callable) pairs
+        self._extra_metric_objs = []  # Metric trackers
+        self._extra_metric_fns = []  # (tracker, callable) pairs
 
     def call(self, x, training=False, return_indices: bool = False):
         """Run encoder -> VQ bottleneck -> decoder.
@@ -69,13 +70,13 @@ class VQAutoencoder(keras.Model):
           extra_metrics: list of Metric OR Callable(y_true, y_pred) -> scalar
         """
         super().compile(optimizer=optimizer, metrics=metrics or [], **kwargs)
-        self._recon_loss     = loss
+        self._recon_loss = loss
         self._extra_loss_fns = list(extra_losses or [])
 
         # Normalize extra_metrics into Metric objects
         self._extra_metric_objs.clear()
         self._extra_metric_fns.clear()
-        for m in (extra_metrics or []):
+        for m in extra_metrics or []:
             if isinstance(m, keras.metrics.Metric):
                 self._extra_metric_objs.append(m)
             else:

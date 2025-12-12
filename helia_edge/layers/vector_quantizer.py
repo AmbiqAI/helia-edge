@@ -2,6 +2,7 @@ import keras
 
 from ..utils import helia_export
 
+
 @helia_export(path="helia_edge.layers.VectorQuantizer")
 class VectorQuantizer(keras.layers.Layer):
     """
@@ -19,6 +20,7 @@ class VectorQuantizer(keras.layers.Layer):
       - beta * ||stop(quant) - x||^2  (commitment)
       -        ||quant - stop(x)||^2  (codebook)
     """
+
     def __init__(self, num_embeddings, embedding_dim, beta=0.25, **kw):
         super().__init__(**kw)
         if num_embeddings <= 0 or embedding_dim <= 0 or beta <= 0:
@@ -27,8 +29,8 @@ class VectorQuantizer(keras.layers.Layer):
         self.D = int(embedding_dim)
         self.beta = float(beta)
         self._perplexity = keras.metrics.Mean(name="vq_perplexity")
-        self._usage      = keras.metrics.Mean(name="vq_usage")
-        self._bpi        = keras.metrics.Mean(name="vq_bits_per_index")
+        self._usage = keras.metrics.Mean(name="vq_usage")
+        self._bpi = keras.metrics.Mean(name="vq_bits_per_index")
 
     def build(self, input_shape):
         last = input_shape[-1]
@@ -36,22 +38,24 @@ class VectorQuantizer(keras.layers.Layer):
             raise ValueError(f"Input last dim {int(last)} != embedding_dim {self.D}")
         limit = 1.0 / max(1, self.K)
         self.codebook = self.add_weight(
-            name="codebook", shape=(self.K, self.D),
+            name="codebook",
+            shape=(self.K, self.D),
             initializer=keras.initializers.RandomUniform(-limit, limit),
-            trainable=True, dtype=self.variable_dtype,
+            trainable=True,
+            dtype=self.variable_dtype,
         )
         super().build(input_shape)
 
     def call(self, x, return_indices=False):
         x = keras.ops.convert_to_tensor(x, dtype=self.compute_dtype)
         flat = keras.ops.reshape(x, (-1, self.D))
-        x2  = keras.ops.sum(keras.ops.square(flat), axis=1, keepdims=True)
-        e2  = keras.ops.sum(keras.ops.square(self.codebook), axis=1)
+        x2 = keras.ops.sum(keras.ops.square(flat), axis=1, keepdims=True)
+        e2 = keras.ops.sum(keras.ops.square(self.codebook), axis=1)
         sim = keras.ops.matmul(flat, keras.ops.transpose(self.codebook))
         dist = x2 + e2 - 2.0 * sim
-        idx  = keras.ops.argmax(-dist, axis=1)
-        qf   = keras.ops.take(self.codebook, idx, axis=0)
-        q    = keras.ops.reshape(qf, keras.ops.shape(x))
+        idx = keras.ops.argmax(-dist, axis=1)
+        qf = keras.ops.take(self.codebook, idx, axis=0)
+        q = keras.ops.reshape(qf, keras.ops.shape(x))
 
         q_st = keras.ops.stop_gradient(q)
         x_st = keras.ops.stop_gradient(x)
@@ -60,13 +64,13 @@ class VectorQuantizer(keras.layers.Layer):
         self.add_loss(self.beta * commit + codebk)
 
         one_hot = keras.ops.one_hot(idx, self.K)
-        probs   = keras.ops.mean(one_hot, axis=0)
-        eps     = keras.ops.convert_to_tensor(1e-10, dtype=self.compute_dtype)
+        probs = keras.ops.mean(one_hot, axis=0)
+        eps = keras.ops.convert_to_tensor(1e-10, dtype=self.compute_dtype)
         log_probs = keras.ops.log2(probs + eps)
-        H       = -keras.ops.sum(probs * log_probs)                             # bits/index
-        ln2     = keras.ops.log(keras.ops.convert_to_tensor(2.0, dtype=self.compute_dtype))
-        perplex = keras.ops.exp(H * ln2)                                        # 2**H
-        usage   = keras.ops.sum(keras.ops.cast(probs > 0, self.compute_dtype)) / float(self.K)
+        H = -keras.ops.sum(probs * log_probs)  # bits/index
+        ln2 = keras.ops.log(keras.ops.convert_to_tensor(2.0, dtype=self.compute_dtype))
+        perplex = keras.ops.exp(H * ln2)  # 2**H
+        usage = keras.ops.sum(keras.ops.cast(probs > 0, self.compute_dtype)) / float(self.K)
         self._perplexity.update_state(perplex)
         self._bpi.update_state(H)
         self._usage.update_state(usage)

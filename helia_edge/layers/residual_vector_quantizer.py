@@ -2,6 +2,7 @@ import keras
 
 from ..utils import helia_export
 
+
 @helia_export(path="helia_edge.layers.ResidualVectorQuantizer")
 class ResidualVectorQuantizer(keras.layers.Layer):
     """
@@ -24,6 +25,7 @@ class ResidualVectorQuantizer(keras.layers.Layer):
       - beta * ||stop(q_l) - r_l||^2  +  ||q_l - stop(r_l)||^2,
         where r_l is the current residual and q_l the level-l code vector.
     """
+
     def __init__(self, num_levels, num_embeddings, embedding_dim, beta=0.25, **kwargs):
         super().__init__(**kwargs)
         if num_levels < 1 or embedding_dim <= 0 or beta <= 0:
@@ -40,9 +42,9 @@ class ResidualVectorQuantizer(keras.layers.Layer):
         self.beta = float(beta)
 
         # Per-level metric trackers
-        self._lvl_perp = [keras.metrics.Mean(name=f"rvq_l{lvl+1}_perplexity") for lvl in range(self.M)]
-        self._lvl_usage = [keras.metrics.Mean(name=f"rvq_l{lvl+1}_usage") for lvl in range(self.M)]
-        self._lvl_bpi = [keras.metrics.Mean(name=f"rvq_l{lvl+1}_bits_per_index") for lvl in range(self.M)]
+        self._lvl_perp = [keras.metrics.Mean(name=f"rvq_l{lvl + 1}_perplexity") for lvl in range(self.M)]
+        self._lvl_usage = [keras.metrics.Mean(name=f"rvq_l{lvl + 1}_usage") for lvl in range(self.M)]
+        self._lvl_bpi = [keras.metrics.Mean(name=f"rvq_l{lvl + 1}_bits_per_index") for lvl in range(self.M)]
         # Aggregates
         self._perp_mean = keras.metrics.Mean(name="rvq_perplexity_mean")
         self._usage_mean = keras.metrics.Mean(name="rvq_usage_mean")
@@ -59,7 +61,7 @@ class ResidualVectorQuantizer(keras.layers.Layer):
         for lvl, K in enumerate(self.Ks):
             limit = 1.0 / max(1, K)
             cb = self.add_weight(
-                name=f"codebook_l{lvl+1}",
+                name=f"codebook_l{lvl + 1}",
                 shape=(K, self.D),  # [K, D]
                 initializer=keras.initializers.RandomUniform(-limit, limit),
                 trainable=True,
@@ -71,12 +73,12 @@ class ResidualVectorQuantizer(keras.layers.Layer):
     def _nearest(self, r_flat, codebook):
         """Return indices [N] and gathered vectors [N,D] for residual r_flat against codebook [K,D]."""
         # ||r||^2 + ||e||^2 - 2 r·e
-        r2 = keras.ops.sum(keras.ops.square(r_flat), axis=1, keepdims=True)       # [N,1]
-        e2 = keras.ops.sum(keras.ops.square(codebook), axis=1)                    # [K]
-        sim = keras.ops.matmul(r_flat, keras.ops.transpose(codebook))             # [N,K]
+        r2 = keras.ops.sum(keras.ops.square(r_flat), axis=1, keepdims=True)  # [N,1]
+        e2 = keras.ops.sum(keras.ops.square(codebook), axis=1)  # [K]
+        sim = keras.ops.matmul(r_flat, keras.ops.transpose(codebook))  # [N,K]
         dist = r2 + e2 - 2.0 * sim
-        idx = keras.ops.argmax(-dist, axis=1)                                     # [N]
-        q = keras.ops.take(codebook, idx, axis=0)                                 # [N,D]
+        idx = keras.ops.argmax(-dist, axis=1)  # [N]
+        q = keras.ops.take(codebook, idx, axis=0)  # [N,D]
         return idx, q
 
     def call(self, x, return_indices: bool = False):
@@ -90,17 +92,17 @@ class ResidualVectorQuantizer(keras.layers.Layer):
         """
         x = keras.ops.convert_to_tensor(x, dtype=self.compute_dtype)
         shape = keras.ops.shape(x)
-        flat = keras.ops.reshape(x, (-1, self.D))                                  # [N, D]
+        flat = keras.ops.reshape(x, (-1, self.D))  # [N, D]
 
-        residual = flat                                                            # r_1 = x
-        q_sum = keras.ops.zeros_like(flat)                                         # accumulate ∑ q_l
+        residual = flat  # r_1 = x
+        q_sum = keras.ops.zeros_like(flat)  # accumulate ∑ q_l
         indices_list = []
         perp_vals, usage_vals, bpi_vals = [], [], []
 
         for lvl, (K, codebook) in enumerate(zip(self.Ks, self._codebooks)):
-            idx, q_l = self._nearest(residual, codebook)                           # [N], [N,D]
+            idx, q_l = self._nearest(residual, codebook)  # [N], [N,D]
             indices_list.append(idx)
-            q_sum = q_sum + q_l                                                    # accumulate
+            q_sum = q_sum + q_l  # accumulate
             # Losses for this level on its residual
             ql_st = keras.ops.stop_gradient(q_l)
             res_st = keras.ops.stop_gradient(residual)
@@ -112,11 +114,11 @@ class ResidualVectorQuantizer(keras.layers.Layer):
             residual = residual - ql_st
 
             # Metrics for this level
-            one_hot = keras.ops.one_hot(idx, K)                                    # [N,K]
-            probs = keras.ops.mean(one_hot, axis=0)                                 # [K]
+            one_hot = keras.ops.one_hot(idx, K)  # [N,K]
+            probs = keras.ops.mean(one_hot, axis=0)  # [K]
             eps = keras.ops.convert_to_tensor(1e-10, dtype=self.compute_dtype)
             log2 = keras.ops.log(keras.ops.convert_to_tensor(2.0, self.compute_dtype))
-            H = -keras.ops.sum(probs * (keras.ops.log(probs + eps) / log2))        # bits/index
+            H = -keras.ops.sum(probs * (keras.ops.log(probs + eps) / log2))  # bits/index
             # perp = keras.ops.pow(keras.ops.convert_to_tensor(2.0, self.compute_dtype), H)
             perp = keras.ops.exp(H * log2)
             usage = keras.ops.sum(keras.ops.cast(probs > 0, self.compute_dtype)) / float(K)
@@ -131,7 +133,7 @@ class ResidualVectorQuantizer(keras.layers.Layer):
         # Aggregate metrics across levels
         perp_mean = sum(perp_vals) / float(self.M)
         usage_mean = sum(usage_vals) / float(self.M)
-        bpi_sum = sum(bpi_vals)                                                    # total entropy lower bound
+        bpi_sum = sum(bpi_vals)  # total entropy lower bound
         self._perp_mean.update_state(perp_mean)
         self._usage_mean.update_state(usage_mean)
         self._bpi_sum.update_state(bpi_sum)
@@ -145,8 +147,7 @@ class ResidualVectorQuantizer(keras.layers.Layer):
     @property
     def metrics(self):
         # Expose per-level + aggregates so Model.fit logs them
-        return (self._lvl_perp + self._lvl_usage + self._lvl_bpi +
-                [self._perp_mean, self._usage_mean, self._bpi_sum])
+        return self._lvl_perp + self._lvl_usage + self._lvl_bpi + [self._perp_mean, self._usage_mean, self._bpi_sum]
 
     # Utilities for export/inference
     def encode(self, x):
@@ -172,10 +173,12 @@ class ResidualVectorQuantizer(keras.layers.Layer):
 
     def get_config(self):
         cfg = super().get_config()
-        cfg.update({
-            "num_levels": self.M,
-            "num_embeddings": self.Ks,
-            "embedding_dim": self.D,
-            "beta": self.beta,
-        })
+        cfg.update(
+            {
+                "num_levels": self.M,
+                "num_embeddings": self.Ks,
+                "embedding_dim": self.D,
+                "beta": self.beta,
+            }
+        )
         return cfg

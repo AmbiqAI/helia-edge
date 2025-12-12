@@ -17,8 +17,8 @@ class TQDMProgressBar(keras.callbacks.Callback):
     def __init__(
         self,
         metrics_separator: str = " - ",
-        overall_bar_format: str = "{l_bar}{bar} {n_fmt}/{total_fmt} ETA: " "{remaining}s,  {rate_fmt}{postfix}",
-        epoch_bar_format: str = "{n_fmt}/{total_fmt}{bar} ETA: " "{remaining}s - {desc}",
+        overall_bar_format: str = "{l_bar}{bar} {n_fmt}/{total_fmt} ETA: {remaining}s,  {rate_fmt}{postfix}",
+        epoch_bar_format: str = "{n_fmt}/{total_fmt}{bar} ETA: {remaining}s - {desc}",
         metrics_format: str = "{name}: {value:0.4f}",
         update_per_second: int = 10,
         leave_epoch_progress: bool = True,

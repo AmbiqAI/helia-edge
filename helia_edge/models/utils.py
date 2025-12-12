@@ -137,6 +137,7 @@ def append_layers(model: keras.Model, layers: list[keras.Layer], copy_weights: b
             # END FOR
         # END IF
         return out
+
     # END DEF
 
     model_clone = keras.models.clone_model(model, call_function=call_function)

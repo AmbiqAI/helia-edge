@@ -1,6 +1,7 @@
 import keras
 from helia_edge.layers.gumbel_softmax_bottleneck import GumbelSoftmaxBottleneck
 
+
 class GSAutoencoder(keras.Model):
     """
     Convenience wrapper around (encoder -> GumbelSoftmaxBottleneck -> decoder).
@@ -9,6 +10,7 @@ class GSAutoencoder(keras.Model):
     - Can return discrete code indices and/or code probabilities from the bottleneck.
     - Exposes Gumbel-Softmax layer metrics alongside base model metrics.
     """
+
     def __init__(self, encoder: keras.Model, gs: GumbelSoftmaxBottleneck, decoder: keras.Model, **kwargs):
         """Initialize the Gumbel-Softmax autoencoder.
 
@@ -19,13 +21,13 @@ class GSAutoencoder(keras.Model):
         """
         super().__init__(**kwargs)
         self.encoder = encoder
-        self.gs      = gs
+        self.gs = gs
         self.decoder = decoder
 
         self._recon_loss = None
         self._extra_loss_fns = []
         self._extra_metric_objs = []
-        self._extra_metric_fns  = []
+        self._extra_metric_fns = []
 
     def call(self, x, training=False, return_indices: bool = False, return_probs: bool = False):
         """Run encoder -> GS bottleneck -> decoder.
@@ -80,12 +82,12 @@ class GSAutoencoder(keras.Model):
             extra_metrics: Metric instances or callables (y_true, y_pred) -> scalar.
         """
         super().compile(optimizer=optimizer, metrics=metrics or [], **kwargs)
-        self._recon_loss     = loss
+        self._recon_loss = loss
         self._extra_loss_fns = list(extra_losses or [])
 
         self._extra_metric_objs.clear()
         self._extra_metric_fns.clear()
-        for m in (extra_metrics or []):
+        for m in extra_metrics or []:
             if isinstance(m, keras.metrics.Metric):
                 self._extra_metric_objs.append(m)
             else:
@@ -147,11 +149,7 @@ class GSAutoencoder(keras.Model):
         encoder_cfg = cfg.pop("encoder")
         gs_cfg = cfg.pop("gs")
         decoder_cfg = cfg.pop("decoder")
-        encoder = keras.saving.deserialize_keras_object(
-            encoder_cfg, custom_objects=custom_objects
-        )
+        encoder = keras.saving.deserialize_keras_object(encoder_cfg, custom_objects=custom_objects)
         gs = keras.saving.deserialize_keras_object(gs_cfg, custom_objects=custom_objects)
-        decoder = keras.saving.deserialize_keras_object(
-            decoder_cfg, custom_objects=custom_objects
-        )
+        decoder = keras.saving.deserialize_keras_object(decoder_cfg, custom_objects=custom_objects)
         return cls(encoder=encoder, gs=gs, decoder=decoder, **cfg)

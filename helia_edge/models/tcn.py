@@ -171,7 +171,7 @@ def tcn_block_lg(params: TcnBlockParams, name: str) -> keras.Layer:
         y = x
 
         for d in range(params.depth):
-            lcl_name = f"{name}_D{d+1}"
+            lcl_name = f"{name}_D{d + 1}"
             y_skip = y
 
             y = keras.layers.Conv2D(
@@ -236,7 +236,7 @@ def tcn_block_mb(params: TcnBlockParams, name: str) -> keras.Layer:
         y = x
         y_skip = y
         for d in range(params.depth):
-            lcl_name = f"{name}_D{d+1}"
+            lcl_name = f"{name}_D{d + 1}"
 
             if params.ex_ratio != 1:
                 y = keras.layers.Conv2D(
@@ -264,9 +264,9 @@ def tcn_block_mb(params: TcnBlockParams, name: str) -> keras.Layer:
                     dilation_rate=params.dilation,
                     depthwise_initializer="he_normal",
                     depthwise_regularizer=keras.regularizers.L2(1e-3),
-                    name=f"{lcl_name}_DW_B{b+1}_CN",
+                    name=f"{lcl_name}_DW_B{b + 1}_CN",
                 )(yb)
-                yb = normalization(params.norm, f"{lcl_name}_DW_B{b+1}")(yb)
+                yb = normalization(params.norm, f"{lcl_name}_DW_B{b + 1}")(yb)
                 branches.append(yb)
             # END FOR
 
@@ -294,9 +294,9 @@ def tcn_block_mb(params: TcnBlockParams, name: str) -> keras.Layer:
                     use_bias=params.norm is None,
                     kernel_initializer="he_normal",
                     kernel_regularizer=keras.regularizers.L2(1e-3),
-                    name=f"{lcl_name}_PW_B{b+1}_CN",
+                    name=f"{lcl_name}_PW_B{b + 1}_CN",
                 )(yb)
-                yb = normalization(params.norm, f"{lcl_name}_PW_B{b+1}")(yb)
+                yb = normalization(params.norm, f"{lcl_name}_PW_B{b + 1}")(yb)
                 branches.append(yb)
             # END FOR
 
@@ -337,7 +337,7 @@ def tcn_block_sm(params: TcnBlockParams, name: str) -> keras.Layer:
         y = x
         y_skip = y
         for d in range(params.depth):
-            lcl_name = f"{name}_D{d+1}"
+            lcl_name = f"{name}_D{d + 1}"
             branches = []
             for b in range(params.branch):
                 yb = y
@@ -349,9 +349,9 @@ def tcn_block_sm(params: TcnBlockParams, name: str) -> keras.Layer:
                     dilation_rate=params.dilation,
                     depthwise_initializer="he_normal",
                     depthwise_regularizer=keras.regularizers.L2(1e-3),
-                    name=f"{lcl_name}_DW_B{b+1}_CN",
+                    name=f"{lcl_name}_DW_B{b + 1}_CN",
                 )(yb)
-                yb = normalization(params.norm, f"{lcl_name}_DW_B{b+1}")(yb)
+                yb = normalization(params.norm, f"{lcl_name}_DW_B{b + 1}")(yb)
                 branches.append(yb)
             # END FOR
 
@@ -375,9 +375,9 @@ def tcn_block_sm(params: TcnBlockParams, name: str) -> keras.Layer:
                     use_bias=params.norm is None,
                     kernel_initializer="he_normal",
                     kernel_regularizer=keras.regularizers.L2(1e-3),
-                    name=f"{lcl_name}_PW_B{b+1}_CN",
+                    name=f"{lcl_name}_PW_B{b + 1}_CN",
                 )(yb)
-                yb = normalization(params.norm, f"{lcl_name}_PW_B{b+1}")(yb)
+                yb = normalization(params.norm, f"{lcl_name}_PW_B{b + 1}")(yb)
                 branches.append(yb)
             # END FOR
 
@@ -428,7 +428,7 @@ def tcn_core(params: TcnParams) -> keras.Layer:
     def layer(x: keras.KerasTensor) -> keras.KerasTensor:
         y = x
         for i, block in enumerate(params.blocks):
-            name = f"B{i+1}"
+            name = f"B{i + 1}"
             y = tcn_block(params=block, name=name)(y)
         # END IF
         return y

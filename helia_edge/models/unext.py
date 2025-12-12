@@ -248,7 +248,7 @@ def unext_core(
     #### ENCODER ####
     skip_layers: list[keras.layers.Layer | None] = []
     for i, block in enumerate(params.blocks):
-        name = f"ENC{i+1}"
+        name = f"ENC{i + 1}"
         for d in range(block.depth):
             y = unext_block(
                 output_filters=block.filters,
@@ -258,7 +258,7 @@ def unext_core(
                 se_ratio=block.se_ratio,
                 dropout=block.dropout,
                 norm=block.norm,
-                name=f"{name}_D{d+1}",
+                name=f"{name}_D{d + 1}",
             )(y)
         # END FOR
         skip_layers.append(y if block.skip else None)
@@ -289,7 +289,7 @@ def unext_core(
 
     #### DECODER ####
     for i, block in enumerate(reversed(params.blocks)):
-        name = f"DEC{i+1}"
+        name = f"DEC{i + 1}"
         for d in range(block.ddepth or block.depth):
             y = unext_block(
                 output_filters=block.filters,
@@ -299,7 +299,7 @@ def unext_core(
                 se_ratio=block.se_ratio,
                 dropout=block.dropout,
                 norm=block.norm,
-                name=f"{name}_D{d+1}",
+                name=f"{name}_D{d + 1}",
             )(y)
         # END FOR
 
@@ -369,7 +369,7 @@ def unext_core(
             se_ratio=block.se_ratio,
             dropout=block.dropout,
             norm=block.norm,
-            name=f"{name}_D{block.depth+1}",
+            name=f"{name}_D{block.depth + 1}",
         )(y)
 
     # END FOR

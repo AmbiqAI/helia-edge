@@ -2,6 +2,7 @@ import keras
 
 from ..utils import helia_export
 
+
 @helia_export(path="helia_edge.layers.GumbelSoftmaxBottleneck")
 class GumbelSoftmaxBottleneck(keras.layers.Layer):
     """
@@ -23,6 +24,7 @@ class GumbelSoftmaxBottleneck(keras.layers.Layer):
       - gs_usage            (fraction of codes used at least once in the batch)
       - gs_temperature      (current τ; useful when annealing)
     """
+
     def __init__(
         self,
         num_embeddings: int,
@@ -55,15 +57,15 @@ class GumbelSoftmaxBottleneck(keras.layers.Layer):
         )
 
         # Trackers
-        self._bpi  = keras.metrics.Mean(name="gs_bits_per_index")   # KL lower bound (bits/index)
+        self._bpi = keras.metrics.Mean(name="gs_bits_per_index")  # KL lower bound (bits/index)
         self._perp = keras.metrics.Mean(name="gs_perplexity")
-        self._usage= keras.metrics.Mean(name="gs_usage")
-        self._tau  = keras.metrics.Mean(name="gs_temperature")
+        self._usage = keras.metrics.Mean(name="gs_usage")
+        self._tau = keras.metrics.Mean(name="gs_temperature")
 
         # weights created in build()
-        self._proj = None    # [Din, K] if input_is_logits=False
-        self._bias = None    # [K]     if use_bias
-        self._embed = None   # [K, D]
+        self._proj = None  # [Din, K] if input_is_logits=False
+        self._bias = None  # [K]     if use_bias
+        self._embed = None  # [K, D]
 
     def build(self, input_shape):
         last = int(input_shape[-1])
@@ -71,15 +73,19 @@ class GumbelSoftmaxBottleneck(keras.layers.Layer):
         if not self.input_is_logits:
             lim = (1.0 / max(1, last)) ** 0.5
             self._proj = self.add_weight(
-                name="proj", shape=(last, self.K),
+                name="proj",
+                shape=(last, self.K),
                 initializer=keras.initializers.RandomUniform(-lim, lim),
-                trainable=True, dtype=self.variable_dtype,
+                trainable=True,
+                dtype=self.variable_dtype,
             )
             if self.use_bias:
                 self._bias = self.add_weight(
-                    name="bias", shape=(self.K,),
+                    name="bias",
+                    shape=(self.K,),
                     initializer=keras.initializers.Zeros(),
-                    trainable=True, dtype=self.variable_dtype,
+                    trainable=True,
+                    dtype=self.variable_dtype,
                 )
         else:
             if last != self.K:
@@ -88,9 +94,11 @@ class GumbelSoftmaxBottleneck(keras.layers.Layer):
         # code embeddings
         limE = 1.0 / max(1, self.K)
         self._embed = self.add_weight(
-            name="embed", shape=(self.K, self.D),
+            name="embed",
+            shape=(self.K, self.D),
             initializer=keras.initializers.RandomUniform(-limE, limE),
-            trainable=True, dtype=self.variable_dtype,
+            trainable=True,
+            dtype=self.variable_dtype,
         )
         super().build(input_shape)
 
@@ -110,7 +118,7 @@ class GumbelSoftmaxBottleneck(keras.layers.Layer):
         if self.input_is_logits:
             logits = x
         else:
-            logits = keras.ops.matmul(x, self._proj)              # [..., K]
+            logits = keras.ops.matmul(x, self._proj)  # [..., K]
             if self.use_bias:
                 logits = logits + self._bias
 
@@ -124,32 +132,32 @@ class GumbelSoftmaxBottleneck(keras.layers.Layer):
             y_soft = keras.ops.softmax(logits / keras.ops.maximum(tau, 1e-6), axis=-1)
 
         # optional straight-through
-        idx = keras.ops.argmax(y_soft, axis=-1)                   # [...,]
+        idx = keras.ops.argmax(y_soft, axis=-1)  # [...,]
         if self.hard:
-            y_hard = keras.ops.one_hot(idx, self.K)              # [..., K]
+            y_hard = keras.ops.one_hot(idx, self.K)  # [..., K]
             y = y_hard + keras.ops.stop_gradient(y_soft - y_hard)
-            metrics_counts = y_hard                               # reuse for usage/perplexity
+            metrics_counts = y_hard  # reuse for usage/perplexity
         else:
             y = y_soft
-            metrics_counts = keras.ops.one_hot(idx, self.K)       # still use hard samples for metrics
+            metrics_counts = keras.ops.one_hot(idx, self.K)  # still use hard samples for metrics
 
         # expected embedding
-        z = keras.ops.matmul(y, self._embed)                      # [..., D]
+        z = keras.ops.matmul(y, self._embed)  # [..., D]
 
         # ---------- rate (KL to Uniform) and metrics ----------
-        eps  = keras.ops.convert_to_tensor(1e-10, dtype=logits.dtype)
-        ln2  = keras.ops.log(keras.ops.convert_to_tensor(2.0, dtype=logits.dtype))
+        eps = keras.ops.convert_to_tensor(1e-10, dtype=logits.dtype)
+        ln2 = keras.ops.log(keras.ops.convert_to_tensor(2.0, dtype=logits.dtype))
         # tokenwise entropy in nats
-        H_tok = -keras.ops.sum(y_soft * keras.ops.log(y_soft + eps), axis=-1)     # [...,]
-        H_nats = keras.ops.mean(H_tok)                                            # scalar
+        H_tok = -keras.ops.sum(y_soft * keras.ops.log(y_soft + eps), axis=-1)  # [...,]
+        H_nats = keras.ops.mean(H_tok)  # scalar
         KL_nats = keras.ops.log(keras.ops.convert_to_tensor(float(self.K), dtype=logits.dtype)) - H_nats
-        bpi = KL_nats / ln2                                                       # bits/index (uniform prior)
+        bpi = KL_nats / ln2  # bits/index (uniform prior)
         self._bpi.update_state(bpi)
 
         # empirical perplexity & usage from hard indices
         probs = keras.ops.mean(keras.ops.reshape(metrics_counts, (-1, self.K)), axis=0)  # [K]
-        H_bits = -keras.ops.sum(probs * (keras.ops.log(probs + eps) / ln2))       # bits
-        perp = keras.ops.exp(H_bits * ln2)                                        # 2**H_bits
+        H_bits = -keras.ops.sum(probs * (keras.ops.log(probs + eps) / ln2))  # bits
+        perp = keras.ops.exp(H_bits * ln2)  # 2**H_bits
         usage = keras.ops.sum(keras.ops.cast(probs > 0, logits.dtype)) / float(self.K)
         self._perp.update_state(perp)
         self._usage.update_state(usage)
