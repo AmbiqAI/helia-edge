@@ -7,7 +7,7 @@
             "ppa": true,
             "version": "os-provided"
         },
-        "ghcr.io/devcontainers-contrib/features/pipenv:2": {
+        "ghcr.io/devcontainers-extra/features/pipenv:2": {
             "version": "latest"
         },
         "ghcr.io/va-h/devcontainers-features/uv:1": {
@@ -32,6 +32,7 @@
     "customizations": {
         "vscode": {
             "extensions": [
+                "openai.chatgpt",
                 "GitHub.copilot",
                 "GitHub.copilot-chat",
                 "ms-toolsai.jupyter",
