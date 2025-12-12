@@ -228,7 +228,7 @@ def regnet_core(
         for i, block in enumerate(blocks):
             filters = make_divisible(block.filters, 8)
             for d in range(block.depth):
-                name = f"stage{i}_block{d+1}"
+                name = f"stage{i}_block{d + 1}"
                 x = block_fn(
                     output_filters=filters,
                     group_width=block.group_width,

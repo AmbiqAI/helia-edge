@@ -119,6 +119,7 @@ def disable_tensorflow_gpu():
     os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
     tf.config.set_visible_devices([], "GPU")
 
+
 @contextmanager
 def suppress_os_stdio():
     """

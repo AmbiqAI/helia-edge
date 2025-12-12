@@ -329,7 +329,7 @@ def metaformer_layer(
             y = metaformer_block(
                 token_mixer=token_mixer,
                 channel_mixer=channel_mixer,
-                name=f"B{b+1}_L{lyr+1}",
+                name=f"B{b + 1}_L{lyr + 1}",
             )(y)
         # END FOR
     # END FOR

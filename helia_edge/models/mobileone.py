@@ -216,7 +216,7 @@ def mobileone_block(
         # Other branches
         yp = keras.layers.ZeroPadding2D(padding=padding)(x)
         for b in range(num_conv_branches):
-            name_branch = f"{name}_branch{b+1}" if name else None
+            name_branch = f"{name}_branch{b + 1}" if name else None
             if is_depthwise:
                 y_branch = keras.layers.DepthwiseConv2D(
                     kernel_size=kernel_size,
@@ -306,7 +306,7 @@ def mobileone_layer(
                 inference_mode=inference_mode,
                 se_ratio=se_ratio,
                 num_conv_branches=block.num_conv_branches,
-                name=f"M1_B{b+1}_D{d+1}_DW",
+                name=f"M1_B{b + 1}_D{d + 1}_DW",
             )(y)
 
             # Pointwise block
@@ -319,7 +319,7 @@ def mobileone_layer(
                 inference_mode=inference_mode,
                 se_ratio=se_ratio,
                 num_conv_branches=block.num_conv_branches,
-                name=f"M1_B{b+1}_D{d+1}_PW",
+                name=f"M1_B{b + 1}_D{d + 1}_PW",
             )(y)
         # END FOR
     # END FOR

@@ -120,9 +120,9 @@ def subsampler(
                 bias_initializer=bias_initializer,
                 bias_regularizer=bias_regularizer,
                 padding="same",
-                name=f"{name}_conv{i+1}",
+                name=f"{name}_conv{i + 1}",
             )(y)
-            y = relu(name=f"{name}_relu{i+1}")(y)
+            y = relu(name=f"{name}_relu{i + 1}")(y)
         # END FOR
 
         # Swap from (b,f,t,c) to (b,t,c,f) and merge (c,f) to get (b,t,c*f)
@@ -442,7 +442,7 @@ def conformer_layer(
             kernel_size=block.kernel_size,
             dropout=block.dropout,
             use_bias=block.use_bias,
-            name=f"CB{i+1}",
+            name=f"CB{i + 1}",
         )(y)
 
     if params.include_top:

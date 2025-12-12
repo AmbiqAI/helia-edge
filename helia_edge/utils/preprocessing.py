@@ -41,7 +41,7 @@ def parse_factor(
         )
     if (min_value is not None and param[0] < min_value) or (max_value is not None and param[1] > max_value):
         raise ValueError(
-            f"`{param_name}` should be inside of range " f"[{min_value}, {max_value}]. Got {param_name}={param}"
+            f"`{param_name}` should be inside of range [{min_value}, {max_value}]. Got {param_name}={param}"
         )
     # END IF
 

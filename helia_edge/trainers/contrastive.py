@@ -294,7 +294,7 @@ class ContrastiveTrainer(keras.Model):
             raise NotImplementedError("PyTorch backend is not supported.")
 
     def call(self, inputs):
-        raise NotImplementedError("ContrastiveTrainer.call() is not implemented - " "please call your model directly.")
+        raise NotImplementedError("ContrastiveTrainer.call() is not implemented - please call your model directly.")
 
     @staticmethod
     def linear_probe(num_classes, **kwargs):

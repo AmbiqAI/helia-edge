@@ -13,9 +13,9 @@ import keras
 from .base_augmentation import BaseAugmentation2D
 from ...utils import parse_factor, helia_export
 
+
 @helia_export(path="helia_edge.layers.preprocessing.FrequencyMixStyle2D")
 class FrequencyMixStyle2D(BaseAugmentation2D):
-
     probability: float
     alpha: float
     epsilon: float
@@ -59,22 +59,12 @@ class FrequencyMixStyle2D(BaseAugmentation2D):
         """
         batch_size = input_shape[0]
         skip_augment = keras.random.uniform(
-            shape=(),
-            minval=0.0,
-            maxval=1.0,
-            dtype="float32",
-            seed=self.random_generator
+            shape=(), minval=0.0, maxval=1.0, dtype="float32", seed=self.random_generator
         )
         lmda = keras.random.beta(
-            shape=(batch_size, 1, 1, 1),
-            alpha=self.alpha,
-            beta=self.alpha,
-            seed=self.random_generator
+            shape=(batch_size, 1, 1, 1), alpha=self.alpha, beta=self.alpha, seed=self.random_generator
         )
-        perm = keras.random.shuffle(
-            keras.ops.arange(batch_size),
-            seed=self.random_generator
-        )
+        perm = keras.random.shuffle(keras.ops.arange(batch_size), seed=self.random_generator)
         return {"lmda": lmda, "perm": perm, "skip_augment": skip_augment}
 
     def apply_mixstyle(self, x, lmda, perm):
@@ -117,12 +107,9 @@ class FrequencyMixStyle2D(BaseAugmentation2D):
             lmda = transforms["lmda"]
             perm = transforms["perm"]
             return keras.ops.cond(
-                skip_augment > self.probability,
-                lambda: samples,
-                lambda: self.apply_mixstyle(samples, lmda, perm)
+                skip_augment > self.probability, lambda: samples, lambda: self.apply_mixstyle(samples, lmda, perm)
             )
         return samples
-
 
 
 # def mixstyle(x, p=0.4, alpha=0.3, eps=1e-6):

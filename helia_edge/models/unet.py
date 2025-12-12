@@ -166,10 +166,10 @@ def unet_layer(
     #### ENCODER ####
     skip_layers: list[keras.layers.Layer | None] = []
     for i, block in enumerate(params.blocks):
-        name = f"ENC{i+1}"
+        name = f"ENC{i + 1}"
         ym = y
         for d in range(block.depth):
-            dname = f"{name}_D{d+1}"
+            dname = f"{name}_D{d + 1}"
             if block.dilation is None:
                 dilation_rate = (1, 1)
             elif isinstance(block.dilation, int):
@@ -231,9 +231,9 @@ def unet_layer(
 
     #### DECODER ####
     for i, block in enumerate(reversed(params.blocks)):
-        name = f"DEC{i+1}"
+        name = f"DEC{i + 1}"
         for d in range(block.ddepth or block.depth):
-            dname = f"{name}_D{d+1}"
+            dname = f"{name}_D{d + 1}"
             if block.seperable:
                 y = keras.layers.SeparableConv2D(
                     block.filters,
@@ -270,7 +270,7 @@ def unet_layer(
         y = keras.layers.UpSampling2D(size=block.strides, name=f"{dname}_unpool")(y)
 
         # Add skip connection
-        dname = f"{name}_D{block.depth+1}"
+        dname = f"{name}_D{block.depth + 1}"
         skip_layer = skip_layers.pop()
         if skip_layer is not None:
             y = keras.layers.concatenate([y, skip_layer], name=f"{dname}_cat")  # Can add or concatenate
@@ -291,7 +291,7 @@ def unet_layer(
             y = keras.layers.Activation(block.activation, name=f"{dname}_act")(y)
         # END IF
 
-        dname = f"{name}_D{block.depth+2}"
+        dname = f"{name}_D{block.depth + 2}"
         if block.seperable:
             ym = keras.layers.SeparableConv2D(
                 block.filters,
