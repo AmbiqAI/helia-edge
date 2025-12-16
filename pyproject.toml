@@ -7,8 +7,8 @@ authors = [
 ]
 readme = "README.md"
 
-
 requires-python = ">=3.12,<3.15"
+
 dependencies = [
     "h5py>=3.12.1",
     "keras>=3.4.0",
@@ -45,8 +45,13 @@ ci = [
     "ruff>=0.7.2",
 ]
 
-[tool.setuptools]
-packages = ["helia_edge"]
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where  = ["."]
+include = ["helia_edge", "helia_edge.*"]
 
 [tool.ruff]
 line-length = 120
@@ -56,3 +61,6 @@ ignore = []
 
 [tool.ruff.lint.per-file-ignores]
 "__init__.py" = ["F401"]
+
+[tool.uv]
+package = true
