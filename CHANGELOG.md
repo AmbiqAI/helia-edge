@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.4.1](https://github.com/AmbiqAI/helia-edge/compare/v0.4.0...v0.4.1) (2025-12-16)
+
+
+### Bug Fixes
+
+* Update build-system configuration and add tool.uv settings ([58e7d93](https://github.com/AmbiqAI/helia-edge/commit/58e7d93dc9b99bcb93a81384fa53ad467d0bdab9))
+* Update build-system configuration and add tool.uv settings ([82744ed](https://github.com/AmbiqAI/helia-edge/commit/82744ed789fb46ab74769f5b0254d8d179a2cfc9))
+
 ## [0.4.0](https://github.com/AmbiqAI/helia-edge/compare/v0.3.0...v0.4.0) (2025-12-12)
 
 
