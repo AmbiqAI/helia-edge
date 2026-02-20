@@ -13,5 +13,6 @@ jobs:
         uses: astral-sh/setup-uv@v5
         with:
             enable-cache: true
-      - run: uv sync --only-group ci
+      - run: uv sync --group ci
       - run: uv run ruff check
+      - run: uv run pytest

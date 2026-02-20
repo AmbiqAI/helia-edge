@@ -42,6 +42,7 @@ docs = [
     "mkdocs-jupyter>=0.25.1",
 ]
 ci = [
+    "pytest>=8.2.0",
     "ruff>=0.7.2",
 ]
 
