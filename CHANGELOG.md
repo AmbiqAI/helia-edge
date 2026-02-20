@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.5.0](https://github.com/AmbiqAI/helia-edge/compare/v0.4.1...v0.5.0) (2026-02-20)
+
+
+### Features
+
+* Add initial pytest. ([96026e6](https://github.com/AmbiqAI/helia-edge/commit/96026e60d783744d074cf5f8f37ce435fa77aa22))
+* Add initial pytest. ([8cf3a32](https://github.com/AmbiqAI/helia-edge/commit/8cf3a32c6e9e2c676a08a3d16d466428508924e3))
+
 ## [0.4.1](https://github.com/AmbiqAI/helia-edge/compare/v0.4.0...v0.4.1) (2025-12-16)
 
 
