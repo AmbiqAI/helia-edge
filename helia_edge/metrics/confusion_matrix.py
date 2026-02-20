@@ -16,11 +16,12 @@ class ConfusionMatrix(keras.metrics.Metric):
     def __init__(self, num_classes: int, name="confusion_matrix", **kwargs):
         super().__init__(name=name, **kwargs)
         self.num_classes = int(num_classes)
+        self._state_dtype = self.dtype or "float32"
         self.conf_matrix = self.add_variable(
             name="conf_matrix",
             shape=(self.num_classes, self.num_classes),
             initializer="zeros",
-            dtype="int64",
+            dtype=self._state_dtype,
         )
 
     def update_state(self, y_true, y_pred, sample_weight=None):
@@ -36,11 +37,11 @@ class ConfusionMatrix(keras.metrics.Metric):
         else:
             pred_labels = y_pred
 
-        y_true_flat = keras.ops.reshape(y_true, (-1,))
-        pred_flat = keras.ops.reshape(pred_labels, (-1,))
+        y_true_flat = keras.ops.cast(keras.ops.reshape(y_true, (-1,)), "int32")
+        pred_flat = keras.ops.cast(keras.ops.reshape(pred_labels, (-1,)), "int32")
 
         if sample_weight is not None:
-            sample_weight = keras.ops.convert_to_tensor(sample_weight)
+            sample_weight = keras.ops.convert_to_tensor(sample_weight, dtype=self._state_dtype)
             sample_weight = keras.ops.reshape(sample_weight, (-1,))
 
         batch_conf_matrix = metrics_utils.confusion_matrix(
@@ -48,7 +49,7 @@ class ConfusionMatrix(keras.metrics.Metric):
             predictions=pred_flat,
             num_classes=self.num_classes,
             weights=sample_weight,
-            dtype="int64",
+            dtype=self._state_dtype,
         )
 
         self.conf_matrix.assign_add(batch_conf_matrix)
