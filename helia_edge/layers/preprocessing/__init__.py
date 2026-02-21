@@ -23,6 +23,8 @@ Classes:
     FrequencyMixStyle2D: 2D frequency mix style augmentation
     LayerNormalization1D: Layer normalization 1D
     LayerNormalization2D: Layer normalization 2D
+    Normalization1D: Mean/variance normalization 1D
+    Normalization2D: Mean/variance normalization 2D
     RandomAugmentation1DPipeline: Random augmentation 1D pipeline
     RandomBackgroundNoises1D: Random background noises 1D
     RandomChannel: Random channel
@@ -54,6 +56,7 @@ from .defines import NestedTensorType, NestedTensorValue
 from .fir_filter import FirFilter
 from .frequency_mix_style import FrequencyMixStyle2D
 from .layer_normalization import LayerNormalization1D, LayerNormalization2D
+from .normalization import Normalization1D, Normalization2D
 from .random_augmentation_pipeline import RandomAugmentation1DPipeline, RandomAugmentation2DPipeline
 from .random_background_noises import RandomBackgroundNoises1D
 from .random_channel import RandomChannel
