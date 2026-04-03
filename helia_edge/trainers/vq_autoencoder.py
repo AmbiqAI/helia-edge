@@ -102,8 +102,8 @@ class VQAutoencoder(keras.Model):
         # Include layer-added losses (e.g., VQ commitment/codebook + any regularizers)
         if self.losses:
             layer_loss = self.losses[0]
-            for l in self.losses[1:]:
-                layer_loss = layer_loss + l
+            for extra in self.losses[1:]:
+                layer_loss = layer_loss + extra
             total = total + layer_loss
 
         return total
