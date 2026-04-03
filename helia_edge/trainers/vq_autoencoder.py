@@ -101,9 +101,21 @@ class VQAutoencoder(keras.Model):
 
         # Include layer-added losses (e.g., VQ commitment/codebook + any regularizers)
         if self.losses:
-            total = total + keras.ops.add_n(self.losses)
+            layer_loss = self.losses[0]
+            for extra in self.losses[1:]:
+                layer_loss = layer_loss + extra
+            total = total + layer_loss
 
         return total
+
+    def get_config(self):
+        """Return config for serialization (enables save_weights_only checkpoints)."""
+        return {
+            **super().get_config(),
+            "encoder": keras.layers.serialize(self.encoder),
+            "vq": keras.layers.serialize(self.vq),
+            "decoder": keras.layers.serialize(self.decoder),
+        }
 
     def compute_metrics(self, x, y, y_pred, sample_weight=None):
         """Update compiled metrics plus extra metric trackers."""
