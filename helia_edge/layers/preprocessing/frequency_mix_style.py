@@ -67,7 +67,9 @@ class FrequencyMixStyle2D(BaseAugmentation2D):
         perm = keras.random.shuffle(keras.ops.arange(batch_size), seed=self.random_generator)
         return {"lmda": lmda, "perm": perm, "skip_augment": skip_augment}
 
-    def apply_mixstyle(self, x, lmda, perm):
+    def apply_mixstyle(
+        self, x: keras.KerasTensor, lmda: keras.KerasTensor, perm: keras.KerasTensor
+    ) -> keras.KerasTensor:
         """Apply mixstyle augmentation
 
         Args:

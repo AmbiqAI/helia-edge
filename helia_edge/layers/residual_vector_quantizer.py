@@ -1,4 +1,5 @@
 import keras
+from typing import Sequence
 
 from ..utils import helia_export
 
@@ -26,7 +27,14 @@ class ResidualVectorQuantizer(keras.layers.Layer):
         where r_l is the current residual and q_l the level-l code vector.
     """
 
-    def __init__(self, num_levels, num_embeddings, embedding_dim, beta=0.25, **kwargs):
+    def __init__(
+        self,
+        num_levels: int,
+        num_embeddings: int | Sequence[int],
+        embedding_dim: int,
+        beta: float = 0.25,
+        **kwargs,
+    ):
         super().__init__(**kwargs)
         if num_levels < 1 or embedding_dim <= 0 or beta <= 0:
             raise ValueError("num_levels>=1, embedding_dim>0, beta>0 required.")
@@ -81,7 +89,9 @@ class ResidualVectorQuantizer(keras.layers.Layer):
         q = keras.ops.take(codebook, idx, axis=0)  # [N,D]
         return idx, q
 
-    def call(self, x, return_indices: bool = False):
+    def call(
+        self, x: keras.KerasTensor, return_indices: bool = False
+    ) -> keras.KerasTensor | tuple[keras.KerasTensor, list[keras.KerasTensor]]:
         """
         Args:
           x: [..., D] latent to be quantized.
