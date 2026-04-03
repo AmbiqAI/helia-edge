@@ -109,13 +109,28 @@ class VQAutoencoder(keras.Model):
         return total
 
     def get_config(self):
-        """Return config for serialization (enables save_weights_only checkpoints)."""
-        return {
-            **super().get_config(),
-            "encoder": keras.layers.serialize(self.encoder),
-            "vq": keras.layers.serialize(self.vq),
-            "decoder": keras.layers.serialize(self.decoder),
-        }
+        """Return serialized config for saving/loading."""
+        config = super().get_config()
+        config.update(
+            {
+                "encoder": keras.saving.serialize_keras_object(self.encoder),
+                "vq": keras.saving.serialize_keras_object(self.vq),
+                "decoder": keras.saving.serialize_keras_object(self.decoder),
+            }
+        )
+        return config
+
+    @classmethod
+    def from_config(cls, config, custom_objects=None):
+        """Recreate model from serialized config."""
+        cfg = dict(config)
+        encoder_cfg = cfg.pop("encoder")
+        vq_cfg = cfg.pop("vq")
+        decoder_cfg = cfg.pop("decoder")
+        encoder = keras.saving.deserialize_keras_object(encoder_cfg, custom_objects=custom_objects)
+        vq = keras.saving.deserialize_keras_object(vq_cfg, custom_objects=custom_objects)
+        decoder = keras.saving.deserialize_keras_object(decoder_cfg, custom_objects=custom_objects)
+        return cls(encoder=encoder, vq=vq, decoder=decoder, **cfg)
 
     def compute_metrics(self, x, y, y_pred, sample_weight=None):
         """Update compiled metrics plus extra metric trackers."""
