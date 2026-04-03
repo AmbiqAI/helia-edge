@@ -29,7 +29,13 @@ class GSAutoencoder(keras.Model):
         self._extra_metric_objs = []
         self._extra_metric_fns = []
 
-    def call(self, x, training=False, return_indices: bool = False, return_probs: bool = False):
+    def call(
+        self,
+        x: keras.KerasTensor,
+        training: bool = False,
+        return_indices: bool = False,
+        return_probs: bool = False,
+    ) -> keras.KerasTensor | tuple[keras.KerasTensor, ...]:
         """Run encoder -> GS bottleneck -> decoder.
 
         Args:

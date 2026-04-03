@@ -1,7 +1,7 @@
-site_name: HeliaEdge
+site_name: heliaEDGE
 site_dir: "site"
 site_url: "https://ambiqai.github.io/helia-edge"
-site_description: HeliaEdge, Keras addon targeted towards Ambiq edge SoCs
+site_description: heliaEDGE, Keras addon targeted towards Ambiq edge SoCs
 repo_name: AmbiqAI/helia-edge
 repo_url: https://github.com/AmbiqAI/helia-edge
 copyright: Copyright &copy; 2024 Ambiq
@@ -34,21 +34,21 @@ theme:
     code: Roboto Mono
   palette:
     - media: "(prefers-color-scheme)"
-      primary: blue
+      primary: red
       accent: indigo
       toggle:
         icon: material/brightness-auto
         name: Use system theme
     - media: "(prefers-color-scheme: light)"
       scheme: default
-      primary: blue
+      primary: red
       accent: indigo
       toggle:
         icon: material/brightness-7
         name: Switch to light theme
     - media: "(prefers-color-scheme: dark)"
       scheme: slate
-      primary: blue
+      primary: red
       accent: indigo
       toggle:
         icon: material/brightness-4

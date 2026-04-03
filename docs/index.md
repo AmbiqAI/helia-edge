@@ -1,11 +1,7 @@
-# Home
+#
 
-<!-- <p align="center">
-  <a href="https://github.com/AmbiqAI/helia-edge"><img src="./assets/app-banner.png" alt="HeliaEdge"></a>
-</p> -->
-
-[![](./assets/app-banner-light.png#only-dark)](https://ambiqai.github.io/helia-edge/)
-[![](./assets/app-banner-dark.png#only-light)](https://ambiqai.github.io/helia-edge/)
+[![](./assets/app-banner-dark.png#only-dark)](https://ambiqai.github.io/helia-edge/)
+[![](./assets/app-banner-light.png#only-light)](https://ambiqai.github.io/helia-edge/)
 
 ---
 
@@ -18,7 +14,7 @@
 
 <img style="float: left; margin: 0px 15px 15px 0px;" src="./assets/app-logo.png" width="96px" />
 
-**HeliaEdge** is a [Keras 3](https://keras.io) add-on focused on training and deploying models on resource-constrained, edge devices. HeliaEdge relies heavily on [Keras 3](https://keras.io) leveraging its multi-backend support and customizable architecture. This package provides a variety of additional models, layers, optimizers, quantizers, and other components to help users train and deploy models for edge devices.
+**heliaEDGE** is a [Keras 3](https://keras.io) add-on focused on training and deploying models on resource-constrained, edge devices. heliaEDGE relies heavily on [Keras 3](https://keras.io) leveraging its multi-backend support and customizable architecture. This package provides a variety of additional models, layers, optimizers, quantizers, and other components to help users train and deploy models for edge devices.
 
 <br style="clear:both" />
 
@@ -46,7 +42,7 @@
 * [**Trainers**](api/helia_edge/trainers): Custom trainers such as SSL contrastive learning
 * [**Utils**](api/helia_edge/utils): Utility functions
 
-## Problems **HeliaEdge** looks to solve
+## Problems **heliaEDGE** looks to solve
 
 ### Compatability issues between frameworks and inference engines
 
@@ -58,8 +54,8 @@
 
 ### Limited 1D time-series models
 
-- [x] Most included models in HeliaEdge provide both 1D and 2D versions. The package also contains time-series specific models.
+- [x] Most included models in heliaEDGE provide both 1D and 2D versions. The package also contains time-series specific models.
 
 ### Limited support for quantization, pruning, and other model optimization techniques
 
-- [x] HeliaEdge provides a variety of quantization and pruning techniques to optimize models for edge deployment.
+- [x] heliaEDGE provides a variety of quantization and pruning techniques to optimize models for edge deployment.

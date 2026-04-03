@@ -1,6 +1,6 @@
 # :material-rocket-launch: Getting Started
 
-## Install HeliaEdge
+## Install heliaEDGE
 
 You can install __helia-edge__ from PyPI via:
 

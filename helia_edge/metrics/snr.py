@@ -59,8 +59,8 @@ class Snr(keras.Metric):
         # Denominator is the sum of squares of the noise
         den = keras.ops.sum(keras.ops.square(y_pred - y_true))
 
-        self.num.assign_add(self.num + num)
-        self.den.assign_add(self.den + den)
+        self.num.assign_add(num)
+        self.den.assign_add(den)
 
     def result(self):
         """Computes the SNR in dB."""

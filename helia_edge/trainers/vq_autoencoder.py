@@ -30,7 +30,9 @@ class VQAutoencoder(keras.Model):
         self._extra_metric_objs = []  # Metric trackers
         self._extra_metric_fns = []  # (tracker, callable) pairs
 
-    def call(self, x, training=False, return_indices: bool = False):
+    def call(
+        self, x: keras.KerasTensor, training: bool = False, return_indices: bool = False
+    ) -> keras.KerasTensor | tuple[keras.KerasTensor, keras.KerasTensor]:
         """Run encoder -> VQ bottleneck -> decoder.
 
         Args:

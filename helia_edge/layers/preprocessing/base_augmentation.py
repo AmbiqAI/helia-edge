@@ -84,6 +84,7 @@ class BaseAugmentation(TFDataLayer):
         """
         super().__init__(name=name, **kwargs)
 
+        self.seed = seed
         self.generator = keras.random.SeedGenerator(seed)
         self.data_format = data_format or keras.backend.image_data_format()
 
