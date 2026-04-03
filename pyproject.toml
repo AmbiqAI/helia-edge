@@ -1,6 +1,6 @@
 [project]
 name = "helia-edge"
-version = "0.4.1"
+version = "0.5.0"
 description = "HeliaEdge is a Keras add-on targeting Ambiq edge AI devices."
 authors = [
     {name = "Ambiq AI", email = "support.aitg@ambiq.com"},

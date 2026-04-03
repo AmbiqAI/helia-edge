@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.5.0](https://github.com/AmbiqAI/helia-edge/compare/v0.4.1...v0.5.0) (2026-04-03)
+
+
+### Features
+
+* Add initial pytest. ([96026e6](https://github.com/AmbiqAI/helia-edge/commit/96026e60d783744d074cf5f8f37ce435fa77aa22))
+* Add initial pytest. ([8cf3a32](https://github.com/AmbiqAI/helia-edge/commit/8cf3a32c6e9e2c676a08a3d16d466428508924e3))
+* add PRD metric and refresh docs ([#12](https://github.com/AmbiqAI/helia-edge/issues/12)) ([0a9592f](https://github.com/AmbiqAI/helia-edge/commit/0a9592fe417d61fa7f9f67d211fc650ddf1578de))
+
+
+### Bug Fixes
+
+* add from_config() to VQAutoencoder and align get_config() serialization ([#11](https://github.com/AmbiqAI/helia-edge/issues/11)) ([a56c467](https://github.com/AmbiqAI/helia-edge/commit/a56c467453cf440a606eb2e921219c82f31f7bda))
+* VQAutoencoder Keras 3 compatibility ([#10](https://github.com/AmbiqAI/helia-edge/issues/10)) ([a617d28](https://github.com/AmbiqAI/helia-edge/commit/a617d2856d761e85280782784d05ccff0aab1496))
+
 ## [0.4.1](https://github.com/AmbiqAI/helia-edge/compare/v0.4.0...v0.4.1) (2025-12-16)
 
 
