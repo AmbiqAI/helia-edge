@@ -157,16 +157,17 @@ class CascadedBiquadFilter(BaseAugmentation1D):
 
         zeros_ch = keras.ops.zeros((ch_size,), dtype=sample.dtype)
         output = keras.ops.zeros((duration_size, ch_size), dtype=sample.dtype)
-        indices = keras.ops.arange(0, duration_size)
-        indices = keras.ops.reshape(indices, (-1, 1))
-        indices = keras.ops.tile(indices, (1, ch_size))
 
         def tstep_fn(t, state):
             """Applies single time step using causal SOS recurrence."""
             y_seq, x1, x2, y1, y2 = state
             x0 = keras.ops.squeeze(keras.ops.slice(sample, start_indices=[t, 0], shape=[1, ch_size]), axis=0)
             y0 = b0 * x0 + b1 * x1 + b2 * x2 - a1 * y1 - a2 * y2
-            y_seq = keras.ops.where(condition=indices == t, x1=y0, x2=y_seq)
+            y_seq = keras.ops.slice_update(
+                y_seq,
+                start_indices=[t, 0],
+                updates=keras.ops.expand_dims(y0, axis=0),
+            )
             return y_seq, x0, x1, y0, y1
 
         output, _, _, _, _ = keras.ops.fori_loop(

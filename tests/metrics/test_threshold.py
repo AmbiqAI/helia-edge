@@ -66,5 +66,5 @@ def test_get_predicted_threshold_indices_shape_mismatch_raises():
     y_prob = np.array([[0.9, 0.1], [0.2, 0.8]], dtype=np.float32)
     y_pred = np.array([0, 1, 0], dtype=np.int32)
 
-    with pytest.raises(Exception):
+    with pytest.raises(ValueError, match="same number of samples"):
         get_predicted_threshold_indices(y_prob, y_pred, threshold=0.5)

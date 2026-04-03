@@ -45,10 +45,26 @@ class ConfusionMatrix(keras.metrics.Metric):
         has_invalid = keras.ops.logical_or(
             keras.ops.any(invalid_true), keras.ops.any(invalid_pred)
         )
-        if bool(keras.ops.convert_to_numpy(has_invalid)):
-            raise ValueError(
-                f"labels and predictions must be in [0, {self.num_classes - 1}]"
-            )
+        invalid_message = (
+            f"labels and predictions must be in [0, {self.num_classes - 1}]"
+        )
+        if keras.backend.backend() == "tensorflow":
+            import tensorflow as tf
+
+            if tf.executing_eagerly():
+                if bool(tf.get_static_value(has_invalid)):
+                    raise ValueError(invalid_message)
+            else:
+                assertion = tf.debugging.assert_equal(
+                    has_invalid,
+                    False,
+                    message=invalid_message,
+                )
+                with tf.control_dependencies([assertion]):
+                    y_true_flat = tf.identity(y_true_flat)
+                    pred_flat = tf.identity(pred_flat)
+        elif bool(keras.ops.convert_to_numpy(has_invalid)):
+            raise ValueError(invalid_message)
 
         if sample_weight is not None:
             sample_weight = keras.ops.convert_to_tensor(sample_weight, dtype=self._state_dtype)

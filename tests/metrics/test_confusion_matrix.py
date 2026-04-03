@@ -121,5 +121,5 @@ def test_confusion_matrix_honors_metric_dtype():
 def test_confusion_matrix_invalid_label_raises():
     metric = helia.metrics.ConfusionMatrix(num_classes=2)
 
-    with pytest.raises(Exception):
+    with pytest.raises(ValueError, match=r"labels and predictions must be in \[0, 1\]"):
         metric.update_state(np.array([0, 2]), np.array([0, 1]))

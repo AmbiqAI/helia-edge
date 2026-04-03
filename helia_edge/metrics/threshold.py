@@ -29,6 +29,8 @@ def get_predicted_threshold_indices(
     Returns:
         npt.NDArray: Indices of y_prob that satisfy threshold
     """
+    if y_prob.shape[0] != y_pred.shape[0]:
+        raise ValueError("y_prob and y_pred must have the same number of samples")
 
     y_pred_prob = np.take_along_axis(y_prob, np.expand_dims(y_pred, axis=-1), axis=-1).squeeze(axis=-1)
     y_thresh_idx = np.where(y_pred_prob > threshold)[0]
