@@ -42,7 +42,7 @@ class LiteRTKerasConverter(TfLiteKerasConverter):
         """Convert TF model into LiteRT model content."""
         _load_litert_interpreter()
         quantization = QuantizationType(quantization)
-        ConversionType(mode)
+        mode = ConversionType(mode)
         if test_x is None and quantization in {QuantizationType.INT8, QuantizationType.INT16X8}:
             raise ValueError("LiteRT quantized conversion requires representative data passed via test_x.")
         return super().convert(

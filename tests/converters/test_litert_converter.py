@@ -37,6 +37,11 @@ def sample_y(sample_x: np.ndarray) -> np.ndarray:
     return np.array([[0.4], [0.6], [0.3], [0.5]], dtype=np.float32)
 
 
+@pytest.fixture()
+def litert_runtime():
+    return pytest.importorskip("ai_edge_litert.interpreter")
+
+
 def test_public_litert_imports():
     assert litert.LiteRTKerasConverter is LiteRTKerasConverter
     assert litert.ConversionType is ConversionType
@@ -59,7 +64,7 @@ def test_missing_dependency_error_is_actionable(monkeypatch: pytest.MonkeyPatch,
 
 
 @pytest.mark.parametrize("mode", [ConversionType.KERAS, ConversionType.SAVED_MODEL, ConversionType.CONCRETE])
-def test_convert_returns_non_empty_flatbuffer(mode: ConversionType, sample_x: np.ndarray):
+def test_convert_returns_non_empty_flatbuffer(mode: ConversionType, sample_x: np.ndarray, litert_runtime):
     converter = LiteRTKerasConverter(_make_model())
     content = converter.convert(sample_x, mode=mode)
     assert isinstance(content, bytes)
@@ -67,8 +72,9 @@ def test_convert_returns_non_empty_flatbuffer(mode: ConversionType, sample_x: np
 
 
 @pytest.mark.parametrize("mode", [ConversionType.KERAS, ConversionType.CONCRETE])
-def test_predict_matches_keras_for_signature_and_non_signature_modes(mode: ConversionType, sample_x: np.ndarray):
-    pytest.importorskip("ai_edge_litert.interpreter")
+def test_predict_matches_keras_for_signature_and_non_signature_modes(
+    mode: ConversionType, sample_x: np.ndarray, litert_runtime
+):
     model = _make_model()
     converter = LiteRTKerasConverter(model)
     converter.convert(sample_x, mode=mode)
@@ -79,8 +85,8 @@ def test_predict_matches_keras_for_signature_and_non_signature_modes(mode: Conve
     assert np.allclose(actual, expected, atol=1e-3)
 
 
-def test_export_writes_bytes_and_litert_interpreter_loads_file(tmp_path: Path, sample_x: np.ndarray):
-    interpreter = pytest.importorskip("ai_edge_litert.interpreter").Interpreter
+def test_export_writes_bytes_and_litert_interpreter_loads_file(tmp_path: Path, sample_x: np.ndarray, litert_runtime):
+    interpreter = litert_runtime.Interpreter
     converter = LiteRTKerasConverter(_make_model())
     content = converter.convert(sample_x)
     model_path = tmp_path / "model.litert"
@@ -93,7 +99,7 @@ def test_export_writes_bytes_and_litert_interpreter_loads_file(tmp_path: Path, s
     assert runtime.get_input_details()
 
 
-def test_export_header_writes_c_header(tmp_path: Path, sample_x: np.ndarray):
+def test_export_header_writes_c_header(tmp_path: Path, sample_x: np.ndarray, litert_runtime):
     converter = LiteRTKerasConverter(_make_model())
     converter.convert(sample_x)
     header_path = tmp_path / "model.h"
@@ -106,7 +112,7 @@ def test_export_header_writes_c_header(tmp_path: Path, sample_x: np.ndarray):
     assert "#ifndef __LITERT_MODEL_H" in header
 
 
-def test_evaluate_returns_valid_loss(sample_x: np.ndarray, sample_y: np.ndarray):
+def test_evaluate_returns_valid_loss(sample_x: np.ndarray, sample_y: np.ndarray, litert_runtime):
     model = _make_model()
     converter = LiteRTKerasConverter(model)
     converter.convert(sample_x)
@@ -128,7 +134,7 @@ def test_export_methods_require_convert(tmp_path: Path):
         converter.export_header(tmp_path / "model.h")
 
 
-def test_saved_model_cleanup_removes_temporary_export_dir(sample_x: np.ndarray):
+def test_saved_model_cleanup_removes_temporary_export_dir(sample_x: np.ndarray, litert_runtime):
     converter = LiteRTKerasConverter(_make_model())
 
     converter.convert(sample_x, mode=ConversionType.SAVED_MODEL)
@@ -139,7 +145,8 @@ def test_saved_model_cleanup_removes_temporary_export_dir(sample_x: np.ndarray):
     assert not temp_dir.exists()
 
 
-def test_invalid_mode_and_missing_representative_data_fail_explicitly():
+def test_invalid_mode_and_missing_representative_data_fail_explicitly(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setattr("helia_edge.converters.litert.converter._load_litert_interpreter", lambda: object)
     converter = LiteRTKerasConverter(_make_model())
 
     with pytest.raises(ValueError, match="INVALID"):
@@ -149,8 +156,7 @@ def test_invalid_mode_and_missing_representative_data_fail_explicitly():
         converter.convert(quantization=QuantizationType.INT8)
 
 
-def test_int8_conversion_runs_with_calibration_data(sample_x: np.ndarray):
-    pytest.importorskip("ai_edge_litert.interpreter")
+def test_int8_conversion_runs_with_calibration_data(sample_x: np.ndarray, litert_runtime):
     converter = LiteRTKerasConverter(_make_model())
 
     content = converter.convert(sample_x, quantization=QuantizationType.INT8, io_type="int8")

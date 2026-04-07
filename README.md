@@ -29,7 +29,7 @@ The goal is simple: keep the developer experience high while making edge deploym
 
 * [**Callbacks**](https://ambiqai.github.io/helia-edge/api/helia_edge/callbacks): Training lifecycle and monitoring helpers
 * [**Converters**](https://ambiqai.github.io/helia-edge/api/helia_edge/converters): Export pipelines for deployment targets
-* [**Interpreters**](https://ambiqai.github.io/helia-edge/api/helia_edge/interpreters): Runtime inference interfaces (including TFLite and LiteRT)
+* [**Interpreters**](https://ambiqai.github.io/helia-edge/api/helia_edge/interpreters): Runtime inference interfaces (including TFLite)
 * [**Layers**](https://ambiqai.github.io/helia-edge/api/helia_edge/layers): Edge-centric layers, including data preprocessing components
 * [**Losses**](https://ambiqai.github.io/helia-edge/api/helia_edge/losses): Additional losses for modern training workflows
 * [**Metrics**](https://ambiqai.github.io/helia-edge/api/helia_edge/metrics): Extended evaluation metrics for edge model analysis
