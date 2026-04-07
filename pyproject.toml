@@ -25,6 +25,11 @@ dependencies = [
     "boto3>=1.35.40",
 ]
 
+[project.optional-dependencies]
+litert = [
+    "ai-edge-litert>=2.1.3",
+]
+
 [dependency-groups]
 dev = [
     "ipython>=8.25.0",

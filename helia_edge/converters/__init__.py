@@ -8,11 +8,13 @@ While `Keras` and `TensorFlow` provide built-in methods to export they often hav
 ## Available Converters
 
 * **[C++ Converter](./cpp)**: Convert models to C++ executables.
+* **[LiteRT Converter](./litert)**: Convert models to LiteRT format.
 * **[TFLite Converter](./tflite)**: Convert models to TensorFlow Lite format.
 * **[Torch Converter](./torch)**: Convert models to PyTorch formats such as ExecuTorch.
 
 """
 
 from . import cpp
+from . import litert
 from . import tflite
 from . import torch

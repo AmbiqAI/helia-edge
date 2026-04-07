@@ -1,5 +1,5 @@
 version = 1
-revision = 2
+revision = 3
 requires-python = ">=3.12, <3.15"
 resolution-markers = [
     "python_full_version >= '3.13'",
@@ -13,6 +13,30 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/7a/8f/fc001b92ecc467cc32ab38398bd0bfb45df46e7523bf33c2ad22a505f06e/absl-py-2.1.0.tar.gz", hash = "sha256:7820790efbb316739cde8b4e19357243fc3608a152024288513dd968d7d959ff", size = 118055, upload-time = "2024-01-16T22:14:26.154Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/a2/ad/e0d3c824784ff121c03cc031f944bc7e139a8f1870ffd2845cc2dd76f6c4/absl_py-2.1.0-py3-none-any.whl", hash = "sha256:526a04eadab8b4ee719ce68f204172ead1027549089702d99b9059f129ff1308", size = 133706, upload-time = "2024-01-16T22:14:24.055Z" },
+]
+
+[[package]]
+name = "ai-edge-litert"
+version = "2.1.3"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "backports-strenum" },
+    { name = "flatbuffers" },
+    { name = "numpy", version = "2.0.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.13'" },
+    { name = "numpy", version = "2.1.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.13'" },
+    { name = "protobuf" },
+    { name = "tqdm" },
+    { name = "typing-extensions" },
+]
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/aa/61/3e2ab90ed658d32246e3433157f1a9d45ff657e7425aecc89d84d7ea1dd2/ai_edge_litert-2.1.3-cp312-cp312-macosx_12_0_arm64.whl", hash = "sha256:950861b130003c7ef0fcc93248f985ee503ae2028e6bef529bd58e1f4f56dbea", size = 13113826, upload-time = "2026-03-16T19:10:17.853Z" },
+    { url = "https://files.pythonhosted.org/packages/e1/d3/0d7eae29fe0742f5a496a90ae38d67236764b1f85fa6e5a22452d7d28cc3/ai_edge_litert-2.1.3-cp312-cp312-manylinux_2_27_aarch64.whl", hash = "sha256:b391b966a9140f1ac94cbe4a2a89da732a7af459eb9d80bb9388742fc24918b1", size = 12701959, upload-time = "2026-03-16T18:52:53.52Z" },
+    { url = "https://files.pythonhosted.org/packages/a9/c7/3ec3a47ebcf4986077e0fb8aa30d3408b53c2b614e0b557914db9106f7f1/ai_edge_litert-2.1.3-cp312-cp312-manylinux_2_27_x86_64.whl", hash = "sha256:d4c234dfdfa1e99670507df85e97601bbe935bf58a0ad3bd1221077fa9dce751", size = 16505339, upload-time = "2026-03-16T18:47:14.505Z" },
+    { url = "https://files.pythonhosted.org/packages/b7/9a/639be750484748683184d4c0275a605291d839953d2949dd592ad0fa2de1/ai_edge_litert-2.1.3-cp312-cp312-win_amd64.whl", hash = "sha256:748f714fab3ee32336cf52cd30588d49306b2e12b0afbb42adcc508706e56f87", size = 12625833, upload-time = "2026-03-16T18:44:18.745Z" },
+    { url = "https://files.pythonhosted.org/packages/73/b2/c3820149ed1c97c362c7445008782210a49bb318b6575952449eb5c5dd39/ai_edge_litert-2.1.3-cp313-cp313-macosx_12_0_arm64.whl", hash = "sha256:bf23fbdd69194cbfc7f14abb7aee1c3933507dbf525a6bfd98599270267a116d", size = 13114580, upload-time = "2026-03-16T19:10:19.568Z" },
+    { url = "https://files.pythonhosted.org/packages/d2/db/f0d3c7e98231f5b0c6bf161dbe936e92e2b8ae1219de50f44a233d01c3f6/ai_edge_litert-2.1.3-cp313-cp313-manylinux_2_27_aarch64.whl", hash = "sha256:4ec96f9d9bc631bccd73f32b4b03cb99470cdad3a8a8ddc3968a7d084157668a", size = 12701914, upload-time = "2026-03-16T18:52:55.231Z" },
+    { url = "https://files.pythonhosted.org/packages/c2/6e/162314aff6229d6c1e15600b4d3f6b428011b946d7e818ed22c654915373/ai_edge_litert-2.1.3-cp313-cp313-manylinux_2_27_x86_64.whl", hash = "sha256:4c84e7f30da401274402b9d32ca2e8c6c052ed55792e43eee20d3e89cd649232", size = 16505492, upload-time = "2026-03-16T18:47:16.978Z" },
+    { url = "https://files.pythonhosted.org/packages/67/45/d5787e94c795945922f76245b36b47b34e62cf4220029acbaf640d3ccadd/ai_edge_litert-2.1.3-cp313-cp313-win_amd64.whl", hash = "sha256:3507ea27ebe8354b1cbcb553ab8287aedda169b37365d3b3b016934a845c8ae4", size = 12625783, upload-time = "2026-03-16T18:44:20.747Z" },
 ]
 
 [[package]]
@@ -140,6 +164,15 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/2a/74/f1bc80f23eeba13393b7222b11d95ca3af2c1e28edca18af487137eefed9/babel-2.16.0.tar.gz", hash = "sha256:d1f3554ca26605fe173f3de0c65f750f5a42f924499bf134de6423582298e316", size = 9348104, upload-time = "2024-08-08T14:25:45.459Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/ed/20/bc79bc575ba2e2a7f70e8a1155618bb1301eaa5132a8271373a6903f73f8/babel-2.16.0-py3-none-any.whl", hash = "sha256:368b5b98b37c06b7daf6696391c3240c938b37767d4584413e8438c5c435fa8b", size = 9587599, upload-time = "2024-08-08T14:25:42.686Z" },
+]
+
+[[package]]
+name = "backports-strenum"
+version = "1.3.1"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/35/c7/2ed54c32fed313591ffb21edbd48db71e68827d43a61938e5a0bc2b6ec91/backports_strenum-1.3.1.tar.gz", hash = "sha256:77c52407342898497714f0596e86188bb7084f89063226f4ba66863482f42414", size = 7257, upload-time = "2023-12-09T14:36:40.937Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/d6/50/56cf20e2ee5127b603b81d5a69580a1a325083e2b921aa8f067da83927c0/backports_strenum-1.3.1-py3-none-any.whl", hash = "sha256:cdcfe36dc897e2615dc793b7d3097f54d359918fc448754a517e6f23044ccf83", size = 8304, upload-time = "2023-12-09T14:36:39.905Z" },
 ]
 
 [[package]]
@@ -560,7 +593,7 @@ wheels = [
 
 [[package]]
 name = "helia-edge"
-version = "0.4.1"
+version = "0.5.0"
 source = { editable = "." }
 dependencies = [
     { name = "boto3" },
@@ -576,6 +609,11 @@ dependencies = [
     { name = "tensorflow" },
     { name = "tensorflow-metal", marker = "sys_platform == 'darwin'" },
     { name = "tqdm" },
+]
+
+[package.optional-dependencies]
+litert = [
+    { name = "ai-edge-litert" },
 ]
 
 [package.dev-dependencies]
@@ -604,6 +642,7 @@ docs = [
 
 [package.metadata]
 requires-dist = [
+    { name = "ai-edge-litert", marker = "extra == 'litert'", specifier = ">=2.1.3" },
     { name = "boto3", specifier = ">=1.35.40" },
     { name = "h5py", specifier = ">=3.12.1" },
     { name = "keras", specifier = ">=3.4.0" },
@@ -618,6 +657,7 @@ requires-dist = [
     { name = "tensorflow-metal", marker = "sys_platform == 'darwin'", specifier = ">=1.2.0" },
     { name = "tqdm", specifier = ">=4.66.4" },
 ]
+provides-extras = ["litert"]
 
 [package.metadata.requires-dev]
 ci = [

@@ -31,7 +31,7 @@
 
 * [**Callbacks**](api/helia_edge/callbacks): Training callbacks
 * [**Converters**](api/helia_edge/converters): Converters for exporting models
-* [**Interpreters**](api/helia_edge/interpreters): Inference engine interpreters (e.g. TFLite)
+* [**Interpreters**](api/helia_edge/interpreters): Inference engine interpreters (e.g. TFLite, LiteRT)
 * [**Layers**](api/helia_edge/layers): Custom layers including `tf.data.Dataset` preprocessing layers
 * [**Losses**](api/helia_edge/losses): Additional losses such as SimCLRLoss
 * [**Metrics**](api/helia_edge/metrics): Custom metrics such as SNR
