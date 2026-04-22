@@ -303,9 +303,9 @@ def download_s3_prefix(
     norm_prefix = prefix.rstrip("/") + "/" if prefix and not prefix.endswith("/") else prefix
 
     client = _get_s3_client(config)
-    items = _list_s3_objects(client, bucket, prefix)
+    items = _list_s3_objects(client, bucket, norm_prefix)
 
-    logger.debug(f"Found {len(items)} objects in s3://{bucket}/{prefix}")
+    logger.debug(f"Found {len(items)} objects in s3://{bucket}/{norm_prefix}")
 
     os.makedirs(dst, exist_ok=True)
 

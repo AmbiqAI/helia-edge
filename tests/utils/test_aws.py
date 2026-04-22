@@ -1,11 +1,8 @@
 """Tests for S3 download utilities in helia_edge.utils.aws."""
 
-import os
 import warnings
 from pathlib import Path
 from unittest.mock import MagicMock, patch
-
-import pytest
 
 from helia_edge.utils.aws import (
     download_s3_objects,
