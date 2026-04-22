@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.1](https://github.com/AmbiqAI/helia-edge/compare/v0.6.0...v0.6.1) (2026-04-22)
+
+
+### Bug Fixes
+
+* chain PyPI publish in release-please workflow ([#20](https://github.com/AmbiqAI/helia-edge/issues/20)) ([6989a20](https://github.com/AmbiqAI/helia-edge/commit/6989a205fe34e71b3caaf41672aadc7190763133))
+
 ## [0.6.0](https://github.com/AmbiqAI/helia-edge/compare/v0.5.0...v0.6.0) (2026-04-22)
 
 
