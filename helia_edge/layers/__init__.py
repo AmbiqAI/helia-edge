@@ -9,6 +9,7 @@ For example, you can use the `helia_edge.layers.preprocessing.AmplitudeWarp` lay
 * **[Preprocessing Layers](./preprocessing)**: Provides `tf.data.Dataset` preprocessing layers.
 * **[Activations](./activations)**: Provides activation functions.
 * **[Convolutional Layers](./convolutional)**: Provides convolutional layers.
+* **[EMA Residual Vector Quantizer](./ema_residual_vector_quantizer)**: Provides EMA-based residual vector quantizer layer.
 * **[Gumbel Softmax Bottleneck](./gumbel_softmax_bottleneck)**: Provides Gumbel Softmax bottleneck layer.
 * **[Normalization Layers](./normalization)**: Provides normalization layers.
 * **[Patching Layers](./patching)**: Provides patching layers.
@@ -30,6 +31,7 @@ from . import squeeze_excite
 
 from .activations import swish, glu, relu, relu6, sigmoid, mish, gelu
 from .convolutional import conv1d, conv2d
+from .ema_residual_vector_quantizer import EmaResidualVectorQuantizer
 from .gumbel_softmax_bottleneck import GumbelSoftmaxBottleneck
 from .mbconv import mbconv_block, MBConvParams
 from .normalization import batch_normalization, layer_normalization
