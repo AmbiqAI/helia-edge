@@ -1,4 +1,4 @@
-name: Release to PyPi (manual)
+name: Release to PyPi
 
 on:
   workflow_dispatch:
