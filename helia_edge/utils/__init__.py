@@ -16,7 +16,7 @@ The `utils` module provides utility functions to help with common tasks such as 
 
 """
 
-from .aws import download_s3_file, download_s3_object, download_s3_objects
+from .aws import download_s3_file, download_s3_object, download_s3_objects, download_s3_prefix
 from .env import env_flag, setup_logger, silence_tensorflow
 from .export import helia_export
 from .factory import ItemFactory, create_factory
