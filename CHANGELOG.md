@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.6.0](https://github.com/AmbiqAI/helia-edge/compare/v0.5.0...v0.6.0) (2026-04-22)
+
+
+### Features
+
+* add EmaResidualVectorQuantizer with EMA codebook updates ([#17](https://github.com/AmbiqAI/helia-edge/issues/17)) ([85a0dde](https://github.com/AmbiqAI/helia-edge/commit/85a0dde68bc2085f73c1e62b9d16bf71fc10a1a0))
+* add EmaResidualVectorQuantizer with EMA codebook updates ([#17](https://github.com/AmbiqAI/helia-edge/issues/17)) ([85a0dde](https://github.com/AmbiqAI/helia-edge/commit/85a0dde68bc2085f73c1e62b9d16bf71fc10a1a0))
+
+
+### Bug Fixes
+
+* add download_s3_prefix, deprecate download_s3_objects ([#18](https://github.com/AmbiqAI/helia-edge/issues/18)) ([a53bebe](https://github.com/AmbiqAI/helia-edge/commit/a53bebe83787325a151a8814d61085a7f64ddd6a))
+* add download_s3_prefix, deprecate download_s3_objects ([#18](https://github.com/AmbiqAI/helia-edge/issues/18)) ([a53bebe](https://github.com/AmbiqAI/helia-edge/commit/a53bebe83787325a151a8814d61085a7f64ddd6a))
+
 ## [0.5.0](https://github.com/AmbiqAI/helia-edge/compare/v0.4.1...v0.5.0) (2026-04-03)
 
 
