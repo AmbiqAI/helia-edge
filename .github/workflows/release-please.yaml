@@ -15,6 +15,13 @@ jobs:
       issues: write
     steps:
       - uses: googleapis/release-please-action@v4
+        id: release
         with:
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
+
+      - name: Trigger PyPI release
+        if: ${{ steps.release.outputs.release_created == 'true' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run release.yaml --repo ${{ github.repository }} --ref ${{ steps.release.outputs.tag_name }}
