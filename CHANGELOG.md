@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.2](https://github.com/AmbiqAI/helia-edge/compare/v0.6.1...v0.6.2) (2026-04-23)
+
+
+### Bug Fixes
+
+* add actions:write permission for release workflow dispatch ([96df439](https://github.com/AmbiqAI/helia-edge/commit/96df439ec092b7a4ac75205d13360f2dac9f176e))
+
 ## [0.6.1](https://github.com/AmbiqAI/helia-edge/compare/v0.6.0...v0.6.1) (2026-04-22)
 
 
