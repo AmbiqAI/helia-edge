@@ -17,15 +17,23 @@
 
 """
 
-from . import callbacks
-from . import converters
-from . import interpreters
-from . import layers
-from . import losses
-from . import metrics
-from . import models
-from . import optimizers
-from . import plotting
-from . import quantizers
-from . import trainers
-from . import utils
+from helia_edge._lazy import lazy_exports
+
+__getattr__, __dir__, __all__ = lazy_exports(
+    __name__,
+    {
+        "register_keras_serializables": ("._serialization", "register_keras_serializables"),
+        "callbacks": (".callbacks", None),
+        "converters": (".converters", None),
+        "interpreters": (".interpreters", None),
+        "layers": (".layers", None),
+        "losses": (".losses", None),
+        "metrics": (".metrics", None),
+        "models": (".models", None),
+        "optimizers": (".optimizers", None),
+        "plotting": (".plotting", None),
+        "quantizers": (".quantizers", None),
+        "trainers": (".trainers", None),
+        "utils": (".utils", None),
+    },
+)

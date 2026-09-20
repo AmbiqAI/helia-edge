@@ -1,18 +1,44 @@
 name: HeliaEdge CI
 
-on: [push]
+on: [push, pull_request]
 
 jobs:
-  build:
-
+  base:
     runs-on: ubuntu-latest
-
     steps:
-      - uses: actions/checkout@v3
-      - name: Install uv
-        uses: astral-sh/setup-uv@v5
-        with:
-            enable-cache: true
-      - run: uv sync --no-dev --group ci --extra litert
-      - run: uv run ruff check
-      - run: uv run pytest
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - run: uv venv --python 3.12
+      - run: uv pip install . pytest ruff
+      - run: uv run --no-sync ruff check
+      - run: uv run --no-sync pytest -q tests/test_import_isolation.py tests/utils/test_aws.py
+
+  backend:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        backend: [tensorflow, torch]
+        python: ['3.12', '3.13', '3.14']
+    env:
+      KERAS_BACKEND: ${{ matrix.backend }}
+      HELIA_REQUIRE_ISOLATION: '1'
+      CUDA_VISIBLE_DEVICES: '-1'
+      TF_NUM_INTRAOP_THREADS: '2'
+      TF_NUM_INTEROP_THREADS: '1'
+      OMP_NUM_THREADS: '2'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - run: uv venv --python ${{ matrix.python }}
+      - if: matrix.backend == 'torch'
+        run: uv pip install 'torch==2.14.0' --index-url https://download.pytorch.org/whl/cpu
+      - run: uv pip install '.[${{ matrix.backend }}]' 'keras==3.15.1' pytest
+      - if: matrix.backend == 'tensorflow'
+        run: uv pip install 'ai-edge-litert==2.2.0'
+      - if: matrix.backend == 'tensorflow'
+        run: uv run --no-sync pytest -q
+      - if: matrix.backend == 'torch'
+        run: >-
+          uv run --no-sync pytest -q tests/test_import_isolation.py tests/test_serialization.py
+          tests/metrics tests/layers/test_ema_residual_vector_quantizer.py tests/utils/test_aws.py

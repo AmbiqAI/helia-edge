@@ -15,9 +15,22 @@ the standard supervised learning paradigm. These include contrastive learning, d
 
 """
 
-from .contrastive import ContrastiveTrainer
-from .distiller import Distiller
-from .gs_autoencoder import GSAutoencoder
-from .mask_autoencoder import MaskedAutoencoder
-from .simclr import SimCLRTrainer
-from .vq_autoencoder import VQAutoencoder
+from helia_edge._lazy import lazy_exports
+
+__getattr__, __dir__, __all__ = lazy_exports(
+    __name__,
+    {
+        "ContrastiveTrainer": (".contrastive", "ContrastiveTrainer"),
+        "Distiller": (".distiller", "Distiller"),
+        "GSAutoencoder": (".gs_autoencoder", "GSAutoencoder"),
+        "MaskedAutoencoder": (".mask_autoencoder", "MaskedAutoencoder"),
+        "SimCLRTrainer": (".simclr", "SimCLRTrainer"),
+        "VQAutoencoder": (".vq_autoencoder", "VQAutoencoder"),
+        "contrastive": (".contrastive", None),
+        "distiller": (".distiller", None),
+        "gs_autoencoder": (".gs_autoencoder", None),
+        "mask_autoencoder": (".mask_autoencoder", None),
+        "simclr": (".simclr", None),
+        "vq_autoencoder": (".vq_autoencoder", None),
+    },
+)

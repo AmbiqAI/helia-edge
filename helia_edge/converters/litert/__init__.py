@@ -10,5 +10,14 @@ Classes:
 
 """
 
-from ..tflite import ConversionType, QuantizationType
-from .converter import LiteRTKerasConverter
+from helia_edge._lazy import lazy_exports
+
+__getattr__, __dir__, __all__ = lazy_exports(
+    __name__,
+    {
+        "ConversionType": ("..tflite", "ConversionType"),
+        "QuantizationType": ("..tflite", "QuantizationType"),
+        "LiteRTKerasConverter": (".converter", "LiteRTKerasConverter"),
+        "converter": (".converter", None),
+    },
+)

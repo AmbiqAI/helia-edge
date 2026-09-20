@@ -11,4 +11,11 @@ Often a `helia_edge.converters` module is used to convert the model and `helia_e
 
 """
 
-from . import tflite
+from helia_edge._lazy import lazy_exports
+
+__getattr__, __dir__, __all__ = lazy_exports(
+    __name__,
+    {
+        "tflite": (".tflite", None),
+    },
+)
