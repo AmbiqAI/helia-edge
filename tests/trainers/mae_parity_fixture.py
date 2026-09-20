@@ -1,9 +1,4 @@
-"""Native TF/Torch optimization of an EDGE component, without compile()/fit().
-
-KERAS_BACKEND=torch python examples/masked_autoencoder_native.py
-KERAS_BACKEND=tensorflow python examples/masked_autoencoder_native.py
-Use --evidence output.npz for a fixed-mask, fixed-weight numerical parity fixture.
-"""
+"""Record a fixed-mask native optimizer step for cross-backend regression checks."""
 
 import argparse
 import os
@@ -33,12 +28,11 @@ class FixedMaskEncoder(MaskedPatchEncoder2D):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--evidence")
+    parser.add_argument("--output", required=True)
     args = parser.parse_args()
-    patch_encoder_type = FixedMaskEncoder if args.evidence else MaskedPatchEncoder2D
     model = MaskedAutoencoder(
         PatchLayer2D(2, 2, 1, 1, 1),
-        patch_encoder_type(1, 1, 1, 2, 0.5, seed=17),
+        FixedMaskEncoder(1, 1, 1, 2, 0.5, seed=17),
         keras.Sequential([keras.Input((2, 2)), keras.layers.Dense(2)]),
         keras.Sequential(
             [keras.Input((4, 2)), keras.layers.Flatten(), keras.layers.Dense(4), keras.layers.Reshape((2, 2, 1))]
@@ -82,8 +76,7 @@ def main():
         arrays[f"gradient_{i}"] = keras.ops.convert_to_numpy(keras.ops.convert_to_tensor(gradient))
         arrays[f"updated_weight_{i}"] = keras.ops.convert_to_numpy(variable)
     assert all(np.isfinite(value).all() for value in arrays.values())
-    if args.evidence:
-        np.savez(args.evidence, **arrays)
+    np.savez(args.output, **arrays)
     print(f"{keras.backend.backend()} native optimizer step: loss={float(arrays['loss']):.8f}")
 
 

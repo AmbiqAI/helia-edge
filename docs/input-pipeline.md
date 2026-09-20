@@ -1,4 +1,4 @@
-# Generator sampling and timing
+# Generator sampling
 
 `create_interleaved_dataset_from_generator` now defaults to `stream_mode="global"`:
 one caller-owned ID/sample schedule, including repeated or weighted schedules.
@@ -22,24 +22,3 @@ weights. Empty inputs produce a typed empty dataset without invoking readers.
 Omitted preprocessing is an identity operation. Invalid worker counts fail early.
 Generators receive fresh ID lists for each epoch, so in-place shuffling cannot
 mutate the caller's schedule.
-
-SleepKit's synthetic fixture exercises 1/3/0/2/7 windows across five subjects,
-workers 1/2/4/8, exact labels/clocks/order, two epochs and retained final batches.
-A separate repeated weighted schedule verifies that worker count cannot change
-the default logical stream. This is mechanical evidence, not a physiological
-preprocessing or real-consumer integration result.
-
-Run the reproducible synthetic timing baseline with the TF extra installed:
-
-```sh
-python benchmarks/input_pipeline.py --output /tmp/input-pipeline.json
-```
-
-It records cold synthetic preparation, warm loading, resident-batch model steps
-and end-to-end training separately, along with versions, schedule/data hashes,
-repetitions, bounded prefetch/threading and process peak RSS. Both loader modes
-must produce identical ordered batches before timing. Results describe this
-small CPU workload only; real SleepKit decoding, data alignment and throughput
-must be measured in the consuming project before choosing optimized defaults.
-Keep run results outside version control; see `benchmarks/README.md` for artifact
-conventions.

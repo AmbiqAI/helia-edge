@@ -108,10 +108,9 @@ include = [
     "helia_edge/utils/export.py",
     "helia_edge/layers/patching.py",
     "helia_edge/trainers/mask_autoencoder.py",
-    "benchmarks/*.py",
-    "examples/*.py",
     "tests/typing/*.py",
-    "tests/compare_mae_backends.py",
+    "tests/trainers/mae_parity_fixture.py",
+    "tests/trainers/compare_mae_backends.py",
 ]
 
 [tool.ty.rules]

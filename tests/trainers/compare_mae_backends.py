@@ -19,7 +19,7 @@ def main():
     args = parser.parse_args()
     if not ((args.tensorflow_python and args.torch_python) or (args.tensorflow_evidence and args.torch_evidence)):
         parser.error("supply both Python environments or both evidence files")
-    example = Path(__file__).resolve().parents[1] / "examples/masked_autoencoder_native.py"
+    fixture = Path(__file__).with_name("mae_parity_fixture.py")
     with tempfile.TemporaryDirectory() as directory:
         paths = {}
         for backend in ("tensorflow", "torch"):
@@ -29,7 +29,7 @@ def main():
             paths[backend] = Path(directory) / f"{backend}.npz"
             env = dict(os.environ, KERAS_BACKEND=backend, CUDA_VISIBLE_DEVICES="-1")
             subprocess.run(
-                [getattr(args, f"{backend}_python"), str(example), "--evidence", str(paths[backend])],
+                [getattr(args, f"{backend}_python"), str(fixture), "--output", str(paths[backend])],
                 env=env,
                 check=True,
                 timeout=120,

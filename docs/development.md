@@ -11,8 +11,23 @@ Python 3.12.3 is the minimum. TensorFlow is tested on 3.12–3.13 and Torch on
   adapters may use their selected backend explicitly.
 - KITs own dataset meaning, preprocessing policy and release criteria. Add shared
   abstractions only when real consumers establish the contract.
-- Keep examples, benchmarks and test tools outside the installed package. Store
-  run-specific measurements as artifacts, not source files.
+- Keep temporary profiling scripts, investigation notes and run results outside
+  the repository. Track tooling only when it has an ongoing maintenance purpose.
+
+## Repository layout
+
+- `helia_edge/`: installed library and public type declarations.
+- `tests/`: regression tests, with supporting code beside the tests it serves;
+  fixed datasets in `tests/fixtures/` and static contracts in `tests/typing/`.
+- `docs/`: user and contributor guidance; `scripts/` supports documentation builds.
+- `.github/workflows/`: CI orchestration. Generated files belong in the runner's
+  temporary directory and are uploaded as artifacts when needed.
+
+The MAE parity fixture and comparison helper live in `tests/trainers/`. CI uses
+them to check forward values, gradients and optimizer updates across isolated
+backends. They are regression infrastructure, not performance measurements.
+
+## API conventions
 
 Public lazy exports are declared once in adjacent `__init__.pyi` files.
 `lazy-loader` uses those declarations at runtime; type checkers read the same
@@ -37,8 +52,8 @@ Runtime isolation is tested separately. `ty` is pinned in the `typing` group,
 included by `dev` and `ci`, and enforced by the CI typing job.
 
 `tool.ty.src.include` lists the current gate: lazy public exports, modernized
-sampling/helpers, patch layers, masked-autoencoder, examples and benchmark/test
-tools. Static contract checks verify that public re-exports retain their types.
+sampling/helpers, patch layers, masked-autoencoder and backend parity helpers.
+Static contract checks verify that public re-exports retain their types.
 Legacy model families, converters and augmentation implementations still contain
 typing debt and are outside this initial gate. There are no global rule
 suppressions; extend coverage as those modules are corrected.

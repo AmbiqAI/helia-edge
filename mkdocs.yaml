@@ -16,7 +16,7 @@ nav:
   - Getting Started:
     - usage/index.md
     - Backend Support: backends.md
-    - Generator Sampling and Timing: input-pipeline.md
+    - Generator Sampling: input-pipeline.md
     - Development: development.md
 
   - API: api/

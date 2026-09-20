@@ -71,12 +71,14 @@ jobs:
         run: >-
           uv run --no-sync pytest -q tests/test_import_isolation.py tests/test_serialization.py
           tests/metrics tests/layers/test_ema_residual_vector_quantizer.py tests/utils/test_aws.py tests/trainers
-      - run: uv run --no-sync python examples/masked_autoencoder_native.py --evidence mae-evidence.npz
+      - run: >-
+          uv run --no-sync python tests/trainers/mae_parity_fixture.py
+          --output '${{ runner.temp }}/mae-evidence.npz'
       - if: matrix.python == '3.12'
         uses: actions/upload-artifact@v4
         with:
           name: mae-${{ matrix.backend }}
-          path: mae-evidence.npz
+          path: ${{ runner.temp }}/mae-evidence.npz
 
   parity:
     needs: backend
@@ -89,8 +91,8 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           pattern: mae-*
-          path: evidence
+          path: ${{ runner.temp }}/mae-parity
       - run: >-
-          uv run --no-sync python tests/compare_mae_backends.py
-          --tensorflow-evidence evidence/mae-tensorflow/mae-evidence.npz
-          --torch-evidence evidence/mae-torch/mae-evidence.npz
+          uv run --no-sync python tests/trainers/compare_mae_backends.py
+          --tensorflow-evidence '${{ runner.temp }}/mae-parity/mae-tensorflow/mae-evidence.npz'
+          --torch-evidence '${{ runner.temp }}/mae-parity/mae-torch/mae-evidence.npz'

@@ -93,12 +93,12 @@ masks, inputs and weights. Whole RNG/sampler resume and identical stochastic
 training trajectories are not promised. Save/reload tests cover full-model
 weights, controlled-mask predictions and optimizer slots/iteration on each backend.
 
-See [the native-loop example](https://github.com/AmbiqAI/helia-edge/blob/main/examples/masked_autoencoder_native.py). Build the
-model before constructing a native Torch optimizer so every parameter is present.
-Run the two-environment forward/gradient/update comparison with:
+Build the model before constructing a native Torch optimizer so every parameter
+is present. The regression fixtures in `tests/trainers/` exercise native TF/Torch
+optimization. Run their forward/gradient/update comparison with:
 
 ```sh
-python tests/compare_mae_backends.py \
+python tests/trainers/compare_mae_backends.py \
   --tensorflow-python /path/to/tf-env/bin/python \
   --torch-python /path/to/torch-env/bin/python
 ```
