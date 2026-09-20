@@ -10,7 +10,6 @@ Classes:
 """
 
 import keras
-import tensorflow as tf
 import numpy as np
 import matplotlib.pyplot as plt
 
@@ -52,7 +51,7 @@ class PatchLayer2D(keras.layers.Layer):
     def call(self, images):
         # Create patches from the input images
         patches = keras.ops.image.extract_patches(
-            image=images,
+            images,
             size=(self.patch_height, self.patch_width),
             strides=(self.patch_height, self.patch_width),
             padding="valid",
@@ -61,6 +60,16 @@ class PatchLayer2D(keras.layers.Layer):
         # Reshape the patches to (batch, num_patches, patch_area)
         patches = self.resize(patches)
         return patches
+
+    def get_config(self):
+        return {
+            **super().get_config(),
+            "height": self.height,
+            "width": self.width,
+            "ch": self.ch_size,
+            "patch_height": self.patch_height,
+            "patch_width": self.patch_width,
+        }
 
     def show_patched_image(self, images: keras.KerasTensor, patches: keras.KerasTensor) -> int:
         """Utility function which accepts a batch of images and its
@@ -127,6 +136,7 @@ class MaskedPatchEncoder2D(keras.layers.Layer):
         projection_dim: int,
         mask_proportion: float,
         downstream: bool = False,
+        seed: int | None = None,
         **kwargs,
     ):
         """Given a batch of patches, this layer will
@@ -149,6 +159,12 @@ class MaskedPatchEncoder2D(keras.layers.Layer):
         self.projection_dim = projection_dim
         self.mask_proportion = mask_proportion
         self.downstream = downstream
+        self.seed = seed
+        self.seed_generator = keras.random.SeedGenerator(seed)
+        if not 0 <= mask_proportion <= 1:
+            raise ValueError("mask_proportion must be between 0 and 1")
+        self.projection = keras.layers.Dense(units=self.projection_dim)
+        self.position_embedding = None
 
     def build(self, input_shape):
         (_, self.num_patches, self.patch_area) = input_shape
@@ -161,13 +177,17 @@ class MaskedPatchEncoder2D(keras.layers.Layer):
         )
 
         # Create the projection layer for the patches
-        self.projection = keras.layers.Dense(units=self.projection_dim)
+        self.projection.build(input_shape)
 
         # Create the positional embedding layer
         self.position_embedding = keras.layers.Embedding(input_dim=self.num_patches, output_dim=self.projection_dim)
+        self.position_embedding.build((None, self.num_patches))
 
         # Number of patches that will be masked
         self.num_mask = int(self.mask_proportion * self.num_patches)
+        if not self.downstream and not 0 < self.num_mask < self.num_patches:
+            raise ValueError("mask_proportion must leave at least one masked and one unmasked patch")
+        super().build(input_shape)
 
     def call(self, patches):
         batch_size = keras.ops.shape(patches)[0]
@@ -186,16 +206,16 @@ class MaskedPatchEncoder2D(keras.layers.Layer):
         else:
             mask_indices, unmask_indices = self.get_random_indices(batch_size)
             # The encoder input is the unmasked patch embeddings
-            unmasked_embeddings = tf.gather(
-                patch_embeddings, unmask_indices, axis=1, batch_dims=1
+            unmasked_embeddings = keras.ops.take_along_axis(
+                patch_embeddings, keras.ops.expand_dims(unmask_indices, -1), axis=1
             )  # (B, unmask_numbers, projection_dim)
 
             # Get the unmasked and masked position embeddings
-            unmasked_positions = tf.gather(
-                pos_embeddings, unmask_indices, axis=1, batch_dims=1
+            unmasked_positions = keras.ops.take_along_axis(
+                pos_embeddings, keras.ops.expand_dims(unmask_indices, -1), axis=1
             )  # (B, unmask_numbers, projection_dim)
-            masked_positions = tf.gather(
-                pos_embeddings, mask_indices, axis=1, batch_dims=1
+            masked_positions = keras.ops.take_along_axis(
+                pos_embeddings, keras.ops.expand_dims(mask_indices, -1), axis=1
             )  # (B, mask_numbers, projection_dim)
 
             # Repeat the mask token number of mask times.
@@ -217,10 +237,24 @@ class MaskedPatchEncoder2D(keras.layers.Layer):
     def get_random_indices(self, batch_size: int):
         # Create random indices from a uniform distribution and then split
         # it into mask and unmask indices.
-        rand_indices = keras.ops.argsort(keras.random.uniform(shape=(batch_size, self.num_patches)), axis=-1)
+        rand_indices = keras.ops.argsort(
+            keras.random.uniform(shape=(batch_size, self.num_patches), seed=self.seed_generator), axis=-1
+        )
         mask_indices = rand_indices[:, : self.num_mask]
         unmask_indices = rand_indices[:, self.num_mask :]
         return mask_indices, unmask_indices
+
+    def get_config(self):
+        return {
+            **super().get_config(),
+            "patch_height": self.patch_height,
+            "patch_width": self.patch_width,
+            "ch_size": self.ch_size,
+            "projection_dim": self.projection_dim,
+            "mask_proportion": self.mask_proportion,
+            "downstream": self.downstream,
+            "seed": self.seed,
+        }
 
     def generate_masked_image(self, patches: keras.KerasTensor, unmask_indices: keras.KerasTensor):
         # Choose a random patch and it corresponding unmask index.

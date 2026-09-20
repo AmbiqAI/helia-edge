@@ -17,16 +17,17 @@ def register_keras_serializables():
         "helia_edge.layers.gumbel_softmax_bottleneck",
         "helia_edge.layers.residual_vector_quantizer",
         "helia_edge.layers.vector_quantizer",
+        "helia_edge.layers.patching",
         "helia_edge.losses.simclr",
         "helia_edge.metrics.confusion_matrix",
         "helia_edge.metrics.fscore",
         "helia_edge.metrics.prd",
         "helia_edge.metrics.snr",
         "helia_edge.trainers.distiller",
+        "helia_edge.trainers.mask_autoencoder",
     ]
     if keras.backend.backend() == "tensorflow":
         modules += [
-            "helia_edge.layers.patching",
             "helia_edge.layers.preprocessing.amplitude_warp",
             "helia_edge.layers.preprocessing.augmentation_pipeline",
             "helia_edge.layers.preprocessing.base_augmentation",
@@ -51,7 +52,6 @@ def register_keras_serializables():
             "helia_edge.layers.preprocessing.spec_augment",
             "helia_edge.layers.preprocessing.tf_data_layer",
             "helia_edge.trainers.contrastive",
-            "helia_edge.trainers.mask_autoencoder",
             "helia_edge.trainers.simclr",
         ]
     for module in modules:

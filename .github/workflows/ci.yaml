@@ -44,4 +44,27 @@ jobs:
       - if: matrix.backend == 'torch'
         run: >-
           uv run --no-sync pytest -q tests/test_import_isolation.py tests/test_serialization.py
-          tests/metrics tests/layers/test_ema_residual_vector_quantizer.py tests/utils/test_aws.py
+          tests/metrics tests/layers/test_ema_residual_vector_quantizer.py tests/utils/test_aws.py tests/trainers
+      - run: uv run --no-sync python examples/masked_autoencoder_native.py --evidence mae-evidence.npz
+      - if: matrix.python == '3.12'
+        uses: actions/upload-artifact@v4
+        with:
+          name: mae-${{ matrix.backend }}
+          path: mae-evidence.npz
+
+  parity:
+    needs: backend
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - run: uv venv --python 3.12
+      - run: uv pip install numpy
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: mae-*
+          path: evidence
+      - run: >-
+          uv run --no-sync python benchmarks/compare_mae_backends.py
+          --tensorflow-evidence evidence/mae-tensorflow/mae-evidence.npz
+          --torch-evidence evidence/mae-torch/mae-evidence.npz

@@ -1,0 +1,33 @@
+{
+  "rtol": 1e-05,
+  "atol": 1e-06,
+  "maximum_absolute_errors": {
+    "targets": 0.0,
+    "predictions": 0.0,
+    "loss": 0.0,
+    "gradient_0": 0.0,
+    "updated_weight_0": 0.0,
+    "gradient_1": 0.0,
+    "updated_weight_1": 0.0,
+    "gradient_2": 2.9802322387695312e-08,
+    "updated_weight_2": 0.0,
+    "gradient_3": 0.0,
+    "updated_weight_3": 0.0,
+    "gradient_4": 0.0,
+    "updated_weight_4": 0.0,
+    "gradient_5": 1.862645149230957e-09,
+    "updated_weight_5": 0.0,
+    "gradient_6": 0.0,
+    "updated_weight_6": 0.0,
+    "gradient_7": 0.0,
+    "updated_weight_7": 0.0
+  },
+  "environment": {
+    "python": "3.12.5",
+    "keras": "3.15.1",
+    "tensorflow": "2.21.0",
+    "torch": "2.14.0+cpu",
+    "device": "CPU"
+  },
+  "contract": "Fixed logical masks, weights and inputs; float32 forward, all trainable gradients and one native SGD update."
+}
