@@ -212,3 +212,24 @@ def test_loss_metric_reports_objective_not_mean_target():
     expected = keras.ops.convert_to_numpy(keras.ops.mean(keras.ops.square(targets - predictions)))
     logs = model.train_step(keras.ops.convert_to_tensor(x))
     np.testing.assert_allclose(keras.ops.convert_to_numpy(logs["loss"]), expected, rtol=1e-6)
+
+
+def test_nested_layer_metrics_are_not_updated_as_prediction_metrics():
+    class SignalLayer(keras.layers.Layer):
+        def __init__(self):
+            super().__init__()
+            self.signal = keras.metrics.Mean(name="encoder_signal")
+
+        def call(self, inputs):
+            self.signal.update_state(7.0)
+            return inputs
+
+    fixture, x = model_fixture()
+    signal = SignalLayer()
+    encoder = keras.Sequential([keras.Input((2, 2)), keras.layers.Dense(2), signal])
+    model = MaskedAutoencoder(fixture.patch_layer, fixture.patch_encoder, encoder, fixture.decoder)
+    model(x)
+    model.compile(optimizer="sgd", loss="mse", metrics=["mae"], jit_compile=False)
+    signal.signal.reset_state()
+    logs = model.train_step(keras.ops.convert_to_tensor(x))
+    np.testing.assert_allclose(keras.ops.convert_to_numpy(logs["encoder_signal"]), 7.0)

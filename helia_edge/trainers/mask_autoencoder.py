@@ -89,20 +89,14 @@ class MaskedAutoencoder(keras.Model):
             )
         return x
 
-    def _update_metrics(self, loss, targets, predictions):
+    def _update_metrics(self, loss, targets, predictions, x=None):
         for metric in self.metrics:
             if metric.name == "loss":
                 metric.update_state(loss, sample_weight=keras.ops.shape(targets)[0])
-            else:
-                metric.update_state(targets, predictions)
-        results = {}
-        for metric in self.metrics:
-            value = metric.result()
-            if isinstance(value, dict):
-                results.update(value)
-            else:
-                results[metric.name] = value
-        return results
+                break
+        # Nested layers own their metric updates. Only update compiled prediction
+        # metrics here, then let Keras collect all tracked metrics.
+        return self.compute_metrics(x, targets, predictions)
 
     def _tensorflow_train_step(self, x):
         import tensorflow as tf
@@ -114,7 +108,7 @@ class MaskedAutoencoder(keras.Model):
         gradients = tape.gradient(scaled_loss, variables)
         pairs = [(g, v) for g, v in zip(gradients, variables) if g is not None]
         self.optimizer.apply_gradients(pairs)
-        return self._update_metrics(loss, targets, predictions)
+        return self._update_metrics(loss, targets, predictions, x=x)
 
     def _torch_train_step(self, x):
         import torch
@@ -126,7 +120,7 @@ class MaskedAutoencoder(keras.Model):
         pairs = [(v.value.grad, v) for v in variables if v.value.grad is not None]
         with torch.no_grad():
             self.optimizer.apply([g for g, _ in pairs], [v for _, v in pairs])
-            return self._update_metrics(loss, targets, predictions)
+            return self._update_metrics(loss, targets, predictions, x=x)
 
     def train_step(self, data):
         x = self._inputs(data)
@@ -144,9 +138,9 @@ class MaskedAutoencoder(keras.Model):
             import torch
 
             with torch.no_grad():
-                return self._update_metrics(*self.calculate_loss(x, test=True))
+                return self._update_metrics(*self.calculate_loss(x, test=True), x=x)
         if backend == "tensorflow":
-            return self._update_metrics(*self.calculate_loss(x, test=True))
+            return self._update_metrics(*self.calculate_loss(x, test=True), x=x)
         raise NotImplementedError(f"MaskedAutoencoder evaluation does not support the {backend!r} backend.")
 
     def get_config(self):
