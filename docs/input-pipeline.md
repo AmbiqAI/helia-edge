@@ -7,6 +7,9 @@ implicit partitioning, which dropped remainder IDs and could oversample subjects
 in smaller repeated partitions. Existing frozen experiments must retain their
 pinned version or declare a new loader/order policy when migrating.
 
+Use `StreamMode.GLOBAL` or `StreamMode.FINITE` from `helia_edge.utils` for typed
+configuration. Their string values remain accepted at the API boundary.
+
 Use `stream_mode="finite"` only when each partition terminates and splitting IDs
 does not change the caller's generator semantics. Every ID is assigned once;
 `deterministic=True` concatenates contiguous partitions in order. Set it to `False`
@@ -38,3 +41,5 @@ repetitions, bounded prefetch/threading and process peak RSS. Both loader modes
 must produce identical ordered batches before timing. Results describe this
 small CPU workload only; real SleepKit decoding, data alignment and throughput
 must be measured in the consuming project before choosing optimized defaults.
+Keep run results outside version control; see `benchmarks/README.md` for artifact
+conventions.

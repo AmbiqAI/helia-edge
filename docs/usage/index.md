@@ -23,6 +23,6 @@ uv add 'helia-edge[tensorflow]'
 
 ## Requirements
 
-* Python 3.12–3.13 for the tested TensorFlow baseline; 3.12–3.14 for Torch/base.
+* Python 3.12.3 or newer: 3.12–3.13 for TensorFlow; 3.12–3.14 for Torch/base.
 
 Check the project's [pyproject.toml](https://github.com/AmbiqAI/helia-edge/blob/main/pyproject.toml) file for a list of up-to-date Python dependencies. Note that the installation methods above will install all required dependencies.

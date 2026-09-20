@@ -8,6 +8,7 @@ import numpy as np
 import pytest
 import tensorflow as tf
 
+from helia_edge.utils import StreamMode, parse_factor
 from helia_edge.utils import create_interleaved_dataset_from_generator as make_dataset
 
 
@@ -103,3 +104,18 @@ def test_mutating_id_generator_gets_fresh_ids_each_iteration():
     ds = make_dataset(iter, destructive, [1, 2, 3], tf.TensorSpec((), tf.int32))
     assert list(ds.as_numpy_iterator()) == [3, 2, 1]
     assert list(ds.as_numpy_iterator()) == [3, 2, 1]
+
+
+def test_stream_mode_enum_and_string_are_compatible():
+    for mode in (StreamMode.GLOBAL, "global", StreamMode.FINITE, "finite"):
+        ds = make_dataset(iter, iter, [1, 2, 3], tf.TensorSpec((), tf.int32), stream_mode=mode)
+        assert list(ds.as_numpy_iterator()) == [1, 2, 3]
+
+
+def test_factor_bounds_accept_immutable_pairs_and_unbounded_ranges():
+    assert parse_factor((None, 0.5)) == (0.5, 0.5)
+    assert parse_factor(2.0, min_value=None, max_value=None) == (2.0, 2.0)
+    assert parse_factor((-2.0, 2.0), min_value=None, max_value=None) == (-2.0, 2.0)
+    factor = [None, 0.5]
+    assert parse_factor(factor) == (0.5, 0.5)
+    assert factor == [None, 0.5]

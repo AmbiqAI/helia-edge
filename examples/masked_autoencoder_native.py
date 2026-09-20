@@ -7,6 +7,7 @@ Use --evidence output.npz for a fixed-mask, fixed-weight numerical parity fixtur
 
 import argparse
 import os
+from typing import cast
 
 os.environ.setdefault("CUDA_VISIBLE_DEVICES", "-1")
 os.environ.setdefault("TF_NUM_INTRAOP_THREADS", "2")
@@ -53,10 +54,10 @@ def main():
     if keras.backend.backend() == "tensorflow":
         import tensorflow as tf
 
-        optimizer = tf.keras.optimizers.SGD(0.01)
+        optimizer = keras.optimizers.SGD(0.01)
         with tf.GradientTape() as tape:
-            targets, predicted = model.reconstruction_targets(tf.constant(x), training=True)
-            loss = tf.reduce_mean(tf.square(targets - predicted))
+            targets, predicted = model.reconstruction_targets(cast(tf.Tensor, tf.constant(x)), training=True)
+            loss = tf.reduce_mean(tf.math.squared_difference(targets, predicted))
         gradients = tape.gradient(loss, model.trainable_weights)
         optimizer.apply_gradients(zip(gradients, model.trainable_weights))
     elif keras.backend.backend() == "torch":
@@ -65,7 +66,7 @@ def main():
         optimizer = torch.optim.SGD(model.parameters(), lr=0.01)
         optimizer.zero_grad()
         targets, predicted = model.reconstruction_targets(torch.tensor(x), training=True)
-        loss = torch.mean((targets - predicted) ** 2)
+        loss = torch.mean((cast(torch.Tensor, targets) - cast(torch.Tensor, predicted)) ** 2)
         loss.backward()
         gradients = [v.value.grad for v in model.trainable_weights]
         optimizer.step()

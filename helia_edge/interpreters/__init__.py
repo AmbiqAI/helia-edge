@@ -1,21 +1,5 @@
-"""
-# Interpreters
+"""Public interpreters exports, loaded on demand."""
 
-Interpreters are classes that are used to interpret pre-trained model files such as TensorFlow and TensorFlow Lit.
-These classes are used to load the model file and provide a consistent interface for making predictions.
-Often a `helia_edge.converters` module is used to convert the model and `helia_edge.interpreters` is used to verify the model results.
+from helia_edge._lazy import attach_exports as _attach_exports
 
-## Available Interpreters
-
-* [TFLite Interpreter](./tflite): Interprets TensorFlow Lite models.
-
-"""
-
-from helia_edge._lazy import lazy_exports
-
-__getattr__, __dir__, __all__ = lazy_exports(
-    __name__,
-    {
-        "tflite": (".tflite", None),
-    },
-)
+__getattr__, __dir__, __all__ = _attach_exports(__name__, __file__)

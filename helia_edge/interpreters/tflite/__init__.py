@@ -1,19 +1,5 @@
-"""
-# TFLite Interpreter API
+"""Public tflite exports, loaded on demand."""
 
-This module handles interpreting TensorFlow Lite models.
+from helia_edge._lazy import attach_exports as _attach_exports
 
-Classes:
-    TfLiteKerasInterpreter: Interprets TensorFlow Lite models converted from Keras.
-
-"""
-
-from helia_edge._lazy import lazy_exports
-
-__getattr__, __dir__, __all__ = lazy_exports(
-    __name__,
-    {
-        "TfLiteKerasInterpreter": (".interpreter", "TfLiteKerasInterpreter"),
-        "interpreter": (".interpreter", None),
-    },
-)
+__getattr__, __dir__, __all__ = _attach_exports(__name__, __file__)

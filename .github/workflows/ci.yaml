@@ -3,6 +3,24 @@ name: HeliaEdge CI
 on: [push, pull_request]
 
 jobs:
+  docs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - run: uv sync --python 3.12 --only-group docs --locked
+      - run: uv run --no-sync mkdocs build --strict
+
+  typing:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - run: uv venv --python 3.12
+      - run: uv pip install 'torch==2.14.0' --index-url https://download.pytorch.org/whl/cpu
+      - run: uv pip install '.[tensorflow,torch,litert]' --group typing
+      - run: uv run --no-sync ty check --error-on-warning
+
   base:
     runs-on: ubuntu-latest
     steps:
@@ -10,6 +28,14 @@ jobs:
       - uses: astral-sh/setup-uv@v5
       - run: uv venv --python 3.12
       - run: uv pip install . pytest ruff
+      - name: Check installed lazy exports outside the source tree
+        run: |
+          uv run --no-sync python -I - <<'PY'
+          import sys
+          import helia_edge
+          assert helia_edge.utils.StreamMode.FINITE.value == 'finite'
+          assert not {'keras', 'tensorflow', 'torch'} & sys.modules.keys()
+          PY
       - run: uv run --no-sync ruff check
       - run: uv run --no-sync pytest -q tests/test_import_isolation.py tests/utils/test_aws.py
 
@@ -65,6 +91,6 @@ jobs:
           pattern: mae-*
           path: evidence
       - run: >-
-          uv run --no-sync python benchmarks/compare_mae_backends.py
+          uv run --no-sync python tests/compare_mae_backends.py
           --tensorflow-evidence evidence/mae-tensorflow/mae-evidence.npz
           --torch-evidence evidence/mae-torch/mae-evidence.npz

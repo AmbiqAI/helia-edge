@@ -2,13 +2,11 @@
 
 import importlib
 
+from ._backend import Backend
 
-def register_keras_serializables():
-    """Register supported EDGE objects before calling Keras's safe load_model.
 
-    Imports Keras and the selected backend. TF-only augmentation/trainer objects
-    are registered only on TensorFlow. Does not enable unsafe deserialization.
-    """
+def register_keras_serializables() -> None:
+    """Register custom objects supported by the selected Keras backend."""
     import keras
 
     modules = [
@@ -26,7 +24,7 @@ def register_keras_serializables():
         "helia_edge.trainers.distiller",
         "helia_edge.trainers.mask_autoencoder",
     ]
-    if keras.backend.backend() == "tensorflow":
+    if keras.backend.backend() == Backend.TENSORFLOW:
         modules += [
             "helia_edge.layers.preprocessing.amplitude_warp",
             "helia_edge.layers.preprocessing.augmentation_pipeline",

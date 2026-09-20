@@ -1,31 +1,29 @@
-"""Resolve public exports without initializing unrelated optional features."""
+"""Load public exports from the same declarations used by type checkers."""
 
-import importlib
+from collections.abc import Callable
 import os
-import sys
+from typing import Any
+
+from lazy_loader import attach_stub
+
+from ._backend import Backend
 
 
-def lazy_exports(package, exports):
-    def resolve(name):
-        if name not in exports:
-            raise AttributeError(f"module {package!r} has no attribute {name!r}")
-        module_name, symbol = exports[name]
+def attach_exports(package: str, filename: str) -> tuple[Callable[[str], Any], Callable[[], list[str]], list[str]]:
+    resolve, directory, names = attach_stub(package, filename)
+
+    def resolve_optional(name: str) -> Any:
         try:
-            module = importlib.import_module(module_name, package)
-            value = getattr(module, symbol) if symbol else module
+            return resolve(name)
         except ModuleNotFoundError as exc:
-            extras = {"tensorflow": "tensorflow", "torch": "torch", "keras": os.getenv("KERAS_BACKEND", "tensorflow")}
-            if exc.name in extras:
-                extra = extras[exc.name]
-                raise ImportError(
-                    f"{package}.{name} requires {exc.name}. Install 'helia-edge[{extra}]' "
-                    "and select KERAS_BACKEND before importing Keras."
-                ) from exc
-            raise
-        setattr(sys.modules[package], name, value)
-        return value
+            dependency = exc.name
+            if dependency not in ("keras", *Backend):
+                raise
+            backend = os.getenv("KERAS_BACKEND", Backend.TENSORFLOW) if dependency == "keras" else dependency
+            extra = f"helia-edge[{backend}]" if backend in Backend else "helia-edge[tensorflow] or helia-edge[torch]"
+            raise ImportError(
+                f"{package}.{name} requires {dependency}. Install {extra} "
+                "and select KERAS_BACKEND before importing Keras."
+            ) from exc
 
-    def directory():
-        return sorted(set(vars(sys.modules[package])) | set(exports))
-
-    return resolve, directory, list(exports)
+    return resolve_optional, directory, names

@@ -22,7 +22,7 @@
 
 - :material-rocket-launch: [Getting Started](usage/index.md)
 - :material-api: [API Documentation](api/helia_edge)
-- :simple-docsdotrs: [Usage Examples](examples/index.md)
+- :simple-docsdotrs: [Usage Examples](guides/index.md)
 - :simple-jupyter: [Explore Guides](guides/index.md)
 
 </div>

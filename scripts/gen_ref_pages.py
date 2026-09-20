@@ -11,6 +11,8 @@ src = root
 project = src / "helia_edge"
 
 for path in sorted(project.rglob("*.py")):
+    if path.stem.startswith("_") and path.stem != "__init__":
+        continue
     module_path = path.relative_to(src).with_suffix("")
     doc_path = path.relative_to(src).with_suffix(".md")
     full_doc_path = Path("api", doc_path)
@@ -21,8 +23,6 @@ for path in sorted(project.rglob("*.py")):
         parts = parts[:-1]
         doc_path = doc_path.with_name("index.md")
         full_doc_path = full_doc_path.with_name("index.md")
-    elif parts[-1] == "__main__":
-        continue
 
     nav[parts] = doc_path.as_posix()
 

@@ -80,9 +80,9 @@ targets, predictions = model.reconstruction_targets(x, training=True)
 # Apply your native TF/Torch objective and optimizer to these tensors.
 ```
 
-`call()` returns the same `(targets, predictions)` pair. The legacy
-`calculate_loss(x, test=False)` still returns `(total_loss, targets, predictions)`
-using the compiled objective. Keras layers receive the training flag; plain
+`call()` returns the same `Reconstruction(targets, predictions)` named tuple.
+`calculate_loss(x, test=False)` returns `ReconstructionLoss(loss, targets, predictions)`
+using the compiled objective. Both retain tuple unpacking. Keras layers receive the training flag; plain
 single-argument callables retain their original calling convention and must own
 their state behavior. Use serializable Keras layers to save complete models.
 
@@ -98,7 +98,7 @@ model before constructing a native Torch optimizer so every parameter is present
 Run the two-environment forward/gradient/update comparison with:
 
 ```sh
-python benchmarks/compare_mae_backends.py \
+python tests/compare_mae_backends.py \
   --tensorflow-python /path/to/tf-env/bin/python \
   --torch-python /path/to/torch-env/bin/python
 ```
