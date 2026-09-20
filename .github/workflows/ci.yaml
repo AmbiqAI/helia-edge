@@ -20,6 +20,9 @@ jobs:
       matrix:
         backend: [tensorflow, torch]
         python: ['3.12', '3.13', '3.14']
+        exclude:
+          - backend: tensorflow
+            python: '3.14'
     env:
       KERAS_BACKEND: ${{ matrix.backend }}
       HELIA_REQUIRE_ISOLATION: '1'
