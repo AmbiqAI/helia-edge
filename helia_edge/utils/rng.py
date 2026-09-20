@@ -12,7 +12,6 @@ Functions:
 
 import random
 from typing import Generator, Iterable, TypeVar
-import keras
 
 
 T = TypeVar("T")
@@ -28,7 +27,9 @@ def set_random_seed(seed: int | None = None) -> int:
         int: Random seed
     """
 
-    seed = seed or random.randint(0, 2**16)
+    import keras
+
+    seed = random.randint(0, 2**16) if seed is None else seed
     random.seed(seed)
     # keras will set all backends including numpy
     keras.utils.set_random_seed(seed)

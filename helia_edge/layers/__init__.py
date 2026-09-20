@@ -21,21 +21,41 @@ For example, you can use the `helia_edge.layers.preprocessing.AmplitudeWarp` lay
 
 """
 
-from . import preprocessing
-from . import activations
-from . import convolutional
-from . import mbconv
-from . import normalization
-from . import patching
-from . import squeeze_excite
+from helia_edge._lazy import lazy_exports
 
-from .activations import swish, glu, relu, relu6, sigmoid, mish, gelu
-from .convolutional import conv1d, conv2d
-from .ema_residual_vector_quantizer import EmaResidualVectorQuantizer
-from .gumbel_softmax_bottleneck import GumbelSoftmaxBottleneck
-from .mbconv import mbconv_block, MBConvParams
-from .normalization import batch_normalization, layer_normalization
-from .patching import PatchLayer2D, MaskedPatchEncoder2D
-from .residual_vector_quantizer import ResidualVectorQuantizer
-from .squeeze_excite import se_layer
-from .vector_quantizer import VectorQuantizer
+__getattr__, __dir__, __all__ = lazy_exports(
+    __name__,
+    {
+        "preprocessing": (".preprocessing", None),
+        "activations": (".activations", None),
+        "convolutional": (".convolutional", None),
+        "mbconv": (".mbconv", None),
+        "normalization": (".normalization", None),
+        "patching": (".patching", None),
+        "squeeze_excite": (".squeeze_excite", None),
+        "swish": (".activations", "swish"),
+        "glu": (".activations", "glu"),
+        "relu": (".activations", "relu"),
+        "relu6": (".activations", "relu6"),
+        "sigmoid": (".activations", "sigmoid"),
+        "mish": (".activations", "mish"),
+        "gelu": (".activations", "gelu"),
+        "conv1d": (".convolutional", "conv1d"),
+        "conv2d": (".convolutional", "conv2d"),
+        "EmaResidualVectorQuantizer": (".ema_residual_vector_quantizer", "EmaResidualVectorQuantizer"),
+        "GumbelSoftmaxBottleneck": (".gumbel_softmax_bottleneck", "GumbelSoftmaxBottleneck"),
+        "mbconv_block": (".mbconv", "mbconv_block"),
+        "MBConvParams": (".mbconv", "MBConvParams"),
+        "batch_normalization": (".normalization", "batch_normalization"),
+        "layer_normalization": (".normalization", "layer_normalization"),
+        "PatchLayer2D": (".patching", "PatchLayer2D"),
+        "MaskedPatchEncoder2D": (".patching", "MaskedPatchEncoder2D"),
+        "ResidualVectorQuantizer": (".residual_vector_quantizer", "ResidualVectorQuantizer"),
+        "se_layer": (".squeeze_excite", "se_layer"),
+        "VectorQuantizer": (".vector_quantizer", "VectorQuantizer"),
+        "ema_residual_vector_quantizer": (".ema_residual_vector_quantizer", None),
+        "gumbel_softmax_bottleneck": (".gumbel_softmax_bottleneck", None),
+        "residual_vector_quantizer": (".residual_vector_quantizer", None),
+        "vector_quantizer": (".vector_quantizer", None),
+    },
+)

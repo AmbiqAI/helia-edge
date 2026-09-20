@@ -2,6 +2,10 @@
 
 > Build edge-ready ML systems on top of Keras 3, from training to deployment.
 
+Install `helia-edge[tensorflow]` or `helia-edge[torch]` and select `KERAS_BACKEND`
+before importing Keras. See [backend installation and compatibility](docs/backends.md)
+for the tested matrix, lazy-import migration and custom-model loading.
+
 [![CI](https://github.com/AmbiqAI/helia-edge/actions/workflows/ci.yaml/badge.svg?branch=main)](https://github.com/AmbiqAI/helia-edge/actions/workflows/ci.yaml)
 [![Docs](https://github.com/AmbiqAI/helia-edge/actions/workflows/docs.yaml/badge.svg?branch=main)](https://github.com/AmbiqAI/helia-edge/actions/workflows/docs.yaml)
 [![Release](https://github.com/AmbiqAI/helia-edge/actions/workflows/release.yaml/badge.svg)](https://github.com/AmbiqAI/helia-edge/actions/workflows/release.yaml)

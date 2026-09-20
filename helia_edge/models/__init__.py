@@ -60,32 +60,76 @@ A model architecture can easily be instantied by providng a custom set of parame
     ```
 """
 
-from . import composer
-from . import conformer
-from . import convmixer
-from . import efficientnet
-from . import metaformer
-from . import mobileone
-from . import mobilenet
-from . import regnet
-from . import resnet
-from . import tcn
-from . import tsmixer
-from . import unet
-from . import unext
-from . import utils
+from helia_edge._lazy import lazy_exports
 
-from .composer import ComposerModel, ComposerParams, ComposerLayerParams, composer_layer
-from .conformer import ConformerModel, ConformerParams, ConformerBlockParams, conformer_layer
-from .convmixer import ConvMixerModel, ConvMixerParams, conv_mixer_layer
-from .efficientnet import EfficientNetParams, EfficientNetV2Model, efficientnetv2_layer
-from .metaformer import MetaFormerModel, MetaFormerParams, MetaFormerBlockParams, metaformer_layer
-from .mobileone import MobileOneModel, MobileOneParams, MobileOneBlockParams, mobileone_layer
-from .mobilenet import MobileNetV1Model, MobileNetV1Params, mobilenetv1_layer
-from .regnet import RegNetModel, RegNetParams, RegNetBlockParam, regnet_layer
-from .resnet import ResNetModel, ResNetParams, ResNetBlockParams, resnet_layer
-from .tcn import TcnModel, TcnParams, TcnBlockParams, tcn_layer
-from .tsmixer import TsMixerModel, TsMixerParams, TsMixerBlockParams, tsmixer_layer
-from .unet import UNetModel, UNetParams, UNetBlockParams, unet_layer
-from .unext import UNextModel, UNextParams, UNextBlockParams, unext_layer
-from .utils import make_divisible, load_model, append_layers
+__getattr__, __dir__, __all__ = lazy_exports(
+    __name__,
+    {
+        "composer": (".composer", None),
+        "conformer": (".conformer", None),
+        "convmixer": (".convmixer", None),
+        "efficientnet": (".efficientnet", None),
+        "metaformer": (".metaformer", None),
+        "mobileone": (".mobileone", None),
+        "mobilenet": (".mobilenet", None),
+        "regnet": (".regnet", None),
+        "resnet": (".resnet", None),
+        "tcn": (".tcn", None),
+        "tsmixer": (".tsmixer", None),
+        "unet": (".unet", None),
+        "unext": (".unext", None),
+        "utils": (".utils", None),
+        "ComposerModel": (".composer", "ComposerModel"),
+        "ComposerParams": (".composer", "ComposerParams"),
+        "ComposerLayerParams": (".composer", "ComposerLayerParams"),
+        "composer_layer": (".composer", "composer_layer"),
+        "ConformerModel": (".conformer", "ConformerModel"),
+        "ConformerParams": (".conformer", "ConformerParams"),
+        "ConformerBlockParams": (".conformer", "ConformerBlockParams"),
+        "conformer_layer": (".conformer", "conformer_layer"),
+        "ConvMixerModel": (".convmixer", "ConvMixerModel"),
+        "ConvMixerParams": (".convmixer", "ConvMixerParams"),
+        "conv_mixer_layer": (".convmixer", "conv_mixer_layer"),
+        "EfficientNetParams": (".efficientnet", "EfficientNetParams"),
+        "EfficientNetV2Model": (".efficientnet", "EfficientNetV2Model"),
+        "efficientnetv2_layer": (".efficientnet", "efficientnetv2_layer"),
+        "MetaFormerModel": (".metaformer", "MetaFormerModel"),
+        "MetaFormerParams": (".metaformer", "MetaFormerParams"),
+        "MetaFormerBlockParams": (".metaformer", "MetaFormerBlockParams"),
+        "metaformer_layer": (".metaformer", "metaformer_layer"),
+        "MobileOneModel": (".mobileone", "MobileOneModel"),
+        "MobileOneParams": (".mobileone", "MobileOneParams"),
+        "MobileOneBlockParams": (".mobileone", "MobileOneBlockParams"),
+        "mobileone_layer": (".mobileone", "mobileone_layer"),
+        "MobileNetV1Model": (".mobilenet", "MobileNetV1Model"),
+        "MobileNetV1Params": (".mobilenet", "MobileNetV1Params"),
+        "mobilenetv1_layer": (".mobilenet", "mobilenetv1_layer"),
+        "RegNetModel": (".regnet", "RegNetModel"),
+        "RegNetParams": (".regnet", "RegNetParams"),
+        "RegNetBlockParam": (".regnet", "RegNetBlockParam"),
+        "regnet_layer": (".regnet", "regnet_layer"),
+        "ResNetModel": (".resnet", "ResNetModel"),
+        "ResNetParams": (".resnet", "ResNetParams"),
+        "ResNetBlockParams": (".resnet", "ResNetBlockParams"),
+        "resnet_layer": (".resnet", "resnet_layer"),
+        "TcnModel": (".tcn", "TcnModel"),
+        "TcnParams": (".tcn", "TcnParams"),
+        "TcnBlockParams": (".tcn", "TcnBlockParams"),
+        "tcn_layer": (".tcn", "tcn_layer"),
+        "TsMixerModel": (".tsmixer", "TsMixerModel"),
+        "TsMixerParams": (".tsmixer", "TsMixerParams"),
+        "TsMixerBlockParams": (".tsmixer", "TsMixerBlockParams"),
+        "tsmixer_layer": (".tsmixer", "tsmixer_layer"),
+        "UNetModel": (".unet", "UNetModel"),
+        "UNetParams": (".unet", "UNetParams"),
+        "UNetBlockParams": (".unet", "UNetBlockParams"),
+        "unet_layer": (".unet", "unet_layer"),
+        "UNextModel": (".unext", "UNextModel"),
+        "UNextParams": (".unext", "UNextParams"),
+        "UNextBlockParams": (".unext", "UNextBlockParams"),
+        "unext_layer": (".unext", "unext_layer"),
+        "make_divisible": (".utils", "make_divisible"),
+        "load_model": (".utils", "load_model"),
+        "append_layers": (".utils", "append_layers"),
+    },
+)

@@ -14,7 +14,14 @@ While `Keras` and `TensorFlow` provide built-in methods to export they often hav
 
 """
 
-from . import cpp
-from . import litert
-from . import tflite
-from . import torch
+from helia_edge._lazy import lazy_exports
+
+__getattr__, __dir__, __all__ = lazy_exports(
+    __name__,
+    {
+        "cpp": (".cpp", None),
+        "litert": (".litert", None),
+        "tflite": (".tflite", None),
+        "torch": (".torch", None),
+    },
+)
