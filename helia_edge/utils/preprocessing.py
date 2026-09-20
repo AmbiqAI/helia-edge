@@ -14,7 +14,8 @@ Functions:
 
 """
 
-from typing import TypeVar, Callable, Generator
+from typing import TypeVar, Callable, Generator, Literal
+from numbers import Integral
 
 import keras
 import tensorflow as tf
@@ -92,11 +93,22 @@ def create_interleaved_dataset_from_generator(
     spec: tuple[tf.TensorSpec, tf.TensorSpec],
     preprocess: Callable[[K], K] | None = None,
     num_workers: int = 4,
+    *,
+    stream_mode: Literal["global", "finite"] = "global",
+    deterministic: bool = True,
 ) -> tf.data.Dataset:
-    """Create TF dataset pipeline by interleaving multiple workers across ids
+    """Adapt Python generators to a TF dataset without changing sample weights.
 
-    The id_generator is used to generate ids for each worker.
-    The data_generator is used to generate data for each id.
+    ``global`` (default) invokes the generators once on all IDs, preserving their
+    finite or repeated sampling law and ordering. ``num_workers`` does not split
+    this stream. This correctness default replaces the old implicit partitioning
+    of repeated streams, which dropped remainder IDs and changed their weights.
+
+    ``finite`` is an explicit caller promise that each partition terminates and
+    its generator semantics are partition-independent. Every input ID is assigned
+    exactly once. Ordered mode concatenates contiguous partitions; unordered mode
+    interleaves them and preserves full-epoch coverage, not order. Stopping early
+    need not preserve sampling probabilities. Neither mode creates processes.
 
     Args:
         data_generator (Callable[[Generator[T, None, None]], Generator[K, None, None]]): Data generator
@@ -104,43 +116,62 @@ def create_interleaved_dataset_from_generator(
         ids (list[T]): List of ids
         spec (tuple[tf.TensorSpec, tf.TensorSpec]): Tensor spec
         preprocess (Callable[[K], K] | None, optional): Preprocess function. Defaults to None.
-        num_workers (int, optional): Number of workers. Defaults to 4.
+        num_workers (int, optional): Maximum finite generator partitions, positive.
+        stream_mode: Global schedule or explicitly finite partitioned streams.
+        deterministic: Preserve partition order in finite mode. Global mode always
+            preserves the order produced by the caller's generators.
 
     Returns:
         tf.data.Dataset: Dataset
     """
+
+    if isinstance(num_workers, bool) or not isinstance(num_workers, Integral) or num_workers < 1:
+        raise ValueError("num_workers must be a positive integer")
+    if stream_mode not in ("global", "finite"):
+        raise ValueError("stream_mode must be 'global' or 'finite'")
+    # Snapshot IDs so caller mutation cannot change later epoch enumeration.
+    ids = list(ids)
 
     def split_generator(split_ids: list[T]) -> tf.data.Dataset:
         """Split generator per worker"""
 
         def ds_gen():
             """Worker generator routine"""
-            split_id_generator = id_generator(split_ids)
-            return map(preprocess, data_generator(split_id_generator))
+            split_id_generator = id_generator(list(split_ids))
+            samples = data_generator(split_id_generator)
+            return map(preprocess, samples) if preprocess is not None else samples
 
         return tf.data.Dataset.from_generator(
             ds_gen,
             output_signature=spec,
         )
 
-    # END IF
+    if not ids:
+        return tf.data.Dataset.from_generator(lambda: iter(()), output_signature=spec)
+    if stream_mode == "global":
+        return split_generator(ids)
 
     num_workers = min(num_workers, len(ids))
-    split = len(ids) // num_workers
+    size, remainder = divmod(len(ids), num_workers)
+    ds_splits = []
+    start = 0
+    for i in range(num_workers):
+        end = start + size + (i < remainder)
+        ds_splits.append(split_generator(ids[start:end]))
+        start = end
 
-    ds_splits = [split_generator(ids[i * split : (i + 1) * split]) for i in range(num_workers)]
+    if deterministic:
+        ds = ds_splits[0]
+        for split in ds_splits[1:]:
+            ds = ds.concatenate(split)
+        return ds
 
-    # Create TF datasets (interleave workers)
-    ds = tf.data.Dataset.from_tensor_slices(ds_splits)
-
-    ds = ds.interleave(
+    return tf.data.Dataset.from_tensor_slices(ds_splits).interleave(
         lambda x: x,
         cycle_length=num_workers,
         deterministic=False,
         num_parallel_calls=tf.data.AUTOTUNE,
     )
-
-    return ds
 
 
 def create_dataset_from_data(x: npt.NDArray, y: npt.NDArray, spec: tuple[tf.TensorSpec]) -> tf.data.Dataset:

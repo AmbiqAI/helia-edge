@@ -1,0 +1,56 @@
+{
+  "kind": "synthetic finite logical sample schedule; not physiological data",
+  "subjects": [
+    {
+      "id": "s0",
+      "eligible_contexts": 1
+    },
+    {
+      "id": "s1",
+      "eligible_contexts": 3
+    },
+    {
+      "id": "s2",
+      "eligible_contexts": 0
+    },
+    {
+      "id": "s3",
+      "eligible_contexts": 2
+    },
+    {
+      "id": "s4",
+      "eligible_contexts": 7
+    }
+  ],
+  "example_ids": [
+    "s0/c0",
+    "s1/c0",
+    "s1/c1",
+    "s1/c2",
+    "s3/c0",
+    "s3/c1",
+    "s4/c0",
+    "s4/c1",
+    "s4/c2",
+    "s4/c3",
+    "s4/c4",
+    "s4/c5",
+    "s4/c6"
+  ],
+  "batch_size": 4,
+  "expected_examples": 13,
+  "expected_batches": 4,
+  "last_batch_size": 1,
+  "worker_counts_to_check": [
+    1,
+    2,
+    4,
+    8
+  ],
+  "replacement": false,
+  "repeat_within_epoch": false,
+  "subject_balancing": false,
+  "class_weights": null,
+  "validation_order": "example_ids order",
+  "training_order": "explicit caller-supplied permutation; not worker-completion order"
+}

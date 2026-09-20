@@ -1,0 +1,75 @@
+{
+  "kind": "synthetic CPU baseline; no real-data throughput claim",
+  "environment": {
+    "keras": "3.15.1",
+    "tensorflow": "2.21.0",
+    "numpy": "2.5.3"
+  },
+  "python": "3.12.5",
+  "platform": "Linux-6.8.0-138-generic-x86_64-with-glibc2.35",
+  "processor": "x86_64",
+  "logical_cpus": 32,
+  "configuration": {
+    "examples": 1025,
+    "batch_size": 32,
+    "workers": 4,
+    "repetitions": 3
+  },
+  "sampling": "finite, ordered, no replacement, no balancing, retain partial batch",
+  "schedule_sha256": "26da657b4beebcf0ab0479f4bca18239394ca2974a056ac4e222e4601453eec6",
+  "prepared_sha256": "91702c3a93ea692cded1543214aa1ae2786766bff27a56a2a8baac16515457d4",
+  "prepared_bytes": 82128,
+  "cold_synthetic_preparation_seconds": 0.00018572004046291113,
+  "first_model_step_seconds": 0.03701924695633352,
+  "model_warmup": "one first step plus one full epoch (including partial batch)",
+  "resident_batches": {
+    "seconds": [
+      0.010272522922605276,
+      0.00943262001965195,
+      0.009334185044281185
+    ],
+    "median_seconds": 0.00943262001965195
+  },
+  "paths": {
+    "global": {
+      "warm_loader": {
+        "seconds": [
+          0.07795723096933216,
+          0.08700706600211561,
+          0.08190673997160047
+        ],
+        "median_seconds": 0.08190673997160047,
+        "examples_per_second": 12514.232654790048
+      },
+      "end_to_end": {
+        "seconds": [
+          0.08550838904920965,
+          0.11651406704913825,
+          0.1114413330797106
+        ],
+        "median_seconds": 0.1114413330797106
+      }
+    },
+    "finite": {
+      "warm_loader": {
+        "seconds": [
+          0.09007088304497302,
+          0.115333536057733,
+          0.09590286598540843
+        ],
+        "median_seconds": 0.09590286598540843,
+        "examples_per_second": 10687.897483230097
+      },
+      "end_to_end": {
+        "seconds": [
+          0.0981749789789319,
+          0.14272043097298592,
+          0.14423230499960482
+        ],
+        "median_seconds": 0.14272043097298592
+      }
+    }
+  },
+  "process_peak_rss_platform_units": 700008,
+  "limitations": "No real decoding, accelerator utilization/transfer timing or per-stage memory measurement."
+}
