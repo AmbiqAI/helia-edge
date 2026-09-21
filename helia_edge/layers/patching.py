@@ -172,7 +172,7 @@ class MaskedPatchEncoder2D(keras.layers.Layer):
                 masked_embeddings,  # First part of input to the decoder.
                 unmasked_positions,  # Added to the encoder outputs.
                 mask_indices,  # The indices that were masked.
-                unmask_indices,  # The indices that were unmaksed.
+                unmask_indices,  # The indices that were unmasked.
             )
 
     def get_random_indices(self, batch_size: int) -> tuple[Tensor, Tensor]:

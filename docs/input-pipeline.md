@@ -22,3 +22,8 @@ weights. Empty inputs produce a typed empty dataset without invoking readers.
 Omitted preprocessing is an identity operation. Invalid worker counts fail early.
 Generators receive fresh ID lists for each epoch, so in-place shuffling cannot
 mutate the caller's schedule.
+
+`random_id_generator(ids, weights=...)` samples IDs with replacement using
+nonnegative relative weights; omitted weights preserve uniform sampling. Weights
+must match the IDs and have a finite positive total. Earlier versions ignored
+supplied weights, so adopting this fix changes those weighted experiments.

@@ -3,14 +3,16 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Iterable, Iterator
-from typing import Any
+from typing import Any, TYPE_CHECKING
 
 from .sampling import StreamMode
 from numbers import Integral
 
-import keras
-import tensorflow as tf
 import numpy.typing as npt
+
+if TYPE_CHECKING:
+    import keras
+    import tensorflow as tf
 
 
 def parse_factor(
@@ -33,6 +35,8 @@ def parse_factor(
 
 def convert_inputs_to_tf_dataset(x=None, y=None, sample_weight=None, batch_size=None):
     """Convert inputs to tf.data.Dataset."""
+
+    import tensorflow as tf
 
     # Unpack if passed as tuple
     if isinstance(x, tuple):
@@ -84,6 +88,8 @@ def create_interleaved_dataset_from_generator[T, K](
     partition-independent generators; deterministic mode preserves partition order.
     num_workers counts generators, not processes. See docs/input-pipeline.md.
     """
+
+    import tensorflow as tf
 
     if isinstance(num_workers, bool) or not isinstance(num_workers, Integral) or num_workers < 1:
         raise ValueError("num_workers must be a positive integer")
@@ -143,6 +149,8 @@ def create_dataset_from_data(x: npt.NDArray, y: npt.NDArray, spec: tuple[tf.Tens
     Returns:
         tf.data.Dataset: Dataset
     """
+    import tensorflow as tf
+
     return tf.data.Dataset.zip((tf.data.Dataset.from_tensor_slices(x), tf.data.Dataset.from_tensor_slices(y)))
 
 
@@ -157,6 +165,9 @@ def get_output_signature(
     Returns:
         tf.TensorSpec: Tensor spec
     """
+    import keras
+    import tensorflow as tf
+
     if isinstance(outputs, tuple):
         sig = []
         for output in outputs:

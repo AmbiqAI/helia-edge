@@ -2,6 +2,8 @@
 
 import random
 from collections.abc import Generator, MutableSequence, Sequence
+from itertools import accumulate
+from math import isfinite
 
 
 def set_random_seed(seed: int | None = None) -> int:
@@ -31,8 +33,19 @@ def uniform_id_generator[T](
 
 def random_id_generator[T](
     ids: Sequence[T],
-    weights: list[int] | None = None,
+    weights: Sequence[float] | None = None,
 ) -> Generator[T, None, None]:
-    """Sample IDs uniformly with replacement indefinitely."""
+    """Sample with replacement, using optional nonnegative relative weights."""
+    cumulative = None
+    if weights is not None:
+        if len(weights) != len(ids):
+            raise ValueError("weights must have one value per ID")
+        if any(not isfinite(weight) or weight < 0 for weight in weights):
+            raise ValueError("weights must be finite and nonnegative")
+        cumulative = tuple(accumulate(weights))
+        if not cumulative or cumulative[-1] <= 0 or not isfinite(cumulative[-1]):
+            raise ValueError("weights must have a finite positive total")
+        # Unit total prevents subnormal rounding from selecting zero-weight IDs.
+        cumulative = tuple(value / cumulative[-1] for value in cumulative)
     while True:
-        yield random.choice(ids)
+        yield random.choice(ids) if cumulative is None else random.choices(ids, cum_weights=cumulative, k=1)[0]

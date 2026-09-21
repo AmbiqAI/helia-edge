@@ -23,6 +23,7 @@ assert callable(helia.utils.env_flag)
 assert callable(helia.utils.ItemFactory)
 assert callable(helia.utils.create_factory)
 assert list(helia.utils.uniform_id_generator([1, 2], repeat=False, shuffle=False)) == [1, 2]
+assert helia.utils.parse_factor((None, 0.5)) == (0.5, 0.5)
 assert not {'keras', 'tensorflow', 'torch'} & sys.modules.keys()
 """)
 
@@ -31,11 +32,15 @@ def test_missing_backend_guidance():
     if importlib.util.find_spec("keras") is not None:
         pytest.skip("This check belongs in the base-only environment")
     run_python("""
+import sys
 import helia_edge as helia
 try:
     helia.models.TcnModel
 except ImportError as exc:
     assert 'helia-edge[' in str(exc), str(exc)
+    if sys.version_info >= (3, 14):
+        assert 'Python 3.12–3.13' in str(exc), str(exc)
+        assert 'KERAS_BACKEND=torch' in str(exc), str(exc)
 else:
     raise AssertionError('Missing backend unexpectedly available')
 """)

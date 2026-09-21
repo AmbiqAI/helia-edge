@@ -11,7 +11,8 @@ requires-python = ">=3.12.3,<3.15"
 
 dependencies = [
     "lazy-loader>=0.5,<0.6",
-    "h5py>=3.12.1",
+    "h5py>=3.12.1; python_version < '3.14'",
+    "h5py>=3.15.1; python_version >= '3.14'",
     "pydantic>=2.8.1",
     "requests>=2.32.4",
     "tqdm>=4.66.4",
@@ -28,7 +29,7 @@ dependencies = [
 [project.optional-dependencies]
 tensorflow = [
     "keras>=3.15.1,<4",
-    "tensorflow>=2.21.0,<2.22",
+    "tensorflow>=2.21.0,<2.22; python_version < '3.14'",
 ]
 torch = [
     "keras>=3.15.1,<4",
@@ -39,7 +40,7 @@ metal = [
 ]
 litert = [
     "keras>=3.15.1,<4",
-    "tensorflow>=2.21.0,<2.22",
+    "tensorflow>=2.21.0,<2.22; python_version < '3.14'",
     "ai-edge-litert>=2.1.3",
 ]
 

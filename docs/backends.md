@@ -21,8 +21,9 @@ not been validated for this baseline.
 The tested baseline is Linux CPU, Python 3.12.5, Keras 3.15.1, TensorFlow 2.21.0 or
 Torch 2.14.0+cpu, and LiteRT 2.2.0 for conversion. CI passes on Python 3.12–3.13
 for TensorFlow and 3.12–3.14 for Torch in separate environments. TensorFlow 2.21
-has no Python 3.14 wheel; the `tensorflow` and `litert` extras require Python below
-3.14 for this baseline. Other platforms, GPU builds
+has no Python 3.14 wheel. On Python 3.14, dependency markers omit TensorFlow even
+when its extra is selected; the `tensorflow` and `litert` capabilities require
+Python 3.12–3.13. Use base or Torch on Python 3.14. Other platforms, GPU builds
 and newer dependency resolutions need their own validation. To reproduce the CPU
 Torch environment, install `torch==2.14.0` from
 `https://download.pytorch.org/whl/cpu` before installing the Torch extra.

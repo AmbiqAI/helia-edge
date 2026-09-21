@@ -2,6 +2,7 @@
 
 from collections.abc import Callable
 import os
+import sys
 from typing import Any
 
 from lazy_loader import attach_stub
@@ -21,6 +22,8 @@ def attach_exports(package: str, filename: str) -> tuple[Callable[[str], Any], C
                 raise
             backend = os.getenv("KERAS_BACKEND", Backend.TENSORFLOW) if dependency == "keras" else dependency
             extra = f"helia-edge[{backend}]" if backend in Backend else "helia-edge[tensorflow] or helia-edge[torch]"
+            if backend == Backend.TENSORFLOW and sys.version_info >= (3, 14):
+                extra = "helia-edge[tensorflow] on Python 3.12–3.13, or helia-edge[torch] with KERAS_BACKEND=torch"
             raise ImportError(
                 f"{package}.{name} requires {dependency}. Install {extra} "
                 "and select KERAS_BACKEND before importing Keras."

@@ -1,6 +1,9 @@
 name: HeliaEdge CI
 
-on: [push, pull_request]
+on:
+  push:
+    branches: [main]
+  pull_request:
 
 jobs:
   docs:
@@ -23,11 +26,13 @@ jobs:
 
   base:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python: ['3.12', '3.14']
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v5
-      - run: uv venv --python 3.12
-      - run: uv pip install . pytest ruff
+      - run: uv sync --python ${{ matrix.python }} --locked --no-dev --group ci --no-editable
       - name: Check installed lazy exports outside the source tree
         run: |
           uv run --no-sync python -I - <<'PY'
@@ -37,7 +42,7 @@ jobs:
           assert not {'keras', 'tensorflow', 'torch'} & sys.modules.keys()
           PY
       - run: uv run --no-sync ruff check
-      - run: uv run --no-sync pytest -q tests/test_import_isolation.py tests/utils/test_aws.py
+      - run: uv run --no-sync pytest -q tests/test_import_isolation.py tests/utils/test_aws.py tests/utils/test_rng.py
 
   backend:
     runs-on: ubuntu-latest
@@ -70,7 +75,7 @@ jobs:
       - if: matrix.backend == 'torch'
         run: >-
           uv run --no-sync pytest -q tests/test_import_isolation.py tests/test_serialization.py
-          tests/metrics tests/layers/test_ema_residual_vector_quantizer.py tests/utils/test_aws.py tests/trainers
+          tests/metrics tests/layers/test_ema_residual_vector_quantizer.py tests/utils/test_aws.py tests/utils/test_rng.py tests/trainers
       - run: >-
           uv run --no-sync python tests/trainers/mae_parity_fixture.py
           --output '${{ runner.temp }}/mae-evidence.npz'
