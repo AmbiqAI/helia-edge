@@ -1,140 +1,169 @@
-"""
-# Masked Autoencoder Trainer API
+"""Masked reconstruction with portable computation and explicit TF/Torch steps."""
 
-This module contains the implementation of a masked autoencoder trainer that
-can be used to train a model using the masked autoencoder approach.
+from __future__ import annotations
 
-Classes:
-    MaskedAutoencoder: A trainer for masked autoencoder
-
-"""
-
-from typing import Callable
+from collections.abc import Callable
+from typing import TYPE_CHECKING, Any, NamedTuple, Self, cast
 
 import keras
-import tensorflow as tf
 
+from .._backend import Backend
 from ..utils import helia_export
+
+if TYPE_CHECKING:
+    from .._typing import Array, Tensor
+
+
+class Reconstruction(NamedTuple):
+    targets: Tensor
+    predictions: Tensor
+
+
+class ReconstructionLoss(NamedTuple):
+    loss: Tensor
+    targets: Tensor
+    predictions: Tensor
+
+
+def _call_component[Output](component: Callable[[Array], Output], inputs: Array, training: bool) -> Output:
+    # Plain callables retain their single-argument contract.
+    if isinstance(component, keras.layers.Layer):
+        return component(inputs, training=training)
+    return component(inputs)
 
 
 @helia_export(path="helia_edge.trainers.MaskedAutoencoder")
 class MaskedAutoencoder(keras.Model):
+    """Masked reconstruction with Keras fit() and independently callable objectives.
+
+    call() returns (targets, predictions). training controls layer state, not masks.
+    See docs/backends.md for serialization, native-loop use and support limits.
+    """
+
     def __init__(
         self,
-        patch_layer: Callable[
-            [keras.KerasTensor],
-            tuple[
-                keras.KerasTensor,
-                keras.KerasTensor,
-                keras.KerasTensor,
-                keras.KerasTensor,
-                keras.KerasTensor,
-            ],
-        ],
-        patch_encoder: Callable[[keras.KerasTensor], keras.KerasTensor],
+        patch_layer: Callable[[Array], Tensor],
+        patch_encoder: Callable[[Array], tuple[Tensor, Tensor, Tensor, Tensor, Tensor]],
         encoder: keras.Model,
         decoder: keras.Model,
-        **kwargs,
-    ):
-        """Masked Autoencoder model for self-supervised learning.
-
-        Args:
-            patch_layer (Callable[[keras.KerasTensor], tuple[keras.KerasTensor, keras.KerasTensor, keras.KerasTensor, keras.KerasTensor, keras.KerasTensor]]): The patch layer which will extract patches from the input.
-            patch_encoder (Callable[[keras.KerasTensor], keras.KerasTensor]): The patch encoder which will encode the patches.
-            encoder (keras.Model): The encoder model.
-            decoder (keras.Model): The decoder model.
-        """
+        **kwargs: Any,
+    ) -> None:
         super().__init__(**kwargs)
         self.patch_layer = patch_layer
         self.patch_encoder = patch_encoder
         self.encoder = encoder
         self.decoder = decoder
 
-    def calculate_loss(self, x: keras.KerasTensor, test: bool = False):
-        """Calculate the loss for the Masked Autoencoder model.
+    def call(self, inputs: Array, training: bool = False) -> Reconstruction:
+        patches = _call_component(self.patch_layer, inputs, training)
+        unmasked, masked, positions, mask_indices, _ = _call_component(self.patch_encoder, patches, training)
+        encoded = _call_component(self.encoder, unmasked, training)
+        decoder_inputs = keras.ops.concatenate([encoded + positions, masked], axis=1)
+        decoded = _call_component(self.decoder, decoder_inputs, training)
+        decoder_patches = _call_component(self.patch_layer, decoded, training)
+        indices = keras.ops.expand_dims(mask_indices, axis=-1)
+        targets = keras.ops.take_along_axis(patches, indices, axis=1)
+        predictions = keras.ops.take_along_axis(decoder_patches, indices, axis=1)
+        return Reconstruction(targets, predictions)
 
-        Args:
-            x (keras.KerasTensor): The input tensor.
-            test (bool, optional): Whether the model is testing. Defaults to False.
-        """
-        # Patch the input.
-        patches = self.patch_layer(x)
+    def reconstruction_targets(self, x: Array, training: bool = False) -> Reconstruction:
+        """Return masked (target_patches, predicted_patches), without an objective."""
+        return self(x, training=training)
 
-        # Encode the patches.
-        (
-            unmasked_embeddings,
-            masked_embeddings,
-            unmasked_positions,
-            mask_indices,
-            unmask_indices,
-        ) = self.patch_encoder(patches)
+    def calculate_loss(self, x: Array, test: bool = False) -> ReconstructionLoss:
+        """Return (compiled total loss, targets, predictions); preserve the old API."""
+        targets, predictions = self.reconstruction_targets(x, training=not test)
+        total_loss = self.compute_loss(x=x, y=targets, y_pred=predictions, training=not test)
+        return ReconstructionLoss(total_loss, targets, predictions)
 
-        # Pass the unmasked patches to the encoder.
-        encoder_outputs = self.encoder(unmasked_embeddings)
+    def compute_loss(
+        self, x: Any = None, y: Any = None, y_pred: Any = None, sample_weight: Any = None, training: bool = True
+    ) -> Tensor:
+        # Keras builds compiled objectives from call() before invoking train_step.
+        if y is None and isinstance(y_pred, (tuple, list)):
+            y, y_pred = y_pred
+        return super().compute_loss(x=x, y=y, y_pred=y_pred, sample_weight=sample_weight, training=training)
 
-        # Create the decoder inputs.
-        encoder_outputs = encoder_outputs + unmasked_positions
-        decoder_inputs = keras.ops.concatenate([encoder_outputs, masked_embeddings], axis=1)
+    def compute_metrics(self, x: Any, y: Any, y_pred: Any, sample_weight: Any = None) -> dict[str, Tensor]:
+        if y is None and isinstance(y_pred, (tuple, list)):
+            y, y_pred = y_pred
+        return super().compute_metrics(x, y, y_pred, sample_weight=sample_weight)
 
-        # Decode the inputs.
-        decoder_outputs = self.decoder(decoder_inputs)
-        decoder_patches = self.patch_layer(decoder_outputs)
+    @staticmethod
+    def _inputs(data: Any) -> Array:
+        x, y, sample_weight = keras.utils.unpack_x_y_sample_weight(data)
+        if y is not None:
+            raise ValueError("MaskedAutoencoder generates its own targets; pass x without y.")
+        if sample_weight is not None:
+            raise ValueError(
+                "MaskedAutoencoder does not support sample_weight; weight a native-loop objective explicitly."
+            )
+        return x
 
-        loss_patch = tf.gather(patches, mask_indices, axis=1, batch_dims=1)
-        loss_output = tf.gather(decoder_patches, mask_indices, axis=1, batch_dims=1)
+    def _update_metrics(
+        self, loss: Tensor, targets: Tensor, predictions: Tensor, x: Array | None = None
+    ) -> dict[str, Tensor]:
+        for metric in self.metrics:
+            if metric.name == "loss":
+                metric.update_state(loss, sample_weight=keras.ops.shape(targets)[0])
+                break
+        # Nested layers own their metric updates.
+        return self.compute_metrics(x, targets, predictions)
 
-        # Compute the total loss.
-        total_loss = self.compute_loss(y=loss_patch, y_pred=loss_output)
+    def _tensorflow_train_step(self, x: Array) -> dict[str, Tensor]:
+        import tensorflow as tf
 
-        return total_loss, loss_patch, loss_output
-
-    def _tensorflow_train_step(self, x):
         with tf.GradientTape() as tape:
-            total_loss, loss_patch, loss_output = self.calculate_loss(x)
+            loss, targets, predictions = self.calculate_loss(x)
+            scaled_loss = self.optimizer.scale_loss(loss)
+        variables = self.trainable_weights
+        gradients = tape.gradient(scaled_loss, variables)
+        pairs = [(g, v) for g, v in zip(gradients, variables) if g is not None]
+        self.optimizer.apply_gradients(pairs)
+        return self._update_metrics(loss, targets, predictions, x=x)
 
-        # Apply gradients.
-        train_vars = [
-            self.patch_layer.trainable_variables,
-            self.patch_encoder.trainable_variables,
-            self.encoder.trainable_variables,
-            self.decoder.trainable_variables,
-        ]
-        grads = tape.gradient(total_loss, train_vars)
-        tv_list = []
-        for grad, var in zip(grads, train_vars):
-            for g, v in zip(grad, var):
-                tv_list.append((g, v))
-        self.optimizer.apply_gradients(tv_list)
+    def _torch_train_step(self, x: Array) -> dict[str, Tensor]:
+        import torch
 
-        # Report progress.
-        results = {}
-        for metric in self.metrics:
-            metric.update_state(loss_patch, loss_output)
-            results[metric.name] = metric.result()
-        return results
+        self.zero_grad()
+        loss, targets, predictions = self.calculate_loss(x)
+        cast(torch.Tensor, self.optimizer.scale_loss(loss)).backward()
+        variables = self.trainable_weights
+        pairs = [(v.value.grad, v) for v in variables if v.value.grad is not None]
+        with torch.no_grad():
+            self.optimizer.apply([g for g, _ in pairs], [v for _, v in pairs])
+            return self._update_metrics(loss, targets, predictions, x=x)
 
-    def _tensorflow_test_step(self, x):
-        total_loss, loss_patch, loss_output = self.calculate_loss(x, test=True)
+    def train_step(self, data: Any) -> dict[str, Tensor]:
+        x = self._inputs(data)
+        backend = keras.backend.backend()
+        if backend == Backend.TENSORFLOW:
+            return self._tensorflow_train_step(x)
+        if backend == Backend.TORCH:
+            return self._torch_train_step(x)
+        raise NotImplementedError(f"MaskedAutoencoder training does not support the {backend!r} backend.")
 
-        # Update the trackers.
-        results = {}
-        for metric in self.metrics:
-            metric.update_state(loss_patch, loss_output)
-            results[metric.name] = metric.result()
-        return results
+    def test_step(self, data: Any) -> dict[str, Tensor]:
+        x = self._inputs(data)
+        backend = keras.backend.backend()
+        if backend == Backend.TORCH:
+            import torch
 
-    def train_step(self, *args, **kwargs):
-        if keras.backend.backend() == "tensorflow":
-            return self._tensorflow_train_step(*args, **kwargs)
-        elif keras.backend.backend() == "jax":
-            raise NotImplementedError("JAX backend is not supported.")
-        elif keras.backend.backend() == "torch":
-            raise NotImplementedError("PyTorch backend is not supported.")
+            with torch.no_grad():
+                return self._update_metrics(*self.calculate_loss(x, test=True), x=x)
+        if backend == Backend.TENSORFLOW:
+            return self._update_metrics(*self.calculate_loss(x, test=True), x=x)
+        raise NotImplementedError(f"MaskedAutoencoder evaluation does not support the {backend!r} backend.")
 
-    def test_step(self, *args, **kwargs):
-        if keras.backend.backend() == "tensorflow":
-            return self._tensorflow_test_step(*args, **kwargs)
-        elif keras.backend.backend() == "jax":
-            raise NotImplementedError("JAX backend is not supported.")
-        elif keras.backend.backend() == "torch":
-            raise NotImplementedError("PyTorch backend is not supported.")
+    def get_config(self) -> dict[str, Any]:
+        config = super().get_config()
+        for name in ("patch_layer", "patch_encoder", "encoder", "decoder"):
+            config[name] = keras.saving.serialize_keras_object(getattr(self, name))
+        return config
+
+    @classmethod
+    def from_config(cls, config: dict[str, Any], custom_objects: dict[str, Any] | None = None) -> Self:
+        config = dict(config)
+        for name in ("patch_layer", "patch_encoder", "encoder", "decoder"):
+            config[name] = keras.saving.deserialize_keras_object(config[name], custom_objects=custom_objects)
+        return cls(**config)

@@ -1,87 +1,51 @@
-"""
-# Random Number Generator API
-
-This module provides utility functions to set random seed and create random id generators.
-
-Functions:
-    set_random_seed: Set random seed across libraries: TF, Numpy, Python
-    uniform_id_generator: Simple generator that yields ids in a uniform manner
-    random_id_generator: Simple generator that yields ids in a random manner
-
-"""
+"""Random seeds and ID schedules."""
 
 import random
-from typing import Generator, Iterable, TypeVar
-import keras
-
-
-T = TypeVar("T")
+from collections.abc import Generator, MutableSequence, Sequence
+from itertools import accumulate
+from math import isfinite
 
 
 def set_random_seed(seed: int | None = None) -> int:
-    """Set random seed across libraries: TF, Numpy, Python
+    """Set Python, NumPy and selected Keras backend seeds; return the seed."""
 
-    Args:
-        seed (int | None, optional): Random seed state to use. Defaults to None.
+    import keras
 
-    Returns:
-        int: Random seed
-    """
-
-    seed = seed or random.randint(0, 2**16)
+    seed = random.randint(0, 2**16) if seed is None else seed
     random.seed(seed)
-    # keras will set all backends including numpy
     keras.utils.set_random_seed(seed)
     return seed
 
 
-def uniform_id_generator(
-    ids: Iterable[T],
+def uniform_id_generator[T](
+    ids: MutableSequence[T],
     repeat: bool = True,
     shuffle: bool = True,
 ) -> Generator[T, None, None]:
-    """Simple generator that yields ids in a uniform manner.
-
-    Args:
-        ids (Iterable[T]): List of ids.
-        repeat (bool, optional): Whether to repeat generator. Defaults to True.
-        shuffle (bool, optional): Whether to shuffle ids.. Defaults to True.
-
-    Note:
-        If repeat is False, generator will stop after yielding all ids once.
-        If shuffle, ids parameter will be modified in place.
-
-    Returns:
-        Generator[T, None, None]: Generator
-    Yields:
-        T: Id
-    """
+    """Yield each ID once per cycle; shuffle mutates the supplied sequence."""
     while True:
         if shuffle:
             random.shuffle(ids)
         yield from ids
         if not repeat:
             break
-        # END IF
-    # END WHILE
 
 
-def random_id_generator(
-    ids: Iterable[T],
-    weights: list[int] | None = None,
+def random_id_generator[T](
+    ids: Sequence[T],
+    weights: Sequence[float] | None = None,
 ) -> Generator[T, None, None]:
-    """Simple generator that yields ids in a random manner.
-
-    Args:
-        ids (Iterable[T]): List of ids
-        weights (list[int], optional): Weights for each id. Defaults to None.
-
-    Returns:
-        Generator[T, None, None]: Generator
-
-    Yields:
-        T: Id
-    """
+    """Sample with replacement, using optional nonnegative relative weights."""
+    cumulative = None
+    if weights is not None:
+        if len(weights) != len(ids):
+            raise ValueError("weights must have one value per ID")
+        if any(not isfinite(weight) or weight < 0 for weight in weights):
+            raise ValueError("weights must be finite and nonnegative")
+        cumulative = tuple(accumulate(weights))
+        if not cumulative or cumulative[-1] <= 0 or not isfinite(cumulative[-1]):
+            raise ValueError("weights must have a finite positive total")
+        # Unit total prevents subnormal rounding from selecting zero-weight IDs.
+        cumulative = tuple(value / cumulative[-1] for value in cumulative)
     while True:
-        yield random.choice(ids)
-    # END WHILE
+        yield random.choice(ids) if cumulative is None else random.choices(ids, cum_weights=cumulative, k=1)[0]

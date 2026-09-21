@@ -1,55 +1,42 @@
-"""
-# Preprocessing Utility API
+"""TensorFlow dataset adapters and preprocessing bounds."""
 
-This module provides utility functions for preprocessing data.
+from __future__ import annotations
 
-Functions:
-    parse_factor: Parse factor
-    convert_inputs_to_tf_dataset: Convert inputs to tf.data.Dataset
-    create_interleaved_dataset_from_generator: Create interleaved dataset from generator
-    create_dataset_from_data: Create dataset from data
-    get_output_signature: Get output signature
-    get_output_signature_from_fn: Get output signature from function
-    get_output_signature_from_gen: Get output signature from generator
+from collections.abc import Callable, Iterable, Iterator
+from typing import Any, TYPE_CHECKING
 
-"""
+from .sampling import StreamMode
+from numbers import Integral
 
-from typing import TypeVar, Callable, Generator
-
-import keras
-import tensorflow as tf
 import numpy.typing as npt
 
-T, K = TypeVar("T"), TypeVar("K")
+if TYPE_CHECKING:
+    import keras
+    import tensorflow as tf
 
 
 def parse_factor(
-    param: T | tuple[T, T], min_value: float = 0.0, max_value: float = 1.0, param_name: str = "factor"
-) -> tuple[T, T]:
-    if isinstance(param, (float, int)):
-        param = (min_value, param)
-    # END IF
-
-    if param[0] is None:
-        param[0] = param[1]
-    # END IF
-
-    if param[0] > param[1]:
-        raise ValueError(
-            f"`{param_name}[0] > {param_name}[1]`, `{param_name}[0]` must be "
-            f"<= `{param_name}[1]`. Got `{param_name}={param}`"
-        )
-    if (min_value is not None and param[0] < min_value) or (max_value is not None and param[1] > max_value):
-        raise ValueError(
-            f"`{param_name}` should be inside of range [{min_value}, {max_value}]. Got {param_name}={param}"
-        )
-    # END IF
-
-    return param[0], param[1]
+    param: float | tuple[float | None, float] | list[float | None],
+    min_value: float | None = 0.0,
+    max_value: float | None = 1.0,
+    param_name: str = "factor",
+) -> tuple[float, float]:
+    """Normalize scalar or paired bounds and validate their range."""
+    low, high = (min_value, param) if isinstance(param, (float, int)) else param
+    if high is None:
+        raise ValueError(f"{param_name} requires an upper bound")
+    low = high if low is None else low
+    if low > high:
+        raise ValueError(f"{param_name}[0] must be <= {param_name}[1]; got {param}")
+    if (min_value is not None and low < min_value) or (max_value is not None and high > max_value):
+        raise ValueError(f"{param_name} must be inside [{min_value}, {max_value}]; got {param}")
+    return low, high
 
 
 def convert_inputs_to_tf_dataset(x=None, y=None, sample_weight=None, batch_size=None):
     """Convert inputs to tf.data.Dataset."""
+
+    import tensorflow as tf
 
     # Unpack if passed as tuple
     if isinstance(x, tuple):
@@ -57,7 +44,6 @@ def convert_inputs_to_tf_dataset(x=None, y=None, sample_weight=None, batch_size=
         x = tupled[0]
         y = tupled[1] if len(tupled) > 1 else None
         sample_weight = tupled[2] if len(tupled) > 2 else None
-    # END IF
 
     if sample_weight is not None:
         raise ValueError("Contrastive trainers do not yet support `sample_weight`.")
@@ -85,65 +71,75 @@ def convert_inputs_to_tf_dataset(x=None, y=None, sample_weight=None, batch_size=
     return dataset
 
 
-def create_interleaved_dataset_from_generator(
-    data_generator: Callable[[Generator[T, None, None]], Generator[K, None, None]],
-    id_generator: Callable[[list[T]], Generator[T, None, None]],
+def create_interleaved_dataset_from_generator[T, K](
+    data_generator: Callable[[Iterator[T]], Iterable[K]],
+    id_generator: Callable[[list[T]], Iterator[T]],
     ids: list[T],
-    spec: tuple[tf.TensorSpec, tf.TensorSpec],
+    spec: tf.TensorSpec | tuple[tf.TensorSpec, ...] | dict[str, tf.TensorSpec],
     preprocess: Callable[[K], K] | None = None,
     num_workers: int = 4,
+    *,
+    stream_mode: StreamMode | str = StreamMode.GLOBAL,
+    deterministic: bool = True,
 ) -> tf.data.Dataset:
-    """Create TF dataset pipeline by interleaving multiple workers across ids
+    """Adapt caller-owned schedules to tf.data without changing sample weights.
 
-    The id_generator is used to generate ids for each worker.
-    The data_generator is used to generate data for each id.
-
-    Args:
-        data_generator (Callable[[Generator[T, None, None]], Generator[K, None, None]]): Data generator
-        id_generator (Callable[[list[T]], Generator[T, None, None]]): Id generator
-        ids (list[T]): List of ids
-        spec (tuple[tf.TensorSpec, tf.TensorSpec]): Tensor spec
-        preprocess (Callable[[K], K] | None, optional): Preprocess function. Defaults to None.
-        num_workers (int, optional): Number of workers. Defaults to 4.
-
-    Returns:
-        tf.data.Dataset: Dataset
+    GLOBAL preserves one finite/repeated stream. FINITE partitions terminating,
+    partition-independent generators; deterministic mode preserves partition order.
+    num_workers counts generators, not processes. See docs/input-pipeline.md.
     """
 
-    def split_generator(split_ids: list[T]) -> tf.data.Dataset:
-        """Split generator per worker"""
+    import tensorflow as tf
 
-        def ds_gen():
-            """Worker generator routine"""
-            split_id_generator = id_generator(split_ids)
-            return map(preprocess, data_generator(split_id_generator))
+    if isinstance(num_workers, bool) or not isinstance(num_workers, Integral) or num_workers < 1:
+        raise ValueError("num_workers must be a positive integer")
+    try:
+        stream_mode = StreamMode(stream_mode)
+    except ValueError as exc:
+        raise ValueError(f"stream_mode must be one of {list(StreamMode)}") from exc
+    # Snapshot IDs so caller mutation cannot change later epoch enumeration.
+    ids = list(ids)
+
+    def split_generator(split_ids: list[T]) -> tf.data.Dataset:
+        def ds_gen() -> Iterator[K]:
+            split_id_generator = id_generator(list(split_ids))
+            samples = iter(data_generator(split_id_generator))
+            return map(preprocess, samples) if preprocess is not None else samples
 
         return tf.data.Dataset.from_generator(
             ds_gen,
             output_signature=spec,
         )
 
-    # END IF
+    if not ids:
+        return tf.data.Dataset.from_generator(lambda: iter(()), output_signature=spec)
+    if stream_mode == StreamMode.GLOBAL:
+        return split_generator(ids)
 
     num_workers = min(num_workers, len(ids))
-    split = len(ids) // num_workers
+    size, remainder = divmod(len(ids), num_workers)
+    ds_splits = []
+    start = 0
+    for i in range(num_workers):
+        end = start + size + (i < remainder)
+        ds_splits.append(split_generator(ids[start:end]))
+        start = end
 
-    ds_splits = [split_generator(ids[i * split : (i + 1) * split]) for i in range(num_workers)]
+    if deterministic:
+        ds = ds_splits[0]
+        for split in ds_splits[1:]:
+            ds = ds.concatenate(split)
+        return ds
 
-    # Create TF datasets (interleave workers)
-    ds = tf.data.Dataset.from_tensor_slices(ds_splits)
-
-    ds = ds.interleave(
+    return tf.data.Dataset.from_tensor_slices(ds_splits).interleave(
         lambda x: x,
         cycle_length=num_workers,
         deterministic=False,
         num_parallel_calls=tf.data.AUTOTUNE,
     )
 
-    return ds
 
-
-def create_dataset_from_data(x: npt.NDArray, y: npt.NDArray, spec: tuple[tf.TensorSpec]) -> tf.data.Dataset:
+def create_dataset_from_data(x: npt.NDArray, y: npt.NDArray, spec: tuple[tf.TensorSpec, ...]) -> tf.data.Dataset:
     """Helper function to create dataset from static data
 
     Args:
@@ -153,12 +149,14 @@ def create_dataset_from_data(x: npt.NDArray, y: npt.NDArray, spec: tuple[tf.Tens
     Returns:
         tf.data.Dataset: Dataset
     """
+    import tensorflow as tf
+
     return tf.data.Dataset.zip((tf.data.Dataset.from_tensor_slices(x), tf.data.Dataset.from_tensor_slices(y)))
 
 
 def get_output_signature(
     outputs: keras.KerasTensor | npt.NDArray | tuple[keras.KerasTensor | npt.NDArray],
-) -> tf.TensorSpec | tuple[tf.TensorSpec]:
+) -> tf.TensorSpec | tuple[tf.TensorSpec, ...]:
     """Get output signature from sample outputs
 
     Args:
@@ -167,6 +165,9 @@ def get_output_signature(
     Returns:
         tf.TensorSpec: Tensor spec
     """
+    import keras
+    import tensorflow as tf
+
     if isinstance(outputs, tuple):
         sig = []
         for output in outputs:
@@ -179,7 +180,9 @@ def get_output_signature(
     return sig
 
 
-def get_output_signature_from_fn(fn: Callable[..., keras.KerasTensor], *args) -> tf.TensorSpec | tuple[tf.TensorSpec]:
+def get_output_signature_from_fn(
+    fn: Callable[..., keras.KerasTensor], *args
+) -> tf.TensorSpec | tuple[tf.TensorSpec, ...]:
     """Get output signature from a function
 
     Args:
@@ -191,11 +194,13 @@ def get_output_signature_from_fn(fn: Callable[..., keras.KerasTensor], *args) ->
     return get_output_signature(outputs=fn(*args))
 
 
-def get_output_signature_from_gen(gen: Generator[T, None, None], *args) -> tf.TensorSpec | tuple[tf.TensorSpec]:
+def get_output_signature_from_gen(
+    gen: Callable[..., Iterator[Any]], *args: Any
+) -> tf.TensorSpec | tuple[tf.TensorSpec, ...]:
     """Get output signature from a generator
 
     Args:
-        gen (Generator[T, None, None]): Generator
+        gen: Generator factory
 
     Returns:
         tf.TensorSpec: Tensor spec

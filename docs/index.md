@@ -22,7 +22,7 @@
 
 - :material-rocket-launch: [Getting Started](usage/index.md)
 - :material-api: [API Documentation](api/helia_edge)
-- :simple-docsdotrs: [Usage Examples](examples/index.md)
+- :simple-docsdotrs: [Usage Examples](guides/index.md)
 - :simple-jupyter: [Explore Guides](guides/index.md)
 
 </div>
@@ -46,7 +46,9 @@
 
 ### Compatability issues between frameworks and inference engines
 
-- [x] By leveraging Keras 3, entire workflows can be run using a variety of backends using a consistent front-end API. This allows selecting a backend that plays nicely with a specific inference engine without rewriting the entire model.
+- [x] Selected Keras components and masked-autoencoder training run on TensorFlow
+  and Torch with isolated tests. See [backend support](backends.md) for the tested
+  matrix and TensorFlow-specific preprocessing/export capabilities.
 
 ### SOTA models dont scale down well and come in limited configurations
 

@@ -7,16 +7,17 @@ authors = [
 ]
 readme = "README.md"
 
-requires-python = ">=3.12,<3.15"
+requires-python = ">=3.12.3,<3.15"
 
 dependencies = [
-    "h5py>=3.12.1",
-    "keras>=3.4.0",
+    "lazy-loader>=0.5,<0.6",
+    "h5py>=3.12.1; python_version < '3.14'",
+    "h5py>=3.15.1; python_version >= '3.14'",
     "pydantic>=2.8.1",
     "requests>=2.32.4",
     "tqdm>=4.66.4",
-    "tensorflow>=2.18.1",
-    "tensorflow-metal>=1.2.0; sys_platform == 'darwin'",
+    "rich>=13.0",
+    "numpy>=1.26.0",
     "matplotlib>=3.10.0",
     "pandas>=2.3.0",
     "scikit-learn>=1.5.2",
@@ -26,12 +27,26 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+tensorflow = [
+    "keras>=3.15.1,<4",
+    "tensorflow>=2.21.0,<2.22; python_version < '3.14'",
+]
+torch = [
+    "keras>=3.15.1,<4",
+    "torch>=2.14,<2.15",
+]
+metal = [
+    "tensorflow-metal>=1.2.0; sys_platform == 'darwin'",
+]
 litert = [
+    "keras>=3.15.1,<4",
+    "tensorflow>=2.21.0,<2.22; python_version < '3.14'",
     "ai-edge-litert>=2.1.3",
 ]
 
 [dependency-groups]
 dev = [
+    {include-group = "typing"},
     "ipython>=8.25.0",
     "ipykernel>=6.29.5",
     "notebook>=7.2.1",
@@ -40,7 +55,7 @@ docs = [
     "mkdocs>=1.6.1",
     "mkdocs-material>=9.5.49",
     "mkdocstrings>=0.27.0",
-    "mkdocstrings-python>=1.13.0",
+    "mkdocstrings-python>=1.18.0",
     "mkdocs-autorefs>=1.3.0",
     "markdown-include>=0.8.1",
     "mkdocs-exclude>=1.0.2",
@@ -50,8 +65,12 @@ docs = [
     "mkdocs-jupyter>=0.25.1",
 ]
 ci = [
+    {include-group = "typing"},
     "pytest>=8.2.0",
     "ruff>=0.7.2",
+]
+typing = [
+    "ty==0.0.82",
 ]
 
 [build-system]
@@ -62,14 +81,41 @@ build-backend = "setuptools.build_meta"
 where  = ["."]
 include = ["helia_edge", "helia_edge.*"]
 
+[tool.setuptools.package-data]
+"*" = ["*.pyi", "py.typed"]
+
 [tool.ruff]
 line-length = 120
+target-version = "py312"
 
 [tool.ruff.lint]
+select = ["E4", "E7", "E9", "F"]
 ignore = []
 
 [tool.ruff.lint.per-file-ignores]
 "__init__.py" = ["F401"]
+
+[tool.ty.src]
+include = [
+    "helia_edge/**/__init__.py",
+    "helia_edge/**/*.pyi",
+    "helia_edge/_backend.py",
+    "helia_edge/_lazy.py",
+    "helia_edge/_serialization.py",
+    "helia_edge/_typing.py",
+    "helia_edge/utils/preprocessing.py",
+    "helia_edge/utils/sampling.py",
+    "helia_edge/utils/rng.py",
+    "helia_edge/utils/export.py",
+    "helia_edge/layers/patching.py",
+    "helia_edge/trainers/mask_autoencoder.py",
+    "tests/typing/*.py",
+    "tests/trainers/mae_parity_fixture.py",
+    "tests/trainers/compare_mae_backends.py",
+]
+
+[tool.ty.rules]
+unused-ignore-comment = "error"
 
 [tool.uv]
 package = true

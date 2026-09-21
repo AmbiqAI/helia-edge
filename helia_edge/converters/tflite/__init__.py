@@ -1,13 +1,5 @@
-"""
-# TFLite Converter API
+"""Public tflite exports, loaded on demand."""
 
-This module handles converting models to TensorFlow Lite format.
+from helia_edge._lazy import attach_exports as _attach_exports
 
-Classes:
-    QuantizationType: Enum class for quantization types.
-    TfLiteKerasConverter: TensorFlow Lite model converter.
-    ConversionType: Enum class for conversion types.
-
-"""
-
-from .converter import QuantizationType, TfLiteKerasConverter, ConversionType
+__getattr__, __dir__, __all__ = _attach_exports(__name__, __file__)

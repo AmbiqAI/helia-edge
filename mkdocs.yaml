@@ -15,6 +15,9 @@ nav:
 
   - Getting Started:
     - usage/index.md
+    - Backend Support: backends.md
+    - Generator Sampling: input-pipeline.md
+    - Development: development.md
 
   - API: api/
 
@@ -85,7 +88,7 @@ plugins:
   - mkdocstrings:
       handlers:
         python:
-          import:
+          inventories:
           - https://docs.python.org/3/objects.inv
           - https://numpy.org/doc/stable/objects.inv
           options:

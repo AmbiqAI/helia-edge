@@ -1,23 +1,5 @@
-"""
-# :simple-futurelearn: Trainers API
+"""Public trainers exports, loaded on demand."""
 
-This module contains the implementations of various training routines that fall outside
-the standard supervised learning paradigm. These include contrastive learning, distillation, and more.
+from helia_edge._lazy import attach_exports as _attach_exports
 
-## Available Trainers
-
-- **[ContrastiveTrainer](./contrastive)**: A trainer for contrastive learning
-- **[Distiller](./distiller)**: A trainer for distillation
-- **[GSAutoencoder](./gs_autoencoder)**: A trainer for Gumbel Softmax autoencoder
-- **[MaskedAutoencoder](./mask_autoencoder)**: A trainer for masked autoencoder
-- **[SimCLRTrainer](./simclr)**: A trainer for SimCLR
-- **[VQAutoencoder](./vq_autoencoder)**: A trainer for Vector Quantized autoencoder
-
-"""
-
-from .contrastive import ContrastiveTrainer
-from .distiller import Distiller
-from .gs_autoencoder import GSAutoencoder
-from .mask_autoencoder import MaskedAutoencoder
-from .simclr import SimCLRTrainer
-from .vq_autoencoder import VQAutoencoder
+__getattr__, __dir__, __all__ = _attach_exports(__name__, __file__)

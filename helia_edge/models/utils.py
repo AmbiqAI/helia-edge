@@ -56,6 +56,9 @@ def load_model(model_path: os.PathLike) -> keras.Model:
         keras.Model: Model
     """
 
+    from .._serialization import register_keras_serializables
+
+    register_keras_serializables()
     model_path = str(model_path)
     model_prefix: str = model_path.split(":")[0].lower() if ":" in model_path else ""
 
