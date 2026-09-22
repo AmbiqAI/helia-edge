@@ -7,6 +7,7 @@ from typing import Any, TYPE_CHECKING
 import keras
 import numpy as np
 
+from .._lazy import Extra, optional_imports
 from ..utils import helia_export
 
 if TYPE_CHECKING:
@@ -58,7 +59,8 @@ class PatchLayer2D(keras.layers.Layer):
     def show_patched_image(self, images: keras.KerasTensor, patches: keras.KerasTensor) -> int:
         """Plot one image and its reconstructed patches; return its batch index."""
 
-        import matplotlib.pyplot as plt
+        with optional_imports(Extra.PLOTTING):
+            import matplotlib.pyplot as plt
 
         idx = np.random.choice(patches.shape[0])
 

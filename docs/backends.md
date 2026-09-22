@@ -10,10 +10,17 @@ pip install 'helia-edge[torch]'
 
 Set `KERAS_BACKEND=tensorflow` or `KERAS_BACKEND=torch` before importing Keras or
 accessing a Keras feature. Base `helia-edge` installs no training framework;
-file/factory/logger helpers work independently. Existing public attribute paths
-remain available and load their dependencies when accessed.
+file/factory/logger helpers work independently. Plotting and S3 access are separate
+capabilities: install `helia-edge[plotting]` or `helia-edge[aws]`, or combine them
+with a backend, for example `helia-edge[tensorflow,plotting,aws]`. Existing public attribute paths
+remain available and load their dependencies when accessed. The plotting extra
+also supplies `PatchLayer2D.show_patched_image`; patch extraction itself does not
+require plotting. S3 model URLs and S3 download helpers both require the AWS extra.
 
-This changes installation behavior: existing TensorFlow users must select the
+This changes installation behavior: existing plotting/S3 users must select those
+extras. Base installations no longer supply plotting, AWS or h5py; code that uses
+those libraries directly should declare them itself. Backend extras retain h5py
+for Keras serialization. Existing TensorFlow users must select the
 `tensorflow` extra. `litert` includes TensorFlow conversion plus the LiteRT runtime.
 `metal` is opt-in and must be combined with `tensorflow`; Metal compatibility has
 not been validated for this baseline.
@@ -61,8 +68,10 @@ cover an EDGE EMA quantizer on both backends and legacy normalization on TF.
 ## Validation
 
 CI includes a base-only lane and separate backend environments. Import checks
-assert the opposite framework is absent. TF runs the full suite, including float
+assert the opposite framework is absent. TF runs its applicable suite, including float
 and int8 conversion; Torch runs the portable subset and custom-object reloads.
+Separate backend-free environments exercise AWS and plotting, followed by
+combined backend checks for S3 model loading and patch visualization.
 CPU tests set `CUDA_VISIBLE_DEVICES=-1` so installed GPU drivers cannot affect the
 CPU export path. Existing augmentation layers still use private Keras internals;
 their TF regressions are covered, but their portability is separate future work.

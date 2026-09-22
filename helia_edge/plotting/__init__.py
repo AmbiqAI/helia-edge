@@ -1,23 +1,5 @@
-"""
-# :material-chart-bar: Plotting Module API
+"""Plotting exports, loaded when their optional dependencies are needed."""
 
-This module provides utility functions to plot metrics and confusion matrices.
+from helia_edge._lazy import attach_exports as _attach_exports
 
-Functions:
-    confusion_matrix_plot: Plot confusion matrix
-    px_plot_confusion_matrix: Plot confusion matrix using Plotly
-    multilabel_confusion_matrix: Compute multilabel confusion matrix
-    multilabel_confusion_matrix_plot: Plot multilabel confusion matrix
-    roc_auc_plot: Plot ROC-AUC curve
-    plot_history_metrics: Plot training history metrics
-
-"""
-
-from .cm import (
-    confusion_matrix_plot,
-    px_plot_confusion_matrix,
-    multilabel_confusion_matrix,
-    multilabel_confusion_matrix_plot,
-)
-from .roc import roc_auc_plot
-from .history import plot_history_metrics
+__getattr__, __dir__, __all__ = _attach_exports(__name__, __file__)
