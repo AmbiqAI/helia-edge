@@ -17,9 +17,12 @@ import functools
 from pathlib import Path, PurePosixPath
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-import boto3
-from botocore import UNSIGNED
-from botocore.client import Config
+from .._lazy import Extra, optional_imports
+
+with optional_imports(Extra.AWS):
+    import boto3
+    from botocore import UNSIGNED
+    from botocore.client import Config
 from tqdm import tqdm
 
 from .env import setup_logger

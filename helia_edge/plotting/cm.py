@@ -13,17 +13,18 @@ Functions:
 import os
 from typing import Literal
 
-import matplotlib.pyplot as plt
 import numpy as np
 import numpy.typing as npt
-import pandas as pd
-import plotly.express as px
-import plotly.graph_objs as go
-import seaborn as sns
-from sklearn.metrics import (
-    confusion_matrix,
-    multilabel_confusion_matrix,
-)
+
+from .._lazy import Extra, optional_imports
+
+with optional_imports(Extra.PLOTTING):
+    import matplotlib.pyplot as plt
+    import pandas as pd
+    import plotly.express as px
+    import plotly.graph_objs as go
+    import seaborn as sns
+    from sklearn.metrics import confusion_matrix, multilabel_confusion_matrix
 
 
 def multilabel_confusion_matrix_plot(

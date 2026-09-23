@@ -21,7 +21,7 @@ jobs:
       - uses: astral-sh/setup-uv@v5
       - run: uv venv --python 3.12
       - run: uv pip install 'torch==2.14.0' --index-url https://download.pytorch.org/whl/cpu
-      - run: uv pip install '.[tensorflow,torch,litert]' --group typing
+      - run: uv pip install '.[tensorflow,torch,litert,plotting,aws]' --group typing
       - run: uv run --no-sync ty check --error-on-warning
 
   base:
@@ -36,13 +36,33 @@ jobs:
       - name: Check installed lazy exports outside the source tree
         run: |
           uv run --no-sync python -I - <<'PY'
+          import importlib.util
           import sys
           import helia_edge
           assert helia_edge.utils.StreamMode.FINITE.value == 'finite'
-          assert not {'keras', 'tensorflow', 'torch'} & sys.modules.keys()
+          absent = ('keras', 'tensorflow', 'torch', 'matplotlib', 'pandas', 'sklearn', 'plotly', 'seaborn', 'boto3', 'botocore', 'h5py', 'scipy')
+          assert all(importlib.util.find_spec(name) is None for name in absent)
+          assert not set(absent) & sys.modules.keys()
           PY
       - run: uv run --no-sync ruff check
-      - run: uv run --no-sync pytest -q tests/test_import_isolation.py tests/utils/test_aws.py tests/utils/test_rng.py
+      - run: uv run --no-sync pytest -q tests/test_import_isolation.py tests/test_optional_dependencies.py tests/utils/test_rng.py
+
+      - name: Test AWS without plotting or a backend
+        env:
+          UV_PROJECT_ENVIRONMENT: ${{ runner.temp }}/edge-aws
+        run: |
+          uv sync --python ${{ matrix.python }} --locked --no-dev --group ci --extra aws --no-editable
+          uv run --no-sync python -I -c "import importlib.util; assert all(importlib.util.find_spec(n) is None for n in ('keras', 'tensorflow', 'torch', 'matplotlib', 'pandas', 'sklearn', 'plotly', 'seaborn', 'h5py', 'scipy'))"
+          uv run --no-sync pytest -q tests/utils/test_aws.py tests/test_optional_dependencies.py
+      - name: Test plotting without AWS or a backend
+        env:
+          UV_PROJECT_ENVIRONMENT: ${{ runner.temp }}/edge-plotting
+          MPLBACKEND: Agg
+          MPLCONFIGDIR: ${{ runner.temp }}/matplotlib
+        run: |
+          uv sync --python ${{ matrix.python }} --locked --no-dev --group ci --extra plotting --no-editable
+          uv run --no-sync python -I -c "import importlib.util; assert all(importlib.util.find_spec(n) is None for n in ('keras', 'tensorflow', 'torch', 'boto3', 'botocore', 'h5py'))"
+          uv run --no-sync pytest -q tests/plotting tests/test_optional_dependencies.py
 
   backend:
     runs-on: ubuntu-latest
@@ -70,12 +90,16 @@ jobs:
       - run: uv pip install '.[${{ matrix.backend }}]' 'keras==3.15.1' pytest
       - if: matrix.backend == 'tensorflow'
         run: uv pip install 'ai-edge-litert==2.2.0'
+      - name: Check backend installation excludes plotting and AWS
+        run: uv run --no-sync python -I -c "import importlib.util; assert all(importlib.util.find_spec(n) is None for n in ('matplotlib', 'plotly', 'seaborn', 'sklearn', 'boto3', 'botocore'))"
       - if: matrix.backend == 'tensorflow'
-        run: uv run --no-sync pytest -q
+        run: >-
+          uv run --no-sync pytest -q --ignore=tests/utils/test_aws.py --ignore=tests/plotting
+          --ignore=tests/models/test_model_loading.py --ignore=tests/layers/test_patch_visualization.py
       - if: matrix.backend == 'torch'
         run: >-
           uv run --no-sync pytest -q tests/test_import_isolation.py tests/test_serialization.py
-          tests/metrics tests/layers/test_ema_residual_vector_quantizer.py tests/utils/test_aws.py tests/utils/test_rng.py tests/trainers
+          tests/metrics tests/layers/test_ema_residual_vector_quantizer.py tests/test_optional_dependencies.py tests/utils/test_rng.py tests/trainers
       - run: >-
           uv run --no-sync python tests/trainers/mae_parity_fixture.py
           --output '${{ runner.temp }}/mae-evidence.npz'
@@ -84,6 +108,14 @@ jobs:
         with:
           name: mae-${{ matrix.backend }}
           path: ${{ runner.temp }}/mae-evidence.npz
+
+      - name: Test backend integration with plotting and AWS
+        env:
+          MPLBACKEND: Agg
+          MPLCONFIGDIR: ${{ runner.temp }}/matplotlib
+        run: |
+          uv pip install '.[plotting,aws]'
+          uv run --no-sync pytest -q tests/models/test_model_loading.py tests/layers/test_patch_visualization.py
 
   parity:
     needs: backend

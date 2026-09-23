@@ -6,6 +6,7 @@ Install `helia-edge[tensorflow]` or `helia-edge[torch]` and select `KERAS_BACKEN
 before importing Keras. See [backend installation and compatibility](docs/backends.md)
 for the tested matrix, lazy-import migration and custom-model loading.
 
+For visualization or S3 access, add the `plotting` or `aws` extra, respectively.
 [![CI](https://github.com/AmbiqAI/helia-edge/actions/workflows/ci.yaml/badge.svg?branch=main)](https://github.com/AmbiqAI/helia-edge/actions/workflows/ci.yaml)
 [![Docs](https://github.com/AmbiqAI/helia-edge/actions/workflows/docs.yaml/badge.svg?branch=main)](https://github.com/AmbiqAI/helia-edge/actions/workflows/docs.yaml)
 [![Release](https://github.com/AmbiqAI/helia-edge/actions/workflows/release.yaml/badge.svg)](https://github.com/AmbiqAI/helia-edge/actions/workflows/release.yaml)

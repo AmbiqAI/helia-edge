@@ -21,6 +21,16 @@ uv add 'helia-edge[tensorflow]'
     components, optional export dependencies and limitations. JAX is not part of
     the tested support matrix.
 
+Plotting and S3 access are optional. Select them alongside your backend when needed:
+
+```sh
+pip install 'helia-edge[tensorflow,plotting,aws]'
+```
+
+The training notebook uses plotting; S3 downloads and S3 model loading use `aws`.
+Public plotting and download paths are unchanged. TensorFlow conversion and
+custom-object registration do not require either extra.
+
 ## Requirements
 
 * Python 3.12.3 or newer: 3.12–3.13 for TensorFlow; 3.12–3.14 for Torch/base.

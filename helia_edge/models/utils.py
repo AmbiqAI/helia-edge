@@ -17,6 +17,7 @@ import glob
 from pathlib import Path
 import keras
 
+from .._lazy import Extra, optional_imports
 from ..utils import download_file
 
 
@@ -82,21 +83,27 @@ def load_model(model_path: os.PathLike) -> keras.Model:
             # END WITH
 
         case "s3":
-            import boto3  # pylint: disable=C0415
-            from botocore import UNSIGNED  # pylint: disable=C0415
-            from botocore.client import Config  # pylint: disable=C0415
+            s3_path = model_path.partition(":")[2]
+            if s3_path.startswith("//"):
+                s3_path = s3_path[2:]
+            bucket, separator, key = s3_path.partition("/")
+            if not separator or not bucket or not key:
+                raise ValueError("S3 model path must contain a non-empty bucket and key")
+
+            with optional_imports(Extra.AWS):
+                import boto3
+                from botocore import UNSIGNED
+                from botocore.client import Config
 
             session = boto3.Session()
             client = session.client("s3", config=Config(signature_version=UNSIGNED))
-            model_path = model_path.removeprefix("s3:")
-            path_parts = model_path.split(":")[1].split("/")
 
             with tempfile.TemporaryDirectory() as tmpdirname:
-                model_ext = Path(model_path).suffix
+                model_ext = Path(key).suffix
                 dst_path = Path(tmpdirname) / f"model{model_ext}"
                 client.download_file(
-                    Bucket=path_parts[0],
-                    Key="/".join(path_parts[1:]),
+                    Bucket=bucket,
+                    Key=key,
                     Filename=str(dst_path),
                 )
                 model = keras.models.load_model(dst_path)

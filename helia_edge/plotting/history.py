@@ -9,7 +9,10 @@ Functions:
 """
 
 from pathlib import Path
-import matplotlib.pyplot as plt
+from .._lazy import Extra, optional_imports
+
+with optional_imports(Extra.PLOTTING):
+    import matplotlib.pyplot as plt
 
 
 def plot_history_metrics(

@@ -11,12 +11,13 @@ Functions:
 
 import os
 
-import matplotlib.pyplot as plt
 import numpy.typing as npt
-from sklearn.metrics import (
-    auc,
-    roc_curve,
-)
+
+from .._lazy import Extra, optional_imports
+
+with optional_imports(Extra.PLOTTING):
+    import matplotlib.pyplot as plt
+    from sklearn.metrics import auc, roc_curve
 
 
 def roc_auc_plot(

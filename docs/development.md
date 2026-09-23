@@ -43,12 +43,14 @@ Keep comments about constraints or reasoning; put usage and architecture in docs
 ## Static checking
 
 ```sh
-uv sync --extra tensorflow --extra torch --extra litert --group typing
+uv sync --extra tensorflow --extra torch --extra litert --extra plotting --extra aws --group typing
 uv run ty check --error-on-warning
 ```
 
 The dedicated typing environment contains both backends for resolving annotations.
-Runtime isolation is tested separately. `ty` is pinned in the `typing` group,
+Runtime isolation is tested separately. Base, plotting-only, AWS-only and backend
+environments each run their applicable tests; combined environments cover model
+retrieval and visualization. Do not install every extra to qualify a base install. `ty` is pinned in the `typing` group,
 included by `dev` and `ci`, and enforced by the CI typing job.
 
 `tool.ty.src.include` lists the current gate: lazy public exports, modernized
