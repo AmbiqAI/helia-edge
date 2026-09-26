@@ -2,7 +2,7 @@ MLPerf Tiny architecture adaptations
 
 Derived from MLCommons Tiny, pinned revision4addd0fa08d216e20637637874e084895f289da4:
 https://github.com/mlcommons/tiny/tree/4addd0fa08d216e20637637874e084895f289da4/benchmark/training
-Apache License2.0 (mlperf-tiny-apache.txt).
+Apache License 2.0 (mlperf-tiny-apache.txt).
 
 The visual wake words source credits Silicon Labs mobilenet_v1_eembc.py:
 https://github.com/SiliconLabs/platform_ml_models/blob/master/eembc/Person_detection/mobilenet_v1_eembc.py
