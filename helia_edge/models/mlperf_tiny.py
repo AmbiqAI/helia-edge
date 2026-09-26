@@ -7,7 +7,10 @@ shapes/configurations, explicit layer names, no training or weight downloads.
 These constructors do not provide official trained weights or accuracy claims.
 """
 
+from typing import Any, Literal
+
 import keras
+from pydantic import BaseModel, ConfigDict
 
 
 def _bn_relu(x, name):
@@ -111,3 +114,24 @@ def mlperf_tiny_ad(*, name: str = "mlperf_tiny_ad") -> keras.Model:
         x = _bn_relu(x, f"dense{stage}")
     outputs = keras.layers.Dense(640, activation="linear", name="reconstruction")(x)
     return keras.Model(inputs, outputs, name=name)
+
+
+class MlperfTinyParams(BaseModel):
+    """Select a faithful fixed architecture; initialization/export belong to callers."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+    architecture: Literal["kws", "vww", "resnet", "ad"]
+
+
+class MlperfTinyModel:
+    """Typed family adapter preserving the public fixed constructors."""
+
+    @staticmethod
+    def model_from_params(params: MlperfTinyParams | dict[str, Any], *, name: str | None = None) -> keras.Model:
+        """Build without resetting session/RNG state or loading/converting weights."""
+        if not isinstance(params, MlperfTinyParams):
+            params = MlperfTinyParams.model_validate(params)
+        builders = {"kws": mlperf_tiny_kws, "vww": mlperf_tiny_vww,
+                    "resnet": mlperf_tiny_resnet, "ad": mlperf_tiny_ad}
+        build = builders[params.architecture]
+        return build() if name is None else build(name=name)
