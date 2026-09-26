@@ -70,3 +70,7 @@ from .mlperf_tiny import mlperf_tiny_kws as mlperf_tiny_kws
 from .mlperf_tiny import mlperf_tiny_vww as mlperf_tiny_vww
 from .mlperf_tiny import mlperf_tiny_resnet as mlperf_tiny_resnet
 from .mlperf_tiny import mlperf_tiny_ad as mlperf_tiny_ad
+
+from .tcn import compact_tcn_params as compact_tcn_params
+from .mlperf_tiny import MlperfTinyParams as MlperfTinyParams
+from .mlperf_tiny import MlperfTinyModel as MlperfTinyModel
