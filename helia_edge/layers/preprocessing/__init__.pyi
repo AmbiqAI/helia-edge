@@ -31,7 +31,6 @@ from .rescaling import Rescaling1D as Rescaling1D
 from .rescaling import Rescaling2D as Rescaling2D
 from .sine_wave import AddSineWave as AddSineWave
 from .spec_augment import SpecAugment2D as SpecAugment2D
-from .tf_data_layer import TFDataLayer as TFDataLayer
 from . import amplitude_warp as amplitude_warp
 from . import augmentation_pipeline as augmentation_pipeline
 from . import base_augmentation as base_augmentation
@@ -55,6 +54,6 @@ from . import resizing as resizing
 from . import rescaling as rescaling
 from . import sine_wave as sine_wave
 from . import spec_augment as spec_augment
-from . import tf_data_layer as tf_data_layer
 from .sample import Sample as Sample
 from .sample import TensorPayload as TensorPayload
+from .base_augmentation import BaseAugmentationParams as BaseAugmentationParams

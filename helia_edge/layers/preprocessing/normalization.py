@@ -10,12 +10,13 @@ Classes:
 
 import keras
 
-from .portable import PortablePreprocessing1D
+from .base_augmentation import BaseAugmentation1D
 from ...utils import helia_export
 
 
 @helia_export(path="helia_edge.layers.preprocessing.Normalization1D")
-class Normalization1D(PortablePreprocessing1D):
+class Normalization1D(BaseAugmentation1D):
+    training_only = False
     mean: float | list[float] | tuple[float, ...]
     variance: float | list[float] | tuple[float, ...]
     epsilon: float
@@ -47,9 +48,7 @@ class Normalization1D(PortablePreprocessing1D):
         stats_shape = (1, -1, 1) if self.data_format == "channels_first" else (1, 1, -1)
 
         mean = keras.ops.reshape(keras.ops.convert_to_tensor(self.mean, dtype=samples.dtype), stats_shape)
-        variance = keras.ops.reshape(
-            keras.ops.convert_to_tensor(self.variance, dtype=samples.dtype), stats_shape
-        )
+        variance = keras.ops.reshape(keras.ops.convert_to_tensor(self.variance, dtype=samples.dtype), stats_shape)
         epsilon = keras.ops.cast(self.epsilon, samples.dtype)
 
         return (samples - mean) / keras.ops.sqrt(variance + epsilon)
@@ -62,7 +61,7 @@ class Normalization1D(PortablePreprocessing1D):
 
 
 def __getattr__(name):
-    # Preserve the old module import without loading TensorFlow for 1D users.
+    # Preserve the historical module import for existing configurations.
     if name == "Normalization2D":
         from .normalization_2d import Normalization2D
 

@@ -12,12 +12,14 @@ import numpy as np
 import numpy.typing as npt
 import keras
 
-from .portable import PortablePreprocessing1D
+from .base_augmentation import BaseAugmentation1D
 from ...utils import helia_export
 
 
 @helia_export(path="helia_edge.layers.preprocessing.FirFilter")
-class FirFilter(PortablePreprocessing1D):
+class FirFilter(BaseAugmentation1D):
+    training_only = False
+
     def __init__(
         self,
         b: npt.NDArray[np.float32] | list[float],

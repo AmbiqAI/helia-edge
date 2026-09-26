@@ -192,8 +192,6 @@ def test_invalid_rank_and_ambiguous_schema():
 
 
 def test_legacy_2d_import_and_behavior():
-    if keras.backend.backend() != "tensorflow":
-        pytest.skip("Unmigrated 2D remains TensorFlow-only")
     from helia_edge.layers.preprocessing.normalization import Normalization2D
 
     x = keras.ops.ones((1, 2, 2, 1))

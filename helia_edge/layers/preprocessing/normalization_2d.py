@@ -1,4 +1,4 @@
-"""Legacy TensorFlow-backed 2D normalization."""
+"""Fixed mean/variance normalization for two-dimensional signals."""
 
 import keras
 from .base_augmentation import BaseAugmentation2D
@@ -7,6 +7,7 @@ from ...utils import helia_export
 
 @helia_export(path="helia_edge.layers.preprocessing.Normalization2D")
 class Normalization2D(BaseAugmentation2D):
+    training_only = False
     mean: float | list[float] | tuple[float, ...]
     variance: float | list[float] | tuple[float, ...]
     epsilon: float
@@ -37,15 +38,11 @@ class Normalization2D(BaseAugmentation2D):
         samples = inputs[self.SAMPLES]
         stats_shape = (1, -1, 1, 1) if self.data_format == "channels_first" else (1, 1, 1, -1)
 
-        mean = keras.ops.reshape(self.backend.convert_to_tensor(self.mean, dtype=samples.dtype), stats_shape)
-        variance = keras.ops.reshape(self.backend.convert_to_tensor(self.variance, dtype=samples.dtype), stats_shape)
+        mean = keras.ops.reshape(keras.ops.convert_to_tensor(self.mean, dtype=samples.dtype), stats_shape)
+        variance = keras.ops.reshape(keras.ops.convert_to_tensor(self.variance, dtype=samples.dtype), stats_shape)
         epsilon = keras.ops.cast(self.epsilon, samples.dtype)
 
         return (samples - mean) / keras.ops.sqrt(variance + epsilon)
-
-    def compute_output_shape(self, input_shape, *args, **kwargs):
-        """Compute output shape."""
-        return input_shape
 
     def get_config(self):
         """Serialize the configuration."""

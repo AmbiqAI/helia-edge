@@ -1,102 +1,78 @@
-"""
-# Resizing layers API
-
-This module provides classes to build resizing layers.
-
-Classes:
-    Resizing1D: Resize 1D samples
-    Resizing2D: Resize 2D samples
-"""
+"""Deterministic resizing; aligned discrete leaves use nearest interpolation."""
 
 import keras
 from .base_augmentation import BaseAugmentation1D, BaseAugmentation2D
 from ...utils import helia_export
 
 
+def _resize(layer, x, interpolation):
+    axis = 2 if layer.data_format == "channels_first" else 1
+    if layer.NDIMS == 3:
+        x = keras.ops.expand_dims(x, axis)
+        size = (1, layer.duration)
+    else:
+        size = (layer.height, layer.width)
+    x = keras.ops.image.resize(x, size, interpolation=interpolation, data_format=layer.data_format)
+    return keras.ops.squeeze(x, axis) if layer.NDIMS == 3 else x
+
+
+def _discrete(layer, inputs):
+    x = inputs[layer.SAMPLES]
+    axes = (
+        ((layer.data_axis, layer.duration),)
+        if layer.NDIMS == 3
+        else ((layer.height_axis, layer.height), (layer.width_axis, layer.width))
+    )
+    for axis, size in axes:
+        length = keras.ops.shape(x)[axis]
+        # Half-pixel nearest indices preserve integer labels without float casts.
+        indices = keras.ops.cast(
+            keras.ops.floor((keras.ops.arange(size, dtype="float32") + 0.5) * length / size), "int32"
+        )
+        indices = keras.ops.minimum(indices, length - 1)
+        x = keras.ops.take(x, indices, axis=axis)
+    return x
+
+
 @helia_export(path="helia_edge.layers.preprocessing.Resizing1D")
 class Resizing1D(BaseAugmentation1D):
-    duration: int
-    data_format: str
+    training_only = False
+    joint = True
 
     def __init__(self, duration: int, **kwargs):
-        """1D resizing layer
-
-        Args:
-            duration (int): The new duration of the samples
-
-        """
         super().__init__(**kwargs)
+        if duration <= 0:
+            raise ValueError("duration must be positive")
         self.duration = duration
 
-    def augment_samples(self, inputs) -> keras.KerasTensor:
-        """Resize a batch of samples during training."""
-        samples = inputs[self.SAMPLES]
+    def augment_samples(self, inputs):
+        return _resize(self, inputs[self.SAMPLES], "bicubic")
 
-        # Add height dimension
-        samples = keras.ops.expand_dims(samples, axis=1)
-        samples = keras.ops.image.resize(
-            samples,
-            size=(1, self.duration),
-            interpolation="bicubic",
-            crop_to_aspect_ratio=False,
-            data_format=self.data_format,
-        )
-        # Remove height dimension
-        samples = keras.ops.squeeze(samples, axis=1)
-        return samples
-
-    def compute_output_shape(self, input_shape, *args, **kwargs):
-        """Compute output shape."""
-        output_shape = list(input_shape)
-        output_shape[self.data_axis] = self.duration
-        return tuple(output_shape)
+    def augment_targets(self, inputs):
+        return _discrete(self, inputs)
 
     def get_config(self):
-        """Serialize the configuration."""
-        config = super().get_config()
-        config.update(
-            duration=self.duration,
-            data_format=self.data_format,
-        )
-        return config
+        return {**super().get_config(), "duration": self.duration}
 
 
 @helia_export(path="helia_edge.layers.preprocessing.Resizing2D")
 class Resizing2D(BaseAugmentation2D):
-    height: int
-    width: int
-    interpolation: str
+    training_only = False
+    joint = True
 
     def __init__(self, height: int, width: int, interpolation: str = "bicubic", **kwargs):
-        """"""
         super().__init__(**kwargs)
+        if height <= 0 or width <= 0:
+            raise ValueError("height and width must be positive")
         self.height = height
         self.width = width
+        self.interpolation = interpolation
 
-    def augment_samples(self, inputs) -> keras.KerasTensor:
-        """Resize a batch of samples during training."""
-        samples = inputs[self.SAMPLES]
-        samples = keras.ops.image.resize(
-            samples,
-            size=(self.height, self.width),
-            interpolation="bicubic",
-            crop_to_aspect_ratio=False,
-            data_format=self.data_format,
-        )
-        return samples
+    def augment_samples(self, inputs):
+        return _resize(self, inputs[self.SAMPLES], self.interpolation)
 
-    def compute_output_shape(self, input_shape, *args, **kwargs):
-        """Compute output shape."""
-        output_shape = list(input_shape)
-        output_shape[self.height_axis] = self.height
-        output_shape[self.width_axis] = self.width
-        return tuple(output_shape)
+    def augment_targets(self, inputs):
+        return _discrete(self, inputs)
 
     def get_config(self):
-        """Serialize the configuration."""
-        config = super().get_config()
-        config.update(
-            height=self.height,
-            width=self.width,
-        )
-        return config
+        return {**super().get_config(), "height": self.height, "width": self.width, "interpolation": self.interpolation}

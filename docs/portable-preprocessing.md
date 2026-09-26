@@ -37,11 +37,10 @@ Legacy tensor calls and `{"data": x, "labels": y, ...}` dictionaries still work;
 and `signals`. Legacy constructor options `seed`, `auto_vectorize`,
 `data_format`, `device`, and Keras layer options remain accepted. These batched
 transforms do not need per-example vectorization; `auto_vectorize` is retained
-for compatibility. The default device scope remains CPU. The new shared base is
-not `BaseAugmentation1D`; inheritance checks and custom overrides of that old
-base's internal formatting/mapping hooks are not a supported compatibility API.
-Other augmentations and `Normalization2D` remain on their existing TensorFlow
-path; the old `normalization.Normalization2D` import still resolves lazily.
+for compatibility. The default device scope remains CPU. All preprocessing now uses the unified BaseAugmentation hierarchy; see the
+[next-major hook and behavior migration](preprocessing-migration.md). This is a
+breaking migration for custom hooks, RNG behavior and several corrected layouts.
+
 
 FIR coefficients accept arrays or lists and are included in layer config.
 Filtering retains the existing same-padded cross-correlation convention (it is
@@ -50,8 +49,8 @@ independently on each statically known channel. `forward_backward=True` applies
 that operation, reverses time, applies it again and reverses back. Denominator
 coefficients `a` remain unsupported for execution and raise `NotImplementedError`.
 
-Noise retains the legacy default `training=True`; explicit `training=False` or
-`None` returns signals without drawing randomness. Inference no longer advances
+Noise uses `training=None` by default; explicitly pass `training=True` to augment.
+`training=False` or `None` returns signals without drawing randomness. Inference no longer advances
 the noise RNG stream. Existing frozen experiments relying on the previous
 inference side effect need their old version or a declared new RNG policy.
 Equal seeds reproduce a fresh layer's sequence on the same backend; cross-backend

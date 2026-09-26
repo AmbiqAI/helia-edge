@@ -16,6 +16,7 @@ from ...utils import helia_export
 
 @helia_export(path="helia_edge.layers.preprocessing.Rescaling1D")
 class Rescaling1D(BaseAugmentation1D):
+    training_only = False
     scale: float
 
     def __init__(self, scale: float, **kwargs):
@@ -31,10 +32,6 @@ class Rescaling1D(BaseAugmentation1D):
         """Rescale a batch of samples during training."""
         samples = inputs[self.SAMPLES]
         return samples * self.scale
-
-    def compute_output_shape(self, input_shape, *args, **kwargs):
-        """Compute output shape."""
-        return input_shape
 
     def get_config(self):
         """Serialize the configuration."""
@@ -45,6 +42,7 @@ class Rescaling1D(BaseAugmentation1D):
 
 @helia_export(path="helia_edge.layers.preprocessing.Rescaling2D")
 class Rescaling2D(BaseAugmentation2D):
+    training_only = False
     scale: float
 
     def __init__(self, scale: float, **kwargs):
@@ -60,10 +58,6 @@ class Rescaling2D(BaseAugmentation2D):
         """Rescale a batch of samples during training."""
         samples = inputs[self.SAMPLES]
         return samples * self.scale
-
-    def compute_output_shape(self, input_shape, *args, **kwargs):
-        """Compute output shape."""
-        return input_shape
 
     def get_config(self):
         """Serialize the configuration."""

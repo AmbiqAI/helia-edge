@@ -15,7 +15,7 @@ def preprocess_record(record, rng):
     with keras.device("cpu"):
         output = Normalization1D(mean=0.0, variance=4.0)(record)
         output = FirFilter(b=np.array([0.25, 0.5, 0.25], dtype=np.float32))(output)
-        output = RandomGaussianNoise1D(factor=(0.1, 0.1), seed=int(rng.integers(0, 2**31 - 1)))(output)
+        output = RandomGaussianNoise1D(factor=(0.1, 0.1), seed=int(rng.integers(0, 2**31 - 1)))(output, training=True)
         return keras.tree.map_structure(keras.ops.convert_to_numpy, output)
 
 
