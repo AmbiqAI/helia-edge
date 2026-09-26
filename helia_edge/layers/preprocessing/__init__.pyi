@@ -11,7 +11,7 @@ from .frequency_mix_style import FrequencyMixStyle2D as FrequencyMixStyle2D
 from .layer_normalization import LayerNormalization1D as LayerNormalization1D
 from .layer_normalization import LayerNormalization2D as LayerNormalization2D
 from .normalization import Normalization1D as Normalization1D
-from .normalization import Normalization2D as Normalization2D
+from .normalization_2d import Normalization2D as Normalization2D
 from .random_augmentation_pipeline import RandomAugmentation1DPipeline as RandomAugmentation1DPipeline
 from .random_augmentation_pipeline import RandomAugmentation2DPipeline as RandomAugmentation2DPipeline
 from .random_background_noises import RandomBackgroundNoises1D as RandomBackgroundNoises1D
@@ -56,3 +56,5 @@ from . import rescaling as rescaling
 from . import sine_wave as sine_wave
 from . import spec_augment as spec_augment
 from . import tf_data_layer as tf_data_layer
+from .sample import Sample as Sample
+from .sample import TensorPayload as TensorPayload

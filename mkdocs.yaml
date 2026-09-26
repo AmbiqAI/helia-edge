@@ -17,6 +17,7 @@ nav:
     - usage/index.md
     - Backend Support: backends.md
     - Generator Sampling: input-pipeline.md
+    - Portable Preprocessing: portable-preprocessing.md
     - Development: development.md
 
   - API: api/

@@ -9,12 +9,12 @@ Classes:
 """
 
 import keras
-from .base_augmentation import BaseAugmentation1D
+from .portable import PortablePreprocessing1D
 from ...utils import parse_factor, helia_export
 
 
 @helia_export(path="helia_edge.layers.preprocessing.RandomGaussianNoise1D")
-class RandomGaussianNoise1D(BaseAugmentation1D):
+class RandomGaussianNoise1D(PortablePreprocessing1D):
     factor: tuple[float, float]
 
     def __init__(self, factor: float | tuple[float, float] = 0.1, **kwargs):
@@ -57,13 +57,20 @@ class RandomGaussianNoise1D(BaseAugmentation1D):
             )
         }
 
+    def _transform(self, samples, training):
+        def augment():
+            transforms = self.get_random_transformations(keras.ops.shape(samples))
+            return self.augment_samples({self.SAMPLES: samples, self.TRANSFORMS: transforms})
+
+        if training is None or training is False:
+            return samples
+        if training is True:
+            return augment()
+        return keras.ops.cond(training, augment, lambda: samples)
+
     def augment_samples(self, inputs) -> keras.KerasTensor:
-        """Augment all samples in the batch as it's faster."""
-        samples = inputs[self.SAMPLES]
-        if self.training:
-            noise = inputs[self.TRANSFORMS]["noise"]
-            return samples + noise
-        return samples
+        """Apply sampled noise; inference bypasses sampling and application."""
+        return inputs[self.SAMPLES] + inputs[self.TRANSFORMS]["noise"]
 
     def get_config(self):
         config = super().get_config()

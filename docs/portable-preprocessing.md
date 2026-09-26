@@ -1,0 +1,100 @@
+# Portable 1D preprocessing
+
+`Normalization1D`, `FirFilter` and `RandomGaussianNoise1D` use public Keras
+operations with either the TensorFlow or PyTorch backend. Importing these layers
+with `KERAS_BACKEND=torch` does not require TensorFlow. Select the backend before
+importing Keras; layers do not reset global state or switch backends.
+
+```python
+import keras
+from helia_edge.layers.preprocessing import Sample, Normalization1D
+
+signal = keras.ops.ones((2, 128, 1), dtype="float32")
+target = keras.ops.zeros((2, 128, 1), dtype="int32")
+valid = keras.ops.ones((2, 128, 1), dtype="bool")
+sample = Sample(signals={"ecg": signal},
+                targets={"segmentation": target}, masks={"valid": valid})
+metadata = {"record_id": "example"}  # retained separately by the caller
+output = Normalization1D(mean=0., variance=4.)(sample.tensor_tree())
+```
+
+`Sample[T]` and `TensorPayload[T]` describe two-level dictionaries of tensor
+leaves. `tensor_tree()` creates new containers referencing the original tensors;
+it does not deep-copy data, transfer devices or validate with Pydantic. The frozen
+dataclass does not make tensor storage immutable. Pass its converted tree to
+Keras, not the dataclass itself. Keep metadata outside the tensor tree.
+
+Each signal is `(T, C)` or `(B, T, C)`, or its `channels_first` counterpart.
+Layers transform every entry in `signals`, cast only signals to their compute
+dtype, and preserve target/mask values and dtypes. These three transforms do not
+change temporal alignment: normalization and FIR affect signals; additive noise
+affects signals only, leaving clean denoising targets unchanged. No geometric
+augmentation or automatic target interpolation is implied. Noise samples are
+independent across separate named signals. Caller dictionaries are not mutated.
+
+Legacy tensor calls and `{"data": x, "labels": y, ...}` dictionaries still work;
+`targets`, `masks` and tensor-only extra fields pass through. Do not mix `data`
+and `signals`. Legacy constructor options `seed`, `auto_vectorize`,
+`data_format`, `device`, and Keras layer options remain accepted. These batched
+transforms do not need per-example vectorization; `auto_vectorize` is retained
+for compatibility. The default device scope remains CPU. The new shared base is
+not `BaseAugmentation1D`; inheritance checks and custom overrides of that old
+base's internal formatting/mapping hooks are not a supported compatibility API.
+Other augmentations and `Normalization2D` remain on their existing TensorFlow
+path; the old `normalization.Normalization2D` import still resolves lazily.
+
+FIR coefficients accept arrays or lists and are included in layer config.
+Filtering retains the existing same-padded cross-correlation convention (it is
+not a promise of SciPy `lfilter` or `filtfilt` equivalence). The same taps operate
+independently on each statically known channel. `forward_backward=True` applies
+that operation, reverses time, applies it again and reverses back. Denominator
+coefficients `a` remain unsupported for execution and raise `NotImplementedError`.
+
+Noise retains the legacy default `training=True`; explicit `training=False` or
+`None` returns signals without drawing randomness. Inference no longer advances
+the noise RNG stream. Existing frozen experiments relying on the previous
+inference side effect need their old version or a declared new RNG policy.
+Equal seeds reproduce a fresh layer's sequence on the same backend; cross-backend
+random bit equality and restoring the exact RNG position after save/load are not
+promised. Use `helia_edge.models.load_model` for fresh-process loading, or import
+the custom classes before calling the Keras loader directly.
+
+## Pipeline integration
+
+With the TensorFlow backend, map the same layer in `tf.data`; no separate adapter
+or blanket leaf casting is required:
+
+```python
+import tensorflow as tf
+layer = Normalization1D(mean=0., variance=4.)
+dataset = tf.data.Dataset.from_tensors(sample.tensor_tree()).map(layer)
+```
+
+Using a Torch-backed object inside a TensorFlow graph is not a supported dispatch
+mode of these portable layers. Use separate backend processes if both are needed.
+There is no global `set_backend` call or private `keras.src` dispatch in this core.
+
+Grain is optional and separately installed. Prefer Grain batches passed to these
+same layers in the consumer. For per-record worker execution, the executable
+`examples/preprocessing/grain_pipeline.py` uses Grain `random_map` RNG to choose a
+seed per record, calls these layers on explicit CPU tensors, and converts outputs
+to arrays. Its `owned_records` helper copies IPC arrays before closing the iterator;
+that copy is explicit and distinct from the reference-preserving sample facade.
+The example constructs small layers per record for clarity, not maximum throughput.
+It creates no persistent worker RNG whose sequence depends on worker count.
+
+## Tested boundary
+
+Local CPU checks use Keras 3.15.1, NumPy 2.3.3, TF 2.21.0/Python 3.12.5 and
+Torch 2.14.0/Python 3.14.7. The optional worker example uses Grain 0.2.18 without
+TensorFlow, with repeatable results for zero and two workers and changed results
+for a changed seed. CI selects the portable tests in both backend jobs; Grain
+checks run only when Grain is installed.
+
+The tested two-level dictionaries work eagerly, as Functional inputs/outputs,
+and through `.keras` save/load. This does not certify arbitrary nesting, `None`
+leaves, ragged tensors, JAX, accelerators or export formats. Normalization/FIR
+pass `tf.function` and Torch Dynamo capture with `backend="eager"`, including
+fullgraph. Stateful noise requires graph breaks on Torch 2.14/Keras 3.15.1;
+`fullgraph=True` fails at Keras seed generation. No Inductor/XLA or performance
+claim is made, and upstream fullgraph RNG/roll limitations are not repaired here.

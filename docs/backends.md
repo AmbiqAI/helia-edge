@@ -36,7 +36,9 @@ Torch environment, install `torch==2.14.0` from
 `https://download.pytorch.org/whl/cpu` before installing the Torch extra.
 
 Portable metrics, TCN construction, EMA quantization and masked-autoencoder
-training have isolated Torch checks. TFDataLayer-based preprocessing,
+training have isolated Torch checks. Normalization1D, FirFilter and
+RandomGaussianNoise1D also support Torch without TensorFlow; see
+[portable preprocessing](portable-preprocessing.md). Other TFDataLayer-based preprocessing,
 generator-to-tf.data utilities, contrastive training, TFLite/LiteRT conversion and FLOP profiling remain
 TensorFlow-specific at this milestone. Backend availability does not certify every
 model, trainer, precision, compiled/distributed configuration or export format.
