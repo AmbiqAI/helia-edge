@@ -96,6 +96,7 @@ include = ["helia_edge", "helia_edge.*"]
 
 [tool.setuptools.package-data]
 "*" = ["*.pyi", "py.typed"]
+"helia_edge.models" = ["licenses/*.txt"]
 
 [tool.ruff]
 line-length = 120

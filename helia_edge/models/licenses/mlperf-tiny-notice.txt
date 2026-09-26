@@ -1,0 +1,18 @@
+MLPerf Tiny architecture adaptations
+
+Derived from MLCommons Tiny, pinned revision4addd0fa08d216e20637637874e084895f289da4:
+https://github.com/mlcommons/tiny/tree/4addd0fa08d216e20637637874e084895f289da4/benchmark/training
+Apache License2.0 (mlperf-tiny-apache.txt).
+
+The visual wake words source credits Silicon Labs mobilenet_v1_eembc.py:
+https://github.com/SiliconLabs/platform_ml_models/blob/master/eembc/Person_detection/mobilenet_v1_eembc.py
+The image classification source credits CIFAR10_ResNetv1 from EEMBC.
+
+The anomaly detector source is Copyright (c)2020 Hitachi,Ltd.
+Authors: Toshiki Nakamura,Yuki Nikaido,and Yohei Kawaguchi.
+MIT License (mlperf-tiny-hitachi-mit.txt).
+
+Modifications: Keras3-compatible constructors, explicit layer names, fixed captured
+input/output dimensions, ResNet conv_filters28, and KWS pool25x5 per saved-model
+configuration. Dataset/training/compilation/download code omitted. No official
+trained model weights or benchmark accuracy are distributed by these constructors.

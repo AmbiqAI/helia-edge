@@ -23,6 +23,7 @@ nav:
 
   - Guides:
     - guides/index.md
+    - MLPerf Tiny Architectures: mlperf-tiny.md
     - Custom Model Architecture: ./guides/custom-model-architecture.ipynb
     - Train CIFAR10 Model: ./guides/train-cifar-model.ipynb
 
