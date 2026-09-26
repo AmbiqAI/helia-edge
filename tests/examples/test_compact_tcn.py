@@ -173,5 +173,66 @@ def test_emitted_graph_detects_builder_dilation_regression(tmp_path, monkeypatch
         return build(changed, width)
 
     monkeypatch.setattr(fixture, "build_model", wrong_builder)
-    with pytest.raises(ValueError, match="Export violates compact TCN preset"):
+    with pytest.raises(ValueError, match="violates compact TCN preset"):
         fixture.generate(RECIPE, tmp_path / "wrong-builder")
+
+
+@pytest.mark.parametrize("mutation", ["se_pool", "se_multiply", "pointwise", "logits", "residual"])
+def test_generation_rejects_actual_builder_regression_before_conversion(tmp_path, monkeypatch, mutation):
+    model, config = fixture.build_model(fixture.read_recipe(RECIPE), 8)
+
+    def clone(layer):
+        options = layer.get_config()
+        if mutation == "se_pool" and layer.name == "B1_SE_pool":
+            return keras.layers.GlobalMaxPooling2D(keepdims=True, name=layer.name)
+        if mutation == "se_multiply" and layer.name == "B1_SE_ex.mul":
+            return keras.layers.Lambda(lambda x: x[0], name=layer.name)
+        if mutation == "residual" and layer.name == "B2_ADD":
+            return keras.layers.Lambda(lambda x: x[0], name=layer.name)
+        if mutation == "pointwise" and layer.name == "B1_D1_PW_B1_CN":
+            options["kernel_size"] = (1, 3)
+        if mutation == "logits" and layer.name == "NECK_conv":
+            options["activation"] = "softmax"
+        return type(layer).from_config(options)
+
+    wrong = keras.models.clone_model(model, clone_function=clone)
+    monkeypatch.setattr(fixture, "build_model", lambda recipe, width: (wrong, config))
+
+    def must_not_convert(*args, **kwargs):
+        raise RuntimeError("invalid model reached conversion")
+
+    monkeypatch.setattr(fixture, "LiteRTKerasConverter", must_not_convert)
+    with pytest.raises(ValueError, match="preset"):
+        fixture.generate(RECIPE, tmp_path / mutation)
+
+
+def test_int8_validator_rejects_non_int8_operand_without_export(exported):
+    import flatbuffers
+    schema = fixture.schema
+    retained = exported / "tcn-w8-int8.tflite"
+    model = schema.ModelT.InitFromObj(schema.Model.GetRootAsModel(retained.read_bytes(), 0))
+    model.subgraphs[0].tensors[model.subgraphs[0].inputs[0]].type = schema.TensorType.UINT8
+    builder = flatbuffers.Builder(0)
+    builder.Finish(model.Pack(builder), file_identifier=b"TFL3")
+    with pytest.raises(ValueError, match="operand dtype"):
+        fixture.graph_info(bytes(builder.Output()), "INT8")
+
+
+@pytest.mark.parametrize("width", [8, 16])
+def test_production_guard_accepts_preset_and_template_filters_are_overridden(width):
+    recipe = fixture.read_recipe(RECIPE)
+    original, _ = fixture.build_model(recipe, width)
+    fixture.validate_model(original, width)
+    for block in recipe["tcn"]["blocks"]:
+        block["filters"] = 123
+    changed, config = fixture.build_model(recipe, width)
+    fixture.validate_model(changed, width)
+    assert all(block["filters"] == width for block in config["blocks"])
+    assert [fixture.array_hash(w) for w in original.get_weights()] == [fixture.array_hash(w) for w in changed.get_weights()]
+
+
+def test_retained_license_metadata_matches_copied_source(tmp_path):
+    metadata = fixture.retain_license(tmp_path)
+    assert metadata["source_spdx"] == "BSD-3-Clause"
+    assert metadata["sha256"] == fixture.sha256((ROOT / "LICENSE").read_bytes())
+    assert (tmp_path / metadata["file"]).read_bytes() == (ROOT / "LICENSE").read_bytes()

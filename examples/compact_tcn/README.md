@@ -74,3 +74,15 @@ To reuse a retained generation during local tests, set `HELIA_TCN_FIXTURE` to it
 absolute directory. Tests check topology and seeded weights, malformed recipes,
 rounding/saturation, full golden replay, corruption rejection, float-fallback
 rejection, and detection of an intentionally wrong dilation or golden output.
+
+Before conversion, the generator validates the connected Keras preset, including
+SE pooling/gates, residual paths, pointwise kernels and linear output. Export
+operands must be FLOAT32/INT32 for FP32 or INT8/INT32 for INT8. Recipe block
+`filters` are template values: each selected width replaces all four before
+construction, and the effective values are retained in the per-width config.
+
+New fixture directories retain `LICENSE` and explicit BSD-3-Clause source and
+synthetic-weight provenance in the manifest. Dependency versions are recorded
+for reproducibility; this is not a dependency-license audit. Existing immutable
+packages keep their original manifests. NPZ file hashes identify retained bytes;
+array hashes identify dtype, shape and data independently of archive metadata.

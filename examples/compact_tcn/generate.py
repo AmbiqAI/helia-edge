@@ -7,6 +7,7 @@ import importlib.metadata
 import json
 from pathlib import Path
 import platform
+import shutil
 import subprocess
 
 import keras
@@ -81,6 +82,69 @@ def build_model(recipe, width):
     if model.output_shape != (1, 240, 2):
         raise ValueError(f"Unexpected output shape {model.output_shape}")
     return model, params.model_dump(mode="json")
+
+
+def validate_model(model, width):
+    """Require the bounded preset's connected source graph before conversion."""
+    fields = {
+        "InputLayer": ("batch_shape",),
+        "Reshape": ("target_shape",),
+        "DepthwiseConv2D": ("kernel_size", "strides", "padding", "dilation_rate", "depth_multiplier", "use_bias", "activation", "data_format"),
+        "Conv2D": ("filters", "kernel_size", "strides", "padding", "dilation_rate", "use_bias", "activation", "data_format"),
+        "BatchNormalization": ("axis", "momentum", "epsilon"),
+        "Activation": ("activation",),
+        "GlobalAveragePooling2D": ("keepdims", "data_format"),
+        "Multiply": (), "Add": (),
+    }
+
+    def node(kind, values, *inputs):
+        return kind, json.dumps(values, sort_keys=True), inputs
+
+    def conv(x, filters, padding="same", bias=False):
+        return node("Conv2D", [filters, [1, 1], [1, 1], padding, [1, 1], bias, "linear", "channels_last"], x)
+
+    def act(x, activation):
+        return node("Activation", [activation], x)
+
+    def bn(x):
+        return node("BatchNormalization", [-1, 0.99, 0.001], x)
+
+    x = node("InputLayer", [[1, 240, 14]])
+    x = node("Reshape", [[1, 240, 14]], x)
+    for stage in range(4):
+        skip = x
+        x = node("DepthwiseConv2D", [[1, 3], [1, 1], "same", [1, 2**stage], 1, False, "linear", "channels_last"], x)
+        x = act(bn(x), "relu6")
+        x = act(bn(conv(x, width)), "relu6")
+        pooled = node("GlobalAveragePooling2D", [True, "channels_last"], x)
+        gate = act(conv(act(conv(pooled, width // 4, "valid", True), "relu6"), width, "valid", True), "hard_sigmoid")
+        x = node("Multiply", [], x, gate)
+        if stage:
+            x = node("Add", [], x, skip)
+    expected = node("Reshape", [[240, 2]], conv(x, 2, bias=True))
+    seen = set()
+
+    def actual(tensor):
+        layer = tensor._keras_history.operation
+        kind = type(layer).__name__
+        if kind not in fields or layer.compute_dtype != "float32":
+            raise ValueError("Source violates compact TCN preset layer/dtype")
+        seen.add(layer.name)
+        config = layer.get_config()
+        inputs = [] if kind == "InputLayer" else layer._inbound_nodes[0].input_tensors
+        return node(kind, [config[key] for key in fields[kind]], *(actual(t) for t in inputs))
+
+    if width not in (8, 16) or len(model.outputs) != 1 or actual(model.output) != expected or len(seen) != len(model.layers):
+        raise ValueError("Source violates compact TCN preset topology/semantics")
+
+
+def retain_license(output):
+    """Retain source/fixture licensing; dependency versions are not a license audit."""
+    source = Path(__file__).resolve().parents[2] / "LICENSE"
+    shutil.copyfile(source, output / "LICENSE")
+    return {"source_spdx": "BSD-3-Clause", "file": "LICENSE", "sha256": sha256(source.read_bytes()),
+            "weights": "synthetic seeded initialization; no third-party trained weights",
+            "dependencies": "versions recorded separately; dependency license audit not provided"}
 
 
 def fixture_inputs(recipe):
@@ -160,8 +224,9 @@ def graph_info(content, precision):
         if (options["dilation"] != [1, 2**index] or options["stride"] != [1, 1]
                 or options["padding"] != schema.Padding.SAME or kernel[1:3] != [1, 3]):
             raise ValueError("Export violates compact TCN preset kernel/dilation/stride/padding")
-    if precision == "INT8" and any(t["dtype"].startswith("FLOAT") for t in tensors):
-        raise ValueError("Fully INT8 export contains floating-point tensors")
+    allowed = {"INT8", "INT32"} if precision == "INT8" else {"FLOAT32", "INT32"}
+    if precision not in {"INT8", "FP32"} or any(t["dtype"] not in allowed for t in tensors):
+        raise ValueError("Unexpected operand dtype (including floating-point in INT8 export)")
     return {"tensors": tensors, "operators": operators,
             "compute_contract": "INT8 activations/weights with integer bias/shape operands" if precision == "INT8"
             else "FP32 data operands with integer shape operands",
@@ -209,7 +274,7 @@ def generate(recipe_path, output):
     np.save(output / "held_out.npy", inputs, allow_pickle=False)
     manifest = {"schema_version": 1, "kind": "synthetic performance fixture; no trained task-quality claim",
                 "state": "stateless same-padding whole windows; no streaming claim",
-                "source": provenance(),
+                "source": provenance(), "license": retain_license(output),
                 "recipe_input": {"path": str(recipe_path.resolve()), "sha256": sha256(recipe_path.read_bytes())},
                 "recipe_sha256": sha256((output / "recipe.json").read_bytes()),
                 "calibration_sample_hashes": list(map(array_hash, calibration)),
@@ -219,6 +284,7 @@ def generate(recipe_path, output):
                            "resolver": "BUILTIN_REF", "threads": 1}, "exports": []}
     for width in recipe["widths"]:
         model, config = build_model(recipe, width)
+        validate_model(model, width)
         weights = model.get_weights()
         weight_hashes = list(map(array_hash, weights))
         np.savez(output / f"w{width}-weights.npz", **{f"weight_{i}": w for i, w in enumerate(weights)})
