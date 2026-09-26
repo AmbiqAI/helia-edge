@@ -1,0 +1,90 @@
+{
+  "revision": "4addd0fa08d216e20637637874e084895f289da4",
+  "files": [
+    {
+      "path": "LICENSE.md",
+      "url": "https://raw.githubusercontent.com/mlcommons/tiny/4addd0fa08d216e20637637874e084895f289da4/LICENSE.md",
+      "sha256": "0d542e0c8804e39aa7f37eb00da5a762149dc682d7829451287e11b938e94594"
+    },
+    {
+      "path": "benchmark/training/anomaly_detection/LICENSE",
+      "url": "https://raw.githubusercontent.com/mlcommons/tiny/4addd0fa08d216e20637637874e084895f289da4/benchmark/training/anomaly_detection/LICENSE",
+      "sha256": "0f8a66094ba89816073810e65a86366fa962a61b8d474c8a4bbec7d7ac6fe3db"
+    },
+    {
+      "path": "benchmark/training/anomaly_detection/keras_model.py",
+      "url": "https://raw.githubusercontent.com/mlcommons/tiny/4addd0fa08d216e20637637874e084895f289da4/benchmark/training/anomaly_detection/keras_model.py",
+      "sha256": "261eb19019522a0aed6bde1a9528165e0cb69395625b4073544a30878b8563a4"
+    },
+    {
+      "path": "benchmark/training/image_classification/keras_model.py",
+      "url": "https://raw.githubusercontent.com/mlcommons/tiny/4addd0fa08d216e20637637874e084895f289da4/benchmark/training/image_classification/keras_model.py",
+      "sha256": "52a7564de25828abba7aa4aa785f1355513ad86079bad1ef9f26167073791f45"
+    },
+    {
+      "path": "benchmark/training/keyword_spotting/keras_model.py",
+      "url": "https://raw.githubusercontent.com/mlcommons/tiny/4addd0fa08d216e20637637874e084895f289da4/benchmark/training/keyword_spotting/keras_model.py",
+      "sha256": "0e0a1309cd179b5c235beb31c63c168ac74196fa378de0ed8aba7197826c697d"
+    },
+    {
+      "path": "benchmark/training/visual_wake_words/vww_model.py",
+      "url": "https://raw.githubusercontent.com/mlcommons/tiny/4addd0fa08d216e20637637874e084895f289da4/benchmark/training/visual_wake_words/vww_model.py",
+      "sha256": "4d2889b23701c723536279cb77ea1c9ef92a437d61c1ea331028e2b0a1e3c652"
+    }
+  ],
+  "artifacts": [
+    {
+      "path": "benchmark/training/keyword_spotting/trained_models/kws_ref_model.tflite",
+      "url": "https://raw.githubusercontent.com/mlcommons/tiny/4addd0fa08d216e20637637874e084895f289da4/benchmark/training/keyword_spotting/trained_models/kws_ref_model.tflite",
+      "sha256": "aeea436800704fce17b17292e4412630ad856e9d777c044c64ef748a880bd0ae",
+      "bytes": 53936
+    },
+    {
+      "path": "benchmark/training/keyword_spotting/trained_models/kws_ref_model/saved_model.pb",
+      "url": "https://raw.githubusercontent.com/mlcommons/tiny/4addd0fa08d216e20637637874e084895f289da4/benchmark/training/keyword_spotting/trained_models/kws_ref_model/saved_model.pb",
+      "sha256": "80665dd19eeb03d1152fdc098b5635261731b23478d09f6ff2166da799f98138",
+      "bytes": 819446
+    },
+    {
+      "path": "benchmark/training/image_classification/trained_models/pretrainedResnet.h5",
+      "url": "https://raw.githubusercontent.com/mlcommons/tiny/4addd0fa08d216e20637637874e084895f289da4/benchmark/training/image_classification/trained_models/pretrainedResnet.h5",
+      "sha256": "5f938a8eea605438cc7360aa13c987bc6d7bd0c8d931b2917361ae7ae4eeda2f",
+      "bytes": 1116712
+    },
+    {
+      "path": "benchmark/training/image_classification/trained_models/pretrainedResnet_quant.tflite",
+      "url": "https://raw.githubusercontent.com/mlcommons/tiny/4addd0fa08d216e20637637874e084895f289da4/benchmark/training/image_classification/trained_models/pretrainedResnet_quant.tflite",
+      "sha256": "3c002613d1b2475eb51dd78dfb85a546c8ae658dee71cf6ade43b022fe205415",
+      "bytes": 98496
+    },
+    {
+      "path": "benchmark/training/visual_wake_words/trained_models/vww_96.h5",
+      "url": "https://raw.githubusercontent.com/mlcommons/tiny/4addd0fa08d216e20637637874e084895f289da4/benchmark/training/visual_wake_words/trained_models/vww_96.h5",
+      "sha256": "af9111d50e6e85b2f2123345e0316ef1c384865ebf6b06340ddac7e66017450f",
+      "bytes": 3124024
+    },
+    {
+      "path": "benchmark/training/visual_wake_words/trained_models/vww_96_int8.tflite",
+      "url": "https://raw.githubusercontent.com/mlcommons/tiny/4addd0fa08d216e20637637874e084895f289da4/benchmark/training/visual_wake_words/trained_models/vww_96_int8.tflite",
+      "sha256": "597a384c8c2c8a1276f04702f25013b7838f2f814f1ca7c174d295b73e3d6b7b",
+      "bytes": 333288
+    },
+    {
+      "path": "benchmark/training/anomaly_detection/trained_models/ad01.h5",
+      "url": "https://raw.githubusercontent.com/mlcommons/tiny/4addd0fa08d216e20637637874e084895f289da4/benchmark/training/anomaly_detection/trained_models/ad01.h5",
+      "sha256": "651a62de1b7facd68d1269373992a2d09ffd28e6a816935d4834fcc558bde512",
+      "bytes": 3411016
+    },
+    {
+      "path": "benchmark/training/anomaly_detection/trained_models/ad01_int8.tflite",
+      "url": "https://raw.githubusercontent.com/mlcommons/tiny/4addd0fa08d216e20637637874e084895f289da4/benchmark/training/anomaly_detection/trained_models/ad01_int8.tflite",
+      "sha256": "87cf24194ef93d1d9b11a591d805526b98008e351655d29883c825c9c106ba24",
+      "bytes": 276976
+    }
+  ],
+  "capture_corpus": {
+    "revision": "a5c3073ee55a9afd413430b1191adfea658ae009",
+    "graphs_sha256": "b76051dea25d1e1819e718faa9e2b7c12d21306727e71411a8cc1adf2c4541e2"
+  },
+  "resnet_resolution": "Source resnet_v1_eembc(conv_filters=28); current upstream16/40trained artifacts do not match captured28graph. Training-run lineage unknown; architecture matched independently."
+}
