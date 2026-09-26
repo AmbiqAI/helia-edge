@@ -334,6 +334,20 @@ def generate(recipe_path, output):
     return manifest
 
 
+def validate_golden(array, detail, samples, label):
+    """Validate retained tensor metadata before passing bytes to the oracle."""
+    if array.dtype != np.dtype(detail["dtype"]):
+        raise ValueError(f"Golden {label} dtype differs from interpreter contract")
+    expected_shape = (samples, *detail["shape"].tolist()[1:])
+    if detail["shape"][0] != 1 or array.shape != expected_shape:
+        raise ValueError(f"Golden {label} shape differs from interpreter contract")
+
+
+def assert_raw_equal(actual, expected, label):
+    if actual.dtype != expected.dtype or actual.shape != expected.shape or actual.tobytes(order="C") != expected.tobytes(order="C"):
+        raise AssertionError(f"Golden {label} raw bytes differ from reference")
+
+
 def verify(output):
     """Check retained bytes and replay every full-output golden with the recorded oracle."""
     manifest = json.loads((output / "manifest.json").read_text())
@@ -379,9 +393,11 @@ def verify(output):
         if hashes != export["weight_array_hashes"]:
             raise ValueError("Weight hash mismatch")
         with np.load(output / export["goldens"], allow_pickle=False) as data:
-            np.testing.assert_array_equal(data["inputs"], quantize(held_out, inp))
+            validate_golden(data["inputs"], inp, len(held_out), "inputs")
+            validate_golden(data["outputs"], out, len(held_out), "outputs")
+            assert_raw_equal(data["inputs"], quantize(held_out, inp), "inputs")
             actual = infer(interpreter, data["inputs"])
-            np.testing.assert_array_equal(actual, data["outputs"])
+            assert_raw_equal(actual, data["outputs"], "outputs")
     return manifest
 
 

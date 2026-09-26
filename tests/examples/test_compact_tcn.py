@@ -236,3 +236,32 @@ def test_retained_license_metadata_matches_copied_source(tmp_path):
     assert metadata["source_spdx"] == "BSD-3-Clause"
     assert metadata["sha256"] == fixture.sha256((ROOT / "LICENSE").read_bytes())
     assert (tmp_path / metadata["file"]).read_bytes() == (ROOT / "LICENSE").read_bytes()
+
+
+@pytest.mark.parametrize("mutation", ["output_dtype", "input_dtype", "output_shape", "input_shape", "signed_zero"])
+def test_replay_enforces_tensor_contract_and_raw_bytes(exported, tmp_path, mutation):
+    output = tmp_path / mutation
+    shutil.copytree(exported, output)
+    name = "tcn-w8-fp32-goldens.npz" if mutation == "signed_zero" else "tcn-w8-int8-goldens.npz"
+    with np.load(output / name) as arrays:
+        inputs, outputs = arrays["inputs"].copy(), arrays["outputs"].copy()
+    if mutation == "output_dtype":
+        outputs = outputs.astype(np.float32)
+    elif mutation == "input_dtype":
+        inputs = inputs.astype(np.float32)
+    elif mutation == "output_shape":
+        outputs = outputs.reshape(outputs.shape[0], -1)
+    elif mutation == "input_shape":
+        inputs = inputs.reshape(inputs.shape[0], -1)
+    else:
+        index = np.flatnonzero(outputs == 0)[0]
+        outputs.flat[index] = -outputs.flat[index]
+    np.savez(output / name, inputs=inputs, outputs=outputs)
+    manifest_path = output / "manifest.json"
+    manifest = json.loads(manifest_path.read_text())
+    manifest["files"][name] = fixture.sha256((output / name).read_bytes())
+    fixture.write_json(manifest_path, manifest)
+    error = AssertionError if mutation == "signed_zero" else ValueError
+    match = "raw bytes" if mutation == "signed_zero" else "Golden .* (dtype|shape)"
+    with pytest.raises(error, match=match):
+        fixture.verify(output)
