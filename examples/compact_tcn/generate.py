@@ -59,6 +59,13 @@ def read_recipe(path):
             raise ValueError("Expected ReLU6, expansion 1 and no dropout")
     if not params.include_top or not params.use_logits or params.output_activation is not None:
         raise ValueError("Output must retain per-point logits")
+    if recipe["seed"] != 20260925:
+        raise ValueError("The compact TCN preset requires seed 20260925")
+    if params.input_kernel is not None or params.input_norm != "batch" or params.output_kernel != (1, 1):
+        raise ValueError("The compact TCN preset requires no input convolution and a 1x1 output kernel")
+    for index, block in enumerate(params.blocks):
+        if block.kernel != (1, 3) or block.dilation != (1, 2**index):
+            raise ValueError("The compact TCN preset requires 1x3 kernels and dilations 1/2/4/8")
     return recipe
 
 
@@ -131,10 +138,28 @@ def graph_info(content, precision):
         opcode = max(code.BuiltinCode(), code.DeprecatedBuiltinCode())
         inputs = [int(x) for x in op.InputsAsNumpy() if x >= 0]
         outputs = [int(x) for x in op.OutputsAsNumpy() if x >= 0]
-        operators.append({"name": op_names[opcode], "version": code.Version(),
+        spatial = None
+        if opcode in (schema.BuiltinOperator.DEPTHWISE_CONV_2D, schema.BuiltinOperator.CONV_2D):
+            options = schema.DepthwiseConv2DOptions() if opcode == schema.BuiltinOperator.DEPTHWISE_CONV_2D \
+                else schema.Conv2DOptions()
+            raw_options = op.BuiltinOptions()
+            options.Init(raw_options.Bytes, raw_options.Pos)
+            spatial = {"dilation": [options.DilationHFactor(), options.DilationWFactor()],
+                       "stride": [options.StrideH(), options.StrideW()],
+                       "padding": options.Padding(), "fused_activation": options.FusedActivationFunction()}
+        operators.append({"name": op_names[opcode], "version": code.Version(), "spatial_options": spatial,
                           "inputs": inputs, "outputs": outputs,
                           "input_dtypes": [tensors[x]["dtype"] for x in inputs],
                           "output_dtypes": [tensors[x]["dtype"] for x in outputs]})
+    depthwise = [op for op in operators if op["name"] == "DEPTHWISE_CONV_2D"]
+    if len(depthwise) != 4:
+        raise ValueError("Export violates compact TCN preset: expected four depthwise stages")
+    for index, op in enumerate(depthwise):
+        options = op["spatial_options"]
+        kernel = tensors[op["inputs"][1]]["shape"]
+        if (options["dilation"] != [1, 2**index] or options["stride"] != [1, 1]
+                or options["padding"] != schema.Padding.SAME or kernel[1:3] != [1, 3]):
+            raise ValueError("Export violates compact TCN preset kernel/dilation/stride/padding")
     if precision == "INT8" and any(t["dtype"].startswith("FLOAT") for t in tensors):
         raise ValueError("Fully INT8 export contains floating-point tensors")
     return {"tensors": tensors, "operators": operators,
@@ -184,7 +209,9 @@ def generate(recipe_path, output):
     np.save(output / "held_out.npy", inputs, allow_pickle=False)
     manifest = {"schema_version": 1, "kind": "synthetic performance fixture; no trained task-quality claim",
                 "state": "stateless same-padding whole windows; no streaming claim",
-                "source": provenance(), "recipe_sha256": sha256((output / "recipe.json").read_bytes()),
+                "source": provenance(),
+                "recipe_input": {"path": str(recipe_path.resolve()), "sha256": sha256(recipe_path.read_bytes())},
+                "recipe_sha256": sha256((output / "recipe.json").read_bytes()),
                 "calibration_sample_hashes": list(map(array_hash, calibration)),
                 "held_out_sample_hashes": list(map(array_hash, inputs)),
                 "golden_cases": ["zero", "negative_unit_limit", "positive_unit_limit", "deterministic_signal"],
@@ -255,6 +282,7 @@ def verify(output):
         raise ValueError("Expected four distinct width/precision exports")
     if sha256((output / "recipe.json").read_bytes()) != manifest["recipe_sha256"]:
         raise ValueError("Recipe hash mismatch")
+    recipe = read_recipe(output / "recipe.json")
     calibration = np.load(output / "calibration.npy", allow_pickle=False)
     held_out = np.load(output / "held_out.npy", allow_pickle=False)
     cal_hashes, held_hashes = list(map(array_hash, calibration)), list(map(array_hash, held_out))
@@ -266,6 +294,12 @@ def verify(output):
         content = (output / export["model"]).read_bytes()
         if sha256(content) != export["model_sha256"]:
             raise ValueError("Model hash mismatch")
+        expected_config = copy.deepcopy(recipe["tcn"])
+        for block in expected_config["blocks"]:
+            block["filters"] = export["width"]
+        expected_config = TcnParams.model_validate(expected_config).model_dump(mode="json")
+        if json.loads((output / export["config"]).read_text()) != expected_config:
+            raise ValueError("Export configuration differs from recipe")
         graph = graph_info(content, export["precision"])
         if graph != json.loads((output / export["graph"]).read_text()):
             raise ValueError("Graph metadata mismatch")

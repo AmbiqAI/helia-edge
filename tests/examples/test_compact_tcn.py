@@ -139,3 +139,39 @@ def test_replay_detects_changed_golden_even_with_updated_file_hash(exported, tmp
     fixture.write_json(manifest_path, manifest)
     with pytest.raises(AssertionError):
         fixture.verify(copy_path)
+
+
+@pytest.mark.parametrize("change", ["dilation", "kernel", "output_kernel", "input_kernel", "input_norm", "seed"])
+def test_generation_rejects_changed_named_preset(tmp_path, change):
+    recipe = json.loads(RECIPE.read_text())
+    if change == "dilation":
+        recipe["tcn"]["blocks"][3]["dilation"] = [1, 1]
+    elif change == "kernel":
+        recipe["tcn"]["blocks"][0]["kernel"] = [1, 5]
+    elif change == "output_kernel":
+        recipe["tcn"]["output_kernel"] = [1, 3]
+    elif change == "input_kernel":
+        recipe["tcn"]["input_kernel"] = [1, 3]
+    elif change == "input_norm":
+        recipe["tcn"]["input_norm"] = "layer"
+    else:
+        recipe["seed"] = 42
+    path = tmp_path / "wrong-recipe.json"
+    path.write_text(json.dumps(recipe))
+    output = tmp_path / "exports"
+    with pytest.raises(ValueError, match="preset"):
+        fixture.generate(path, output)
+    assert not output.exists()
+
+
+def test_emitted_graph_detects_builder_dilation_regression(tmp_path, monkeypatch):
+    build = fixture.build_model
+
+    def wrong_builder(recipe, width):
+        changed = json.loads(json.dumps(recipe))
+        changed["tcn"]["blocks"][3]["dilation"] = [1, 1]
+        return build(changed, width)
+
+    monkeypatch.setattr(fixture, "build_model", wrong_builder)
+    with pytest.raises(ValueError, match="Export violates compact TCN preset"):
+        fixture.generate(RECIPE, tmp_path / "wrong-builder")

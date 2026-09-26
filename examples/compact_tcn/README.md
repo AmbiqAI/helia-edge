@@ -4,6 +4,10 @@ This example produces **synthetic, untrained performance fixtures**, not task-qu
 models. It reuses `TcnModel` with four small depthwise/pointwise blocks, batch
 normalization and ReLU6, dilations 1/2/4/8, SE ratio 4, and widths 8 and 16.
 `recipe.json` records the per-stage kernel/dilation controls and all builder defaults.
+The CLI validates this bounded preset, including seed and topology; it rejects
+altered kernels/dilations instead of labeling them as this fixture. The underlying
+TcnModel remains configurable for other applications. Calibration sample count
+may be changed within the validated range; this example defaults to 32.
 The width variants replace every block's `filters` field. Inputs are `[1,240,14]`;
 outputs are `[1,240,2]` logits. Same padding and global SE pooling require whole
 windows: there is no causal/streaming or recurrent-state claim.
@@ -27,7 +31,9 @@ One seeded Keras weight lineage per width supplies FP32 and fully INT8 exports
 (four models total). Conversion uses the existing strict concrete-function path
 so dilation is retained without relying on filename claims. Graph reports contain
 actual operator names/versions, operand types, constant types and quantization.
-INT8 graphs containing any floating-point tensor are rejected. Integer bias and
+Emitted depthwise kernel/dilation/stride/padding options are checked independently
+of the recipe during generation and replay. INT8 graphs containing any
+floating-point tensor are rejected. Integer bias and
 shape tensors remain integer; target accumulator precision and optimized kernel
 dispatch are not inferred from graph types. This example does not export FP16 or
 A16W8 and makes no native FP16 claim.
@@ -43,7 +49,7 @@ Keras at `rtol=1e-5, atol=1e-5`. INT8 goldens are not FP32 outputs cast to integ
 no quantized task accuracy or error budget is asserted.
 
 The manifest records source-file hashes, Git head, Python and installed dependency
-versions plus a dependency-list hash, recipe/configuration, seed, weight-array
+versions plus a dependency-list hash, the actual input-recipe path/raw hash and normalized recipe/configuration, seed, weight-array
 hashes, artifact byte hashes, I/O quantization and graph reports. Retained weight
 archives allow exact array restoration with `model.set_weights`; preserve the
 recorded environment to reproduce conversion. A seed alone does not guarantee
