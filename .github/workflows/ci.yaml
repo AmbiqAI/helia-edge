@@ -100,6 +100,7 @@ jobs:
         run: >-
           uv run --no-sync pytest -q tests/test_import_isolation.py tests/test_serialization.py
           tests/metrics tests/layers/test_ema_residual_vector_quantizer.py tests/test_optional_dependencies.py tests/utils/test_rng.py tests/trainers
+          tests/models/test_mlperf_tiny.py
       - run: >-
           uv run --no-sync python tests/trainers/mae_parity_fixture.py
           --output '${{ runner.temp }}/mae-evidence.npz'
