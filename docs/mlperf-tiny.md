@@ -24,7 +24,8 @@ model = mlperf_tiny_kws()
 | `mlperf_tiny_resnet` | 32×32×3 RGB | 10 probabilities | Reduced three-stack ResNet28/56/112; nine convolutions, three residual additions; 8×8 pool |
 | `mlperf_tiny_ad` | 640 features | 640 linear reconstructions | Dense128×4 → 8 → 128×4 → 640; BN/ReLU on every hidden layer |
 
-All convolutions use the reference's SAME padding and biases. Activations are
+Spatial constructors explicitly use channels-last, independent of the global Keras
+image layout setting. All convolutions use the reference's SAME padding and biases. Activations are
 ordinary ReLU, not ReLU6. Batch normalization retains momentum0.99/epsilon0.001.
 KWS retains dropout0.2 and0.4; inference disables it. VWW has no dropout. ResNet
 projection shortcuts have no normalization, and the second main-path convolution
@@ -87,6 +88,12 @@ zero/signal input arrays, complete LiteRT outputs and Keras reference outputs,
 source/seed/dependency identities, licenses and hashes. LiteRT BUILTIN_REF runs
 single-thread without delegates; exported FP32 outputs must match Keras with
 `rtol=1e-5, atol=1e-5`. Seed alone is not a cross-version byte identity guarantee.
+To make initialized KWS/VWW models numerically discriminating, the helper increases
+the synthetic signal amplitude by powers of ten until its output differs from the
+zero case by at least0.01. It records the amplitude and fails if no finite signal
+qualifies. These diagnostic inputs are not representative task data; weights and
+architecture remain unchanged. Tests reject a converter returning the same output
+for both cases.
 The helper uses the TensorFlow backend; the constructors use ordinary Keras APIs.
 No calibration/training campaign or extra precision matrix is implicit.
 

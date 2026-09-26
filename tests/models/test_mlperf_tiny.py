@@ -99,3 +99,13 @@ def test_reference_check_rejects_plausible_architecture_mutations(name, kind):
     mutant = keras.models.clone_model(original, clone_function=clone)
     with pytest.raises(AssertionError):
         assert_reference_architecture(mutant, name)
+
+
+@pytest.mark.parametrize("name", ["kws", "vww", "resnet"])
+def test_fixed_hwc_contract_ignores_global_channel_layout(name):
+    previous = keras.config.image_data_format()
+    try:
+        keras.config.set_image_data_format("channels_first")
+        assert_reference_architecture(BUILDERS[name](), name)
+    finally:
+        keras.config.set_image_data_format(previous)

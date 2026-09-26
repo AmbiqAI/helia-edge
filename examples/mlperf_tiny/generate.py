@@ -23,6 +23,27 @@ def digest(path):
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
+def diagnostic_cases(model):
+    """Amplify synthetic inputs until initialized outputs expose signal propagation."""
+    shape = tuple(model.input_shape[1:])
+    signal = np.sin(np.arange(np.prod(shape), dtype=np.float32) * np.float32(0.03125)).reshape(shape)
+    zero = np.zeros(shape, np.float32)
+    baseline = model(zero[None], training=False).numpy()[0]
+    for exponent in range(25):
+        amplitude = float(10**exponent)
+        inputs = np.stack([zero, signal * np.float32(amplitude)])
+        expected = np.stack([baseline, model(inputs[1:2], training=False).numpy()[0]])
+        if np.isfinite(expected).all() and np.max(np.abs(expected[1] - baseline)) >= 0.01:
+            return inputs, expected, amplitude
+    raise ValueError("Initialized model has no numerically discriminating diagnostic signal")
+
+
+def check_outputs(actual, expected):
+    if not np.isfinite(expected).all() or np.max(np.abs(expected[1] - expected[0])) < 0.01:
+        raise ValueError("Reference cases cannot reject an input-independent output")
+    np.testing.assert_allclose(actual, expected, rtol=1e-5, atol=1e-5)
+
+
 def generate(name, output, seed=20260926):
     if keras.backend.backend() != "tensorflow":
         raise ValueError("FP32 export requires the TensorFlow Keras backend")
@@ -34,10 +55,7 @@ def generate(name, output, seed=20260926):
     keras.backend.clear_session()
     keras.utils.set_random_seed(seed)
     model = BUILDERS[name]()
-    shape = tuple(model.input_shape[1:])
-    signal = np.sin(np.arange(np.prod(shape), dtype=np.float32) * np.float32(0.03125)).reshape(shape)
-    inputs = np.stack([np.zeros(shape, np.float32), signal])
-    expected = np.concatenate([model(x[None], training=False).numpy() for x in inputs])
+    inputs, expected, amplitude = diagnostic_cases(model)
     model.save(output / "model.keras")
     (output / "config.json").write_text(model.to_json(indent=2) + "\n")
     converter = LiteRTKerasConverter(model)
@@ -58,7 +76,7 @@ def generate(name, output, seed=20260926):
         interpreter.invoke()
         actual.append(interpreter.get_tensor(out["index"])[0])
     actual = np.stack(actual)
-    np.testing.assert_allclose(actual, expected, rtol=1e-5, atol=1e-5)
+    check_outputs(actual, expected)
     np.savez(output / "goldens.npz", inputs=inputs, outputs=actual, keras_outputs=expected)
     root = Path(__file__).resolve().parents[2]
     source = root / "helia_edge/models/mlperf_tiny.py"
@@ -73,7 +91,8 @@ def generate(name, output, seed=20260926):
                 "source_sha256": digest(source), "generator_sha256": digest(Path(__file__)),
                 "reference": "references.json", "lock_sha256": digest(root / "uv.lock"), "precision": "FP32", "dependencies": dependencies,
                 "python": platform.python_version(), "oracle": "ai-edge-litert BUILTIN_REF; one thread; no delegates",
-                "cases": ["zero", "deterministic_signal"], "preprocessing": "none; synthetic feature-domain inputs",
+                "cases": ["zero", "amplified_deterministic_signal"], "signal_amplitude": amplitude,
+                "diagnostic_only": "amplitude selected for initialized-output discrimination; not real data", "preprocessing": "none; synthetic feature-domain inputs",
                 "max_abs_keras_error": float(np.max(np.abs(actual - expected))),
                 "input": {"name": inp["name"], "index": int(inp["index"]), "shape": inp["shape"].tolist(),
                           "dtype": "float32", "bytes": int(np.prod(inp["shape"])) * 4},

@@ -73,6 +73,10 @@ def test_real_fp32_export_preserves_captured_topology_and_reference_output(name,
     output = tmp_path / name
     manifest = generator.generate(name, output)
     assert manifest["precision"] == "FP32"
+    goldens = np.load(output / "goldens.npz")
+    expected = goldens["keras_outputs"]
+    with pytest.raises(AssertionError):
+        generator.check_outputs(np.broadcast_to(expected[0], expected.shape), expected)
     actual = graph((output / "model.tflite").read_bytes())
     source_model = keras.models.load_model(output / "model.keras")
     dense_layers = [layer for layer in source_model.layers if isinstance(layer, keras.layers.Dense)]

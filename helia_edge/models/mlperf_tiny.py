@@ -22,23 +22,23 @@ def mlperf_tiny_kws(*, name: str = "mlperf_tiny_kws") -> keras.Model:
     floor-based 24x5 pool). No audio preprocessing or trained weights included.
     """
     inputs = keras.Input(shape=(49, 10, 1), name="features")
-    x = keras.layers.Conv2D(64, (10, 4), strides=(2, 2), padding="same", use_bias=True,
+    x = keras.layers.Conv2D(64, (10, 4), strides=(2, 2), padding="same", data_format="channels_last", use_bias=True,
                             kernel_initializer="glorot_uniform", kernel_regularizer=keras.regularizers.L2(1e-4),
                             name="stem")(inputs)
     x = _bn_relu(x, "stem")
     x = keras.layers.Dropout(0.2, name="stem_dropout")(x)
     for stage in range(1, 5):
         # Serialized reference depthwise kernels use GlorotUniform and no regularizer.
-        x = keras.layers.DepthwiseConv2D((3, 3), padding="same", depth_multiplier=1, use_bias=True,
+        x = keras.layers.DepthwiseConv2D((3, 3), padding="same", data_format="channels_last", depth_multiplier=1, use_bias=True,
                                         depthwise_initializer="glorot_uniform", name=f"block{stage}_dw")(x)
         x = _bn_relu(x, f"block{stage}_dw")
-        x = keras.layers.Conv2D(64, (1, 1), padding="same", use_bias=True,
+        x = keras.layers.Conv2D(64, (1, 1), padding="same", data_format="channels_last", use_bias=True,
                                 kernel_initializer="glorot_uniform", kernel_regularizer=keras.regularizers.L2(1e-4),
                                 name=f"block{stage}_pw")(x)
         x = _bn_relu(x, f"block{stage}_pw")
     x = keras.layers.Dropout(0.4, name="head_dropout")(x)
-    x = keras.layers.AveragePooling2D((25, 5), name="pool")(x)
-    x = keras.layers.Flatten(name="flatten")(x)
+    x = keras.layers.AveragePooling2D((25, 5), data_format="channels_last", name="pool")(x)
+    x = keras.layers.Flatten(data_format="channels_last", name="flatten")(x)
     outputs = keras.layers.Dense(12, activation="softmax", name="predictions")(x)
     return keras.Model(inputs, outputs, name=name)
 
@@ -50,22 +50,22 @@ def mlperf_tiny_vww(*, name: str = "mlperf_tiny_vww") -> keras.Model:
     MobileNet's zero-padding/ReLU6 variant. No image preprocessing included.
     """
     inputs = keras.Input(shape=(96, 96, 3), name="image")
-    x = keras.layers.Conv2D(8, 3, strides=2, padding="same", use_bias=True,
+    x = keras.layers.Conv2D(8, 3, strides=2, padding="same", data_format="channels_last", use_bias=True,
                             kernel_initializer="he_normal", kernel_regularizer=keras.regularizers.L2(1e-4),
                             name="stem")(inputs)
     x = _bn_relu(x, "stem")
     stages = ((16, 1), (32, 2), (32, 1), (64, 2), (64, 1), (128, 2),
               (128, 1), (128, 1), (128, 1), (128, 1), (128, 1), (256, 2), (256, 1))
     for stage, (filters, stride) in enumerate(stages, 1):
-        x = keras.layers.DepthwiseConv2D(3, strides=stride, padding="same", use_bias=True,
+        x = keras.layers.DepthwiseConv2D(3, strides=stride, padding="same", data_format="channels_last", use_bias=True,
                                         depthwise_initializer="glorot_uniform", name=f"block{stage}_dw")(x)
         x = _bn_relu(x, f"block{stage}_dw")
-        x = keras.layers.Conv2D(filters, 1, padding="same", use_bias=True,
+        x = keras.layers.Conv2D(filters, 1, padding="same", data_format="channels_last", use_bias=True,
                                 kernel_initializer="he_normal", kernel_regularizer=keras.regularizers.L2(1e-4),
                                 name=f"block{stage}_pw")(x)
         x = _bn_relu(x, f"block{stage}_pw")
-    x = keras.layers.AveragePooling2D((3, 3), name="pool")(x)
-    x = keras.layers.Flatten(name="flatten")(x)
+    x = keras.layers.AveragePooling2D((3, 3), data_format="channels_last", name="pool")(x)
+    x = keras.layers.Flatten(data_format="channels_last", name="flatten")(x)
     outputs = keras.layers.Dense(2, activation="softmax", name="predictions")(x)
     return keras.Model(inputs, outputs, name=name)
 
@@ -77,7 +77,7 @@ def mlperf_tiny_resnet(*, name: str = "mlperf_tiny_resnet") -> keras.Model:
     batch normalization. This is not a generic ResNet18 constructor.
     """
     def conv(x, filters, kernel, stride, layer_name):
-        return keras.layers.Conv2D(filters, kernel, strides=stride, padding="same", use_bias=True,
+        return keras.layers.Conv2D(filters, kernel, strides=stride, padding="same", data_format="channels_last", use_bias=True,
                                    kernel_initializer="he_normal", kernel_regularizer=keras.regularizers.L2(1e-4),
                                    name=layer_name)(x)
 
@@ -92,8 +92,8 @@ def mlperf_tiny_resnet(*, name: str = "mlperf_tiny_resnet") -> keras.Model:
             x = conv(x, filters, 1, 2, f"stack{stage}_projection")
         x = keras.layers.Add(name=f"stack{stage}_add")([x, y])
         x = keras.layers.Activation("relu", name=f"stack{stage}_relu")(x)
-    x = keras.layers.AveragePooling2D((8, 8), name="pool")(x)
-    x = keras.layers.Flatten(name="flatten")(x)
+    x = keras.layers.AveragePooling2D((8, 8), data_format="channels_last", name="pool")(x)
+    x = keras.layers.Flatten(data_format="channels_last", name="flatten")(x)
     outputs = keras.layers.Dense(10, activation="softmax", kernel_initializer="he_normal", name="predictions")(x)
     return keras.Model(inputs, outputs, name=name)
 
