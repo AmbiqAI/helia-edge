@@ -60,7 +60,7 @@ def test_concrete_config_and_execution(name, kwargs, shape, channels_first):
 def test_nearest_targets_preserve_large_integer_values():
     x = keras.ops.ones((1, 4, 1))
     y = np.array([2**40 + n for n in range(4)], dtype="int64").reshape(1, 4, 1)
-    result = pp.Resizing1D(2)(
+    result = pp.Resizing1D(2, target_interpolation="nearest")(
         {
             "signals": {"x": x},
             "targets": {"ids": keras.ops.convert_to_tensor(y)},

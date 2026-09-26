@@ -37,8 +37,8 @@ Keep these hooks in custom subclasses:
   broadcast along that dimension. The default sequential public `keras.ops.map`
   avoids assumptions about vectorizable callbacks; `auto_vectorize=True` opts in.
 - `augment_targets` / `augment_masks` apply selected geometry; defaults reuse the
-  same signal transform. Resize overrides them with nearest index selection,
-  retaining even large integer label values without a float round trip.
+  same signal transform. Resize uses the explicit target policy below; masks always use nearest index
+  selection, retaining even large integer label values without a float round trip.
 - `batch_augment(inputs, transformations=None)` is the whole-tree override used
   by composite transforms. Call layer entry points for child Keras tracking.
 
@@ -66,9 +66,35 @@ output = crop(sample.tensor_tree(), training=True)
 `unique_batch=True` means independent offsets per example; False broadcasts one
 crop offset to the batch. Call with `transformations=` to reuse already sampled
 parameters, bypassing RNG; the caller must supply valid parameter shapes/values.
-Crop inference keeps the original shape. Random branches in a pipeline must have
+`AugmentationPipeline(...)(tree, training=flag, transformations=[params, ...])`
+accepts one entry per child; `None` lets that child sample normally. Explicit
+parameters bypass sampling during training and are ignored at inference by
+training-only children, without RNG draws. `force_training=True` deliberately
+overrides inference gating.
+
+Crop inference keeps the original shape. Treat random crop as training-data
+preprocessing before a fixed-input model, with a separately chosen deterministic
+inference window; it is not a shape-stable in-model replacement for that window.
+A Functional crop followed by global pooling works with both training modes;
+a flatten/dense consumer built for the original length fails when training crops
+it. TensorFlow tensor-valued training supports both lengths, but does not remove
+that downstream constraint. No implicit center crop is chosen for consumers. Random branches in a pipeline must have
 compatible structures/dtypes/output shapes; do not mix arbitrary crops and
 identity branches in a compiled conditional expecting a fixed shape.
+
+### Resize target roles
+
+Resizing1D/2D require `target_interpolation="nearest"` or `"signal"` whenever
+selected aligned targets are present. The default `None` rejects such targets
+rather than guessing their role. `nearest` preserves target dtype and exact label
+IDs. `signal` uses the signal interpolation (1D bicubic, 2D configured) and casts
+targets to the layer compute dtype, including integer regression inputs; this
+conversion may lose large-integer precision intentionally. Masks always use
+nearest and retain dtype, independent of target policy. The policy serializes.
+For clean ECG regression targets, choose `signal`; categorical segment labels use
+`nearest`. One policy applies to selected targets in a layer; separate mixed-role
+transforms explicitly using `aligned_targets`, rather than inferring roles from
+dtype. Existing resize configs with targets must add the policy when migrating.
 
 ## Existing transform inventory and behavior changes
 
@@ -76,7 +102,7 @@ identity branches in a compiled conditional expecting a fixed shape.
 | --- | --- |
 | Normalization1D/2D, FirFilter | Shared base, deterministic in inference, retained formulas. FIR coefficient serialization, per-channel taps/layout and auxiliary dtype repairs retained. FIR is same-padded cross-correlation, not SciPy lfilter/filtfilt. |
 | LayerNormalization1D/2D, Rescaling1D/2D | Deterministic shared hooks; epsilon now serializes. |
-| Resizing1D/2D | Deterministic joint geometry; channels-first singleton axis corrected; 2D interpolation argument now honored and serialized. Selected targets/masks use half-pixel nearest index selection with no numeric casts. |
+| Resizing1D/2D | Deterministic joint geometry; channels-first singleton axis corrected; 2D interpolation argument now honored and serialized. Selected targets require explicit nearest/signal policy; masks use half-pixel nearest with no numeric casts. |
 | RandomGaussianNoise1D | Shared training gate; inference consumes no RNG; signal-only. |
 | RandomCrop1D/2D | Batched offset application shared with selected targets/masks; actual training shapes replace misleading old shape overrides. Inference is identity. |
 | RandomFlip2D | Training gate now applies; horizontal means width, vertical means height (old axes were reversed). Parameters shared with aligned leaves. |

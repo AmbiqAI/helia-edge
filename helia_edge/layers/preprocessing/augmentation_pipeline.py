@@ -12,9 +12,13 @@ class AugmentationPipeline(keras.Layer):
         self.layers = layers
         self.force_training = force_training
 
-    def call(self, inputs, training=None):
-        for layer in self.layers:
-            inputs = layer(inputs, training=True if self.force_training else training)
+    def call(self, inputs, training=None, transformations=None):
+        if transformations is not None and len(transformations) != len(self.layers):
+            raise ValueError("transformations must contain one entry per pipeline layer")
+        for index, layer in enumerate(self.layers):
+            params = None if transformations is None else transformations[index]
+            kwargs = {} if params is None else {"transformations": params}
+            inputs = layer(inputs, training=True if self.force_training else training, **kwargs)
         return inputs
 
     def get_config(self):

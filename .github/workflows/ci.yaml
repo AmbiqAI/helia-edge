@@ -103,6 +103,7 @@ jobs:
           tests/models/test_mlperf_tiny.py tests/models/test_typed_architectures.py
           tests/layers/test_portable_preprocessing.py tests/layers/test_unified_augmentation.py
           tests/layers/test_augmentation_inventory.py tests/layers/test_portable_grain.py
+          tests/layers/test_preprocessing_integration.py
       - run: >-
           uv run --no-sync python tests/trainers/mae_parity_fixture.py
           --output '${{ runner.temp }}/mae-evidence.npz'
