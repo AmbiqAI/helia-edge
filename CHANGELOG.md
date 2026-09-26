@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.7.0](https://github.com/AmbiqAI/helia-edge/compare/v0.6.2...v0.7.0) (2026-09-26)
+
+
+### Features
+
+* add faithful MLPerf Tiny reference constructors ([0df0b6e](https://github.com/AmbiqAI/helia-edge/commit/0df0b6e77e1f53f7ac482df0707bd23b20c25b42)), closes [#33](https://github.com/AmbiqAI/helia-edge/issues/33)
+* add faithful MLPerf Tiny reference constructors ([#34](https://github.com/AmbiqAI/helia-edge/issues/34)) ([4aa2bd9](https://github.com/AmbiqAI/helia-edge/commit/4aa2bd9c5e1292ee7fb1224765c323774e3dff28)), closes [#33](https://github.com/AmbiqAI/helia-edge/issues/33)
+* isolate backends and define typed training contracts ([db22394](https://github.com/AmbiqAI/helia-edge/commit/db223944df561a284049229935e43f9f2f5e8dff))
+
+
+### Bug Fixes
+
+* pin MLPerf layout and discriminate fixture outputs ([2c95757](https://github.com/AmbiqAI/helia-edge/commit/2c957576bbc6f57d77be55b2dc3e5988b799b9bb)), closes [#33](https://github.com/AmbiqAI/helia-edge/issues/33)
+
+
+### Documentation
+
+* correct Apache license name spacing ([ce1de70](https://github.com/AmbiqAI/helia-edge/commit/ce1de7048f06675185dd6dbb7199d4e743e4a180)), closes [#33](https://github.com/AmbiqAI/helia-edge/issues/33)
+
 ## [0.6.2](https://github.com/AmbiqAI/helia-edge/compare/v0.6.1...v0.6.2) (2026-04-23)
 
 
