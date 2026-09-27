@@ -76,8 +76,9 @@ and int8 conversion; Torch runs the portable subset and custom-object reloads.
 Separate backend-free environments exercise AWS and plotting, followed by
 combined backend checks for S3 model loading and patch visualization.
 CPU tests set `CUDA_VISIBLE_DEVICES=-1` so installed GPU drivers cannot affect the
-CPU export path. Existing augmentation layers still use private Keras internals;
-their TF regressions are covered, but their portability is separate future work.
+CPU export path. Preprocessing uses the public Keras augmentation hierarchy with
+CPU TensorFlow and Torch coverage; see the [migration guide](preprocessing-migration.md)
+for training, dtype, shape and compilation limits.
 
 ## Masked-autoencoder training
 

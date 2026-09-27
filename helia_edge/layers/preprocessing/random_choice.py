@@ -38,6 +38,7 @@ class RandomChoice(BaseAugmentation):
         return keras.ops.switch(index, branches, inputs)
 
     def call(self, inputs, training=None, transformations=None):
+        inputs = self._identity(inputs, validate_rank=False)
         if training is None or training is False:
             return inputs
         if training is True:

@@ -190,17 +190,26 @@ class BaseAugmentation(keras.Layer):
                 output[group] = converted if mapping else converted["default"]
         return output
 
-    def _identity(self, inputs):
+    def _identity(self, inputs, *, validate_rank=True):
         def identity(x):
             return x[self.SAMPLES]
 
         def convert(value):
+            if not validate_rank:
+                # Generic composites defer spatial rank validation to their children.
+                return keras.ops.cast(keras.ops.convert_to_tensor(value), self.compute_dtype)
             return self._apply(value, None, identity, signal=True)
 
         if not isinstance(inputs, dict):
             return convert(inputs)
+        if "signals" in inputs and "data" in inputs:
+            raise ValueError("Use either signals or legacy data, not both")
         if "signals" in inputs:
+            if not isinstance(inputs["signals"], dict) or not inputs["signals"]:
+                raise ValueError("signals must be a nonempty dictionary of tensor leaves")
             return {**inputs, "signals": {key: convert(value) for key, value in inputs["signals"].items()}}
+        if self.SAMPLES not in inputs:
+            raise ValueError("Expected signals or legacy data")
         return {**inputs, self.SAMPLES: convert(inputs[self.SAMPLES])}
 
     def call(self, inputs, training=None, transformations=None):

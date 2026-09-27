@@ -23,6 +23,8 @@ def interval_mask(layer, shape, axis, minimum, maximum):
 
 
 def _parameters(layer, shape, axes):
+    if layer.cutouts == 0:
+        return None
     mask = keras.ops.zeros(shape, dtype="bool")
     for _ in range(layer.cutouts):
         region = keras.ops.ones(shape, dtype="bool")
@@ -69,6 +71,8 @@ class RandomCutout1D(BaseAugmentation1D):
 
     def augment_samples(self, inputs):
         params = inputs[self.TRANSFORMS]
+        if params is None:
+            return inputs[self.SAMPLES]
         return keras.ops.where(params["mask"], params["fill"], inputs[self.SAMPLES])
 
     def get_config(self):
@@ -86,6 +90,8 @@ class RandomCutout2D(BaseAugmentation2D):
 
     def augment_samples(self, inputs):
         params = inputs[self.TRANSFORMS]
+        if params is None:
+            return inputs[self.SAMPLES]
         return keras.ops.where(params["mask"], params["fill"], inputs[self.SAMPLES])
 
     def get_config(self):

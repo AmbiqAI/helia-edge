@@ -69,3 +69,82 @@ def test_crop_functional_variable_length_and_tensor_training():
         state = array(crop.generator.state).copy()
         assert fn(x, tf.constant(False)).shape == (2, 8, 1)
         np.testing.assert_array_equal(array(crop.generator.state), state)
+
+
+@pytest.mark.parametrize("two_dim,batched", [(False, False), (False, True), (True, False), (True, True)])
+def test_random_composite_signal_dtype(two_dim, batched):
+    from helia_edge.layers import preprocessing as pp
+
+    shape = (2, 4, 6, 1) if two_dim else (2, 6, 1)
+    if not batched:
+        shape = shape[1:]
+    x = keras.ops.ones(shape, dtype="int32")
+    child = pp.Rescaling2D if two_dim else pp.Rescaling1D
+    pipeline = pp.RandomAugmentation2DPipeline if two_dim else pp.RandomAugmentation1DPipeline
+    tree = {
+        "signals": {"x": x},
+        "targets": {"id": keras.ops.full(shape, 2**40 + 1, dtype="int64")},
+        "masks": {"valid": keras.ops.ones(shape, dtype="bool")},
+        "extra": keras.ops.convert_to_tensor([7], dtype="int32"),
+    }
+    layers = [pp.RandomChoice([child(2.0)], seed=42)] + [
+        pipeline([child(2.0)], rate=rate, augmentations_per_sample=count, seed=42)
+        for rate, count in [(0.0, 1), (0.5, 1), (1.0, 0), (1.0, 1)]
+    ]
+
+    def check(out):
+        assert keras.backend.standardize_dtype(out["signals"]["x"].dtype) == "float32"
+        assert out["signals"]["x"].shape == x.shape
+        for group, key in [("targets", "id"), ("masks", "valid")]:
+            assert out[group][key].dtype == tree[group][key].dtype
+            np.testing.assert_array_equal(array(out[group][key]), array(tree[group][key]))
+        np.testing.assert_array_equal(array(out["extra"]), [7])
+        assert keras.backend.standardize_dtype(out["extra"].dtype) == "int32"
+
+    for layer in layers:
+        before = array(layer.generator.state).copy()
+        check(layer(tree, training=False))
+        np.testing.assert_array_equal(array(layer.generator.state), before)
+        check(layer(tree, training=True))
+        for payload in (x, {"data": x, "targets": tree["targets"], "extra": tree["extra"]}):
+            result = layer(payload, training=False)
+            value = result["data"] if isinstance(result, dict) else result
+            assert keras.backend.standardize_dtype(value.dtype) == "float32"
+            assert value.shape == x.shape
+        if keras.backend.backend() == "tensorflow":
+            import tensorflow as tf
+
+            fn = tf.function(lambda payload, flag: layer(payload, training=flag))
+            check(fn(tree, tf.constant(True)))
+            before = array(layer.generator.state).copy()
+            check(fn(tree, tf.constant(False)))
+            np.testing.assert_array_equal(array(layer.generator.state), before)
+
+
+@pytest.mark.parametrize("two_dim", [False, True])
+def test_zero_normal_cutout_does_not_sample(two_dim, monkeypatch):
+    from helia_edge.layers import preprocessing as pp
+
+    cls = pp.RandomCutout2D if two_dim else pp.RandomCutout1D
+    shape = (2, 4, 6, 1) if two_dim else (2, 6, 1)
+    layer = cls(cutouts=0, fill_mode="normal", seed=7)
+    x = keras.ops.ones(shape)
+    before = array(layer.generator.state).copy()
+
+    def forbidden(*args, **kwargs):
+        raise AssertionError("Disabled cutout must not allocate random fill")
+
+    monkeypatch.setattr(keras.random, "normal", forbidden)
+    np.testing.assert_array_equal(array(layer(x, training=True)), array(x))
+    np.testing.assert_array_equal(array(layer.generator.state), before)
+
+
+@pytest.mark.parametrize("training", [False, True, None])
+def test_mixed_schema_rejected_in_all_modes(training):
+    from helia_edge.layers import preprocessing as pp
+
+    x = keras.ops.ones((2, 6, 1))
+    tree = {"signals": {"x": x}, "data": x}
+    for layer in [pp.RandomCrop1D(3), pp.RandomChoice([pp.Rescaling1D(2.0)])]:
+        with pytest.raises(ValueError, match="either signals or legacy data"):
+            layer(tree, training=training)
