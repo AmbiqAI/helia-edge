@@ -452,7 +452,7 @@ def tcn_block_sm(params: TcnBlockParams, name: str) -> keras.Layer:
         # END FOR
 
         # Squeeze and excite
-        if y.shape[-1] // params.se_ratio > 1:
+        if params.se_ratio > 0 and y.shape[-1] // params.se_ratio > 1:
             y = se_layer(ratio=params.se_ratio, name=f"{name}_SE")(y)
         # END IF
 

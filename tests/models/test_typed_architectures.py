@@ -149,3 +149,23 @@ def test_tcn_config_rejects_invalid_outer_geometry(field, value):
     config[field] = value
     with pytest.raises(ValidationError):
         TcnParams.from_config(config)
+
+
+@pytest.mark.parametrize("explicit_zero", [False, True])
+def test_small_tcn_zero_se_disables_attention(explicit_zero, tmp_path):
+    block = {"filters": 8, "kernel": [1, 3], "norm": "batch"}
+    if explicit_zero:
+        block["se_ratio"] = 0
+    params = TcnParams.from_config({"block_type": "sm", "blocks": [block], "output_kernel": [1, 1]})
+    model = TcnModel.model_from_params(keras.Input((16, 2)), params, 3)
+    assert model.output_shape == (None, 16, 3)
+    assert not any(isinstance(layer, (keras.layers.GlobalAveragePooling2D, keras.layers.Multiply))
+                   for layer in model.layers)
+    assert sum(isinstance(layer, keras.layers.DepthwiseConv2D) for layer in model.layers) == 1
+    assert sum(isinstance(layer, keras.layers.Conv2D) for layer in model.layers) == 2
+    x = np.arange(32, dtype="float32").reshape(1, 16, 2) / 32
+    expected = keras.ops.convert_to_numpy(model(x, training=False))
+    assert np.isfinite(expected).all()
+    model.save(tmp_path / "zero.keras")
+    restored = keras.models.load_model(tmp_path / "zero.keras", compile=False)
+    np.testing.assert_array_equal(expected, keras.ops.convert_to_numpy(restored(x, training=False)))
