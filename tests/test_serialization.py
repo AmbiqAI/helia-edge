@@ -11,14 +11,20 @@ import pytest
 from helia_edge.layers import EmaResidualVectorQuantizer
 
 
-@pytest.mark.parametrize("layer_name", ["quantizer", "normalization"])
+@pytest.mark.parametrize("layer_name", ["quantizer", "normalization", "fir", "noise"])
 def test_custom_layer_safe_reload(tmp_path, layer_name):
     if layer_name == "normalization":
-        if keras.backend.backend() != "tensorflow":
-            pytest.skip("Legacy TFDataLayer augmentations remain TF-only")
         from helia_edge.layers.preprocessing import Normalization1D
 
         layer = Normalization1D(mean=1.0, variance=4.0)
+    elif layer_name == "fir":
+        from helia_edge.layers.preprocessing import FirFilter
+
+        layer = FirFilter(np.array([.25, .5, .25], dtype=np.float32))
+    elif layer_name == "noise":
+        from helia_edge.layers.preprocessing import RandomGaussianNoise1D
+
+        layer = RandomGaussianNoise1D(.1, seed=42)
     else:
         layer = EmaResidualVectorQuantizer(num_levels=1, num_embeddings=4, embedding_dim=2)
     model = keras.Sequential([keras.Input(shape=(3, 2)), layer])

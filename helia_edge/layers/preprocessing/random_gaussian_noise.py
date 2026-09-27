@@ -58,12 +58,8 @@ class RandomGaussianNoise1D(BaseAugmentation1D):
         }
 
     def augment_samples(self, inputs) -> keras.KerasTensor:
-        """Augment all samples in the batch as it's faster."""
-        samples = inputs[self.SAMPLES]
-        if self.training:
-            noise = inputs[self.TRANSFORMS]["noise"]
-            return samples + noise
-        return samples
+        """Apply sampled noise; inference bypasses sampling and application."""
+        return inputs[self.SAMPLES] + inputs[self.TRANSFORMS]["noise"]
 
     def get_config(self):
         config = super().get_config()

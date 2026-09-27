@@ -1,193 +1,76 @@
-"""
-# Random Crop Layers API
-
-This module provides classes to build random crop layers.
-
-Classes:
-    RandomCrop1D: Random crop 1D
-    RandomCrop2D: Random crop 2D
-
-"""
+"""Random crops sharing sampled offsets across spatially aligned leaves."""
 
 import keras
 from .base_augmentation import BaseAugmentation1D, BaseAugmentation2D
 from ...utils import helia_export
 
 
+def _starts(layer, batch, size, length):
+    if not isinstance(size, int) or size < length:
+        raise ValueError("Crop requires a static input extent at least as large as the output")
+    value = keras.random.randint(
+        (batch,) if layer.unique_batch else (), 0, size - length + 1, seed=layer.random_generator, dtype="int32"
+    )
+    return value if layer.unique_batch else keras.ops.broadcast_to(value, (batch,))
+
+
 @helia_export(path="helia_edge.layers.preprocessing.RandomCrop1D")
 class RandomCrop1D(BaseAugmentation1D):
-    duration: int
-    unique_batch: bool
+    """Training-only crop; inference leaves the original duration unchanged."""
+
+    joint = True
 
     def __init__(self, duration: int, unique_batch: bool = False, **kwargs):
-        """Randomly crop 1D input samples.
-
-        Args:
-            duration (int): Duration of the output samples.
-            unique_batch (bool): If True, each sample in the batch will have a unique crop.
-
-        Example:
-
-        ```python
-            duration = 100
-            lyr = RandomCrop1D(duration=duration)
-            x = np.random.randn(32, 1000, 1)
-            y = lyr(x, training=True)
-        ```
-        """
-
         super().__init__(**kwargs)
+        if isinstance(duration, bool) or not isinstance(duration, int) or duration <= 0:
+            raise ValueError("duration must be a positive integer")
         self.duration = duration
         self.unique_batch = unique_batch
 
-    def random_crop(self, sample, start):
-        """Randomly crop single sample"""
-        ch_size = keras.ops.shape(sample)[self.ch_axis]
-        if self.data_format == "channels_first":
-            return keras.ops.slice(sample, [0, start], [ch_size, self.duration])
-        return keras.ops.slice(sample, [start, 0], [self.duration, ch_size])
-        # END IF
-
-    # END DEF
-
     def get_random_transformations(self, input_shape):
-        """Generate random start indices for cropping."""
-        batch_size = input_shape[0]
-        duration_size = input_shape[self.data_axis]
-        if duration_size < self.duration:
-            raise ValueError(f"Input duration ({duration_size}) must be greater than output duration ({self.duration})")
+        return {"start": _starts(self, input_shape[0], input_shape[self.data_axis], self.duration)}
 
-        d_diff = duration_size - self.duration
-        if self.unique_batch:
-            start = keras.random.randint(
-                shape=(batch_size,), minval=0, maxval=int(d_diff + 1), seed=self.random_generator, dtype="int32"
-            )
-        else:
-            start = keras.random.randint(
-                shape=(), minval=0, maxval=int(d_diff + 1), seed=self.random_generator, dtype="int32"
-            )
-            start = keras.ops.broadcast_to(start, [batch_size])
-        return {"start": start}
-
-    def augment_sample(self, inputs) -> keras.KerasTensor:
-        """Augment single sample with random crop."""
-        sample = inputs[self.SAMPLES]
-        start = inputs[self.TRANSFORMS]["start"]
-
-        if self.training:
-            sample = self.random_crop(sample, start)
-        return sample
-
-    def compute_output_shape(self, input_shape, *args, **kwargs):
-        """Compute the output shape of the layer."""
-        output_shape = list(input_shape)
-        output_shape[self.data_axis] = self.duration
-        return tuple(input_shape)
+    def augment_samples(self, inputs):
+        x = inputs[self.SAMPLES]
+        if self.data_format == "channels_first":
+            x = keras.ops.transpose(x, (0, 2, 1))
+        indices = inputs[self.TRANSFORMS]["start"][:, None, None] + keras.ops.arange(self.duration)[None, :, None]
+        x = keras.ops.take_along_axis(x, indices, axis=1)
+        return keras.ops.transpose(x, (0, 2, 1)) if self.data_format == "channels_first" else x
 
     def get_config(self):
-        """Serializes the configuration of the layer."""
-        config = super().get_config()
-        config.update(
-            {
-                "duration": self.duration,
-                "unique_batch": self.unique_batch,
-            }
-        )
-        return config
+        return {**super().get_config(), "duration": self.duration, "unique_batch": self.unique_batch}
 
 
 @helia_export(path="helia_edge.layers.preprocessing.RandomCrop2D")
 class RandomCrop2D(BaseAugmentation2D):
-    height: int
-    width: int
-    unique_batch: bool
+    """Training-only image crop; inference leaves the original extent unchanged."""
+
+    joint = True
 
     def __init__(self, height: int, width: int, unique_batch: bool = False, **kwargs):
-        """Randomly crop 2D input samples.
-
-        Args:
-            height (int): Height of the output samples.
-            width (int): Width of the output samples.
-            unique_batch (bool): If True, each sample in the batch will have a unique crop.
-
-        Example:
-
-        ```python
-            height = 32
-            width = 32
-            lyr = RandomCrop2D(height=height, width=width)
-            x = np.random.randn(32, 64, 64, 3)
-            y = lyr(x, training=True)
-        ```
-        """
-
         super().__init__(**kwargs)
+        if any(isinstance(v, bool) or not isinstance(v, int) or v <= 0 for v in (height, width)):
+            raise ValueError("height and width must be positive integers")
         self.height = height
         self.width = width
         self.unique_batch = unique_batch
 
-    def random_crop(self, sample, start_h, start_w):
-        """Randomly crop single sample"""
-        if self.data_format == "channels_first":
-            return keras.ops.slice(sample, [0, start_h, start_w], [-1, self.height, self.width])
-        return keras.ops.slice(sample, [start_h, start_w, 0], [self.height, self.width, -1])
-        # END IF
-
     def get_random_transformations(self, input_shape):
-        """Generate random start indices for cropping."""
-        batch_size = input_shape[0]
-        height_size = input_shape[self.height_axis]
-        width_size = input_shape[self.width_axis]
-        if height_size < self.height:
-            raise ValueError(f"Input height ({height_size}) must be greater than output height ({self.height})")
-        if width_size < self.width:
-            raise ValueError(f"Input width ({width_size}) must be greater than output width ({self.width})")
+        return {
+            "start_h": _starts(self, input_shape[0], input_shape[self.height_axis], self.height),
+            "start_w": _starts(self, input_shape[0], input_shape[self.width_axis], self.width),
+        }
 
-        h_diff = height_size - self.height
-        w_diff = width_size - self.width
-        if self.unique_batch:
-            start_h = keras.random.randint(
-                shape=(batch_size,), minval=0, maxval=int(h_diff + 1), seed=self.random_generator, dtype="int32"
-            )
-            start_w = keras.random.randint(
-                shape=(batch_size,), minval=0, maxval=int(w_diff + 1), seed=self.random_generator, dtype="int32"
-            )
-        else:
-            start_h = keras.random.randint(
-                shape=(), minval=0, maxval=int(h_diff + 1), seed=self.random_generator, dtype="int32"
-            )
-            start_h = keras.ops.broadcast_to(start_h, [batch_size])
-            start_w = keras.random.randint(
-                shape=(), minval=0, maxval=int(w_diff + 1), seed=self.random_generator, dtype="int32"
-            )
-            start_w = keras.ops.broadcast_to(start_w, [batch_size])
-        return {"start_h": start_h, "start_w": start_w}
-
-    def augment_sample(self, inputs) -> keras.KerasTensor:
-        """Augment single sample with random crop."""
-        sample = inputs[self.SAMPLES]
-        start_h = inputs[self.TRANSFORMS]["start_h"]
-        start_w = inputs[self.TRANSFORMS]["start_w"]
-
-        if self.training:
-            sample = self.random_crop(sample, start_h, start_w)
-        return sample
-
-    def compute_output_shape(self, input_shape, *args, **kwargs):
-        """Compute the output shape of the layer."""
-        output_shape = list(input_shape)
-        output_shape[self.height_axis] = self.height
-        output_shape[self.width_axis] = self.width
-        return tuple(input_shape)
+    def augment_samples(self, inputs):
+        x = inputs[self.SAMPLES]
+        if self.data_format == "channels_first":
+            x = keras.ops.transpose(x, (0, 2, 3, 1))
+        params = inputs[self.TRANSFORMS]
+        h = params["start_h"][:, None, None, None] + keras.ops.arange(self.height)[None, :, None, None]
+        w = params["start_w"][:, None, None, None] + keras.ops.arange(self.width)[None, None, :, None]
+        x = keras.ops.take_along_axis(keras.ops.take_along_axis(x, h, axis=1), w, axis=2)
+        return keras.ops.transpose(x, (0, 3, 1, 2)) if self.data_format == "channels_first" else x
 
     def get_config(self):
-        """Serializes the configuration of the layer."""
-        config = super().get_config()
-        config.update(
-            {
-                "height": self.height,
-                "width": self.width,
-                "unique_batch": self.unique_batch,
-            }
-        )
-        return config
+        return {**super().get_config(), "height": self.height, "width": self.width, "unique_batch": self.unique_batch}

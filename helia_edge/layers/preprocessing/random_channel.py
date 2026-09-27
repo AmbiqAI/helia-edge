@@ -57,10 +57,13 @@ class RandomChannel(BaseAugmentation):
             return keras.ops.expand_dims(keras.ops.take(samples, channel, axis=self.ch_axis), axis=self.ch_axis)
         # Otherwise let the augment_sample method handle it
         else:
-            super().augment_samples(inputs)
+            return super().augment_samples(inputs)
 
     def augment_sample(self, inputs) -> keras.KerasTensor:
         """Augment a sample during training."""
         sample = inputs[self.SAMPLES]
         channel = inputs[self.TRANSFORMS]["channel"]
-        keras.ops.expand_dims(keras.ops.take(sample, channel, axis=self.ch_axis), axis=self.ch_axis)
+        return keras.ops.expand_dims(keras.ops.take(sample, channel, axis=self.ch_axis), axis=self.ch_axis)
+
+    def get_config(self):
+        return {**super().get_config(), "batchwise": self.batchwise}

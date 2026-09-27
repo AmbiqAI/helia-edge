@@ -37,7 +37,7 @@ class RandomSineWave(BaseAugmentation1D):
             amplitude (float|tuple[float,float]): Amplitude of the wave. If tuple, amplitude is randomly picked between the values.
         """
         super().__init__(**kwargs)
-        if sample_rate < 0:
+        if sample_rate <= 0:
             raise ValueError("sample_rate must be greater than 0")
         self.sample_rate = sample_rate
         self.frequency = parse_factor(frequency, min_value=0, max_value=sample_rate / 2, param_name="frequency")
@@ -68,14 +68,15 @@ class RandomSineWave(BaseAugmentation1D):
         sample = inputs[self.SAMPLES]
         duration_size = sample.shape[self.data_axis]
         sample_rate = keras.ops.cast(self.sample_rate, dtype=self.compute_dtype)
-        if self.training:
-            frequency = inputs[self.TRANSFORMS]["frequency"]
-            amplitude = inputs[self.TRANSFORMS]["amplitude"]
-            ts = keras.ops.arange(duration_size, dtype=self.compute_dtype) / sample_rate
-            sine_wave = keras.ops.sin(2 * np.pi * frequency * ts)
-            sine_wave = amplitude * sine_wave
-            sine_wave = keras.ops.reshape(sine_wave, sample.shape)
-            return sample + sine_wave
+        frequency = inputs[self.TRANSFORMS]["frequency"]
+        amplitude = inputs[self.TRANSFORMS]["amplitude"]
+        ts = keras.ops.arange(duration_size, dtype=self.compute_dtype) / sample_rate
+        sine_wave = keras.ops.sin(2 * np.pi * frequency * ts)
+        sine_wave = amplitude * sine_wave
+        sine_wave = keras.ops.reshape(
+            sine_wave, (1, duration_size) if self.data_format == "channels_first" else (duration_size, 1)
+        )
+        return sample + sine_wave
         return sample
 
     def get_config(self):

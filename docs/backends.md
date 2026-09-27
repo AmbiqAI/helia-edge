@@ -36,8 +36,11 @@ Torch environment, install `torch==2.14.0` from
 `https://download.pytorch.org/whl/cpu` before installing the Torch extra.
 
 Portable metrics, TCN construction, EMA quantization and masked-autoencoder
-training have isolated Torch checks. TFDataLayer-based preprocessing,
-generator-to-tf.data utilities, contrastive training, TFLite/LiteRT conversion and FLOP profiling remain
+training have isolated Torch checks. Normalization1D, FirFilter and
+RandomGaussianNoise1D also support Torch without TensorFlow; see
+[portable preprocessing](portable-preprocessing.md). The unified preprocessing inventory is described in the
+[next-major migration guide](preprocessing-migration.md).
+Generator-to-tf.data utilities, contrastive training, TFLite/LiteRT conversion and FLOP profiling remain
 TensorFlow-specific at this milestone. Backend availability does not certify every
 model, trainer, precision, compiled/distributed configuration or export format.
 
@@ -73,8 +76,9 @@ and int8 conversion; Torch runs the portable subset and custom-object reloads.
 Separate backend-free environments exercise AWS and plotting, followed by
 combined backend checks for S3 model loading and patch visualization.
 CPU tests set `CUDA_VISIBLE_DEVICES=-1` so installed GPU drivers cannot affect the
-CPU export path. Existing augmentation layers still use private Keras internals;
-their TF regressions are covered, but their portability is separate future work.
+CPU export path. Preprocessing uses the public Keras augmentation hierarchy with
+CPU TensorFlow and Torch coverage; see the [migration guide](preprocessing-migration.md)
+for training, dtype, shape and compilation limits.
 
 ## Masked-autoencoder training
 

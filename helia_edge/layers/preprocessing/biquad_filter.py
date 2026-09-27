@@ -12,7 +12,7 @@ Classes:
 """
 
 import keras
-import scipy.signal
+import numpy as np
 import numpy.typing as npt
 from functools import lru_cache
 
@@ -41,6 +41,8 @@ def get_butter_sos(
     Returns:
         npt.NDArray: SOS
     """
+    import scipy.signal
+
     nyq = sample_rate / 2
     if lowcut is not None and highcut is not None:
         freqs = [lowcut / nyq, highcut / nyq]
@@ -59,6 +61,8 @@ def get_butter_sos(
 
 @helia_export(path="helia_edge.layers.preprocessing.CascadedBiquadFilter")
 class CascadedBiquadFilter(BaseAugmentation1D):
+    training_only = False
+
     def __init__(
         self,
         lowcut: float | None = None,
@@ -66,6 +70,7 @@ class CascadedBiquadFilter(BaseAugmentation1D):
         sample_rate: float = 1000,
         order: int = 3,
         forward_backward: bool = False,
+        sos: list[list[float]] | None = None,
         **kwargs,
     ):
         """Implements a 2nd order cascaded biquad filter using direct form 1 structure.
@@ -118,7 +123,9 @@ class CascadedBiquadFilter(BaseAugmentation1D):
         self.order = order
         self.forward_backward = forward_backward
 
-        sos = get_butter_sos(lowcut, highcut, sample_rate, order)
+        sos = get_butter_sos(lowcut, highcut, sample_rate, order) if sos is None else np.asarray(sos)
+        if sos.ndim != 2 or sos.shape[1] != 6 or not len(sos) or np.any(sos[:, 3] == 0):
+            raise ValueError("sos must contain nonempty six-coefficient sections with nonzero a0")
         # Normalize by a0 to use the canonical recurrence:
         # y[n] = b0*x[n] + b1*x[n-1] + b2*x[n-2] - a1*y[n-1] - a2*y[n-2]
         sos = sos / sos[:, [3]]
@@ -212,6 +219,7 @@ class CascadedBiquadFilter(BaseAugmentation1D):
                 "sample_rate": self.sample_rate,
                 "order": self.order,
                 "forward_backward": self.forward_backward,
+                "sos": keras.ops.convert_to_numpy(self.sos).tolist(),
             }
         )
         return config
