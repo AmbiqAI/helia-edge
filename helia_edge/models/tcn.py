@@ -68,7 +68,7 @@ from collections.abc import Mapping
 from typing import Any, Literal
 
 import keras
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from ..layers.squeeze_excite import se_layer
 
@@ -101,6 +101,7 @@ class TcnBlockParams(BaseModel):
     activation: str = Field(default="relu6", description="Activation function")
 
 
+@keras.saving.register_keras_serializable(package="helia_edge")
 class TcnParams(BaseModel):
     """TCN parameters
 
@@ -127,6 +128,10 @@ class TcnParams(BaseModel):
     name: str = Field(default="TCN", description="Model name")
 
 
+    def get_config(self) -> dict[str, Any]:
+        """Return a JSON-shaped architecture config, excluding inputs and weights."""
+        return self.model_dump(mode="json")
+
     @classmethod
     def from_config(cls, config: Mapping[str, Any]) -> "TcnParams":
         """Parse JSON-shaped config with unknown model/block fields rejected.
@@ -138,13 +143,29 @@ class TcnParams(BaseModel):
         return cls.model_validate(parsed.model_dump())
 
 
+def _positive_spatial(value):
+    if value is not None:
+        dimensions = (value,) if isinstance(value, int) else value
+        if any(dimension <= 0 for dimension in dimensions):
+            raise ValueError("Spatial dimensions must be positive")
+    return value
+
+
 class _StrictTcnBlockParams(TcnBlockParams):
     model_config = ConfigDict(extra="forbid")
+    depth: int = Field(default=1, gt=0)
+    branch: int = Field(default=1, gt=0)
+    filters: int = Field(gt=0)
+    ex_ratio: float = Field(default=1, gt=0, allow_inf_nan=False)
+    se_ratio: float = Field(default=0, ge=0, allow_inf_nan=False)
+    dropout: float | None = Field(default=None, ge=0, lt=1, allow_inf_nan=False)
+    _spatial = field_validator("kernel", "dilation")(_positive_spatial)
 
 
 class _StrictTcnParams(TcnParams):
     model_config = ConfigDict(extra="forbid")
     blocks: list[_StrictTcnBlockParams] = Field(default_factory=list)
+    _spatial = field_validator("input_kernel", "output_kernel")(_positive_spatial)
 
 
 def compact_tcn_params(*, filters: int = 8) -> TcnParams:
