@@ -42,14 +42,58 @@ builder's SE path. Input dimensions and output class count are supplied by the
 caller; the example dimensions are not preset restrictions.
 
 `TcnParams.from_config()` is an explicit unknown-field-rejecting boundary for
-model and block fields. It retains normal Pydantic value coercion; it does not
-claim strict primitive types or newly validate every historical TCN combination.
+model and block fields. It rejects nonpositive kernels, dilations, filters, depth,
+branches and expansion ratios; SE ratios must be finite and nonnegative, dropout
+finite in [0,1). It retains normal Pydantic coercion and does not validate every
+historical TCN combination or claim strict primitive types.
 Existing `TcnParams.model_validate()` and dictionary factory calls retain their
 previous behavior for compatibility. Use the explicit parser for new JSON
 consumers, then pass typed objects internally. Parameter JSON describes the
 architecture; Keras model/config and weight serialization describe the actual
 initialized instance. A seed alone does not guarantee identical bytes across
 backends or dependency versions.
+
+## Config hydration and explicit trained weights
+
+`TcnParams.get_config()` returns JSON-shaped architecture data. Standard Keras
+serialization roundtrips that data through the same validated `from_config`
+boundary; no model instance, input signature, weights or execution policy is
+embedded. Register public custom objects when deserializing in a fresh process:
+
+```python
+import keras
+from helia_edge import register_keras_serializables
+from helia_edge.models import TcnParams, TcnModel
+
+register_keras_serializables()
+params = TcnParams.from_config(architecture_config)
+encoded = keras.saving.serialize_keras_object(params)
+params = keras.saving.deserialize_keras_object(encoded)
+model = TcnModel.model_from_params(keras.Input((256, 1)), params, num_classes=4)
+model.load_weights(checkpoint_path)  # Compatible .keras or .weights.h5; no skipped mismatches.
+model.save("reconstructed.keras")
+restored = keras.models.load_model("reconstructed.keras", compile=False)
+```
+
+The trained heartKIT `seg-4-tcn-sm` artifact can be reconstructed with existing
+`block_type="mb"`, not the compact `sm` preset. Its configuration uses input/output
+kernels (1,7), batch normalization, four blocks with widths 16/24/32/48, dilations
+1/2/4/8, SE ratios 0/2/2/2, dropout0.1 and ReLU6; the saved model produces four
+logits per sample. Map its legacy `model_name` field explicitly to `name` before
+strict parsing. Do not replace the architecture's `use_logits=True` with the
+export task's separate softmax policy. The model and typed factory have 52 layers
+and 7,310 parameters; weight loading and selected FP32 outputs were checked on
+CPU TensorFlow and Torch. This is compatibility evidence, not task accuracy.
+
+The historical model's dotted variable-layer names prevent direct Torch
+`load_model`; construct the typed model and use `load_weights` instead. Keras
+save/load of the reconstructed model works on both qualified backends. Historical
+SE 1x1 convolutions use same padding while the current helper uses valid; with
+unit stride these have identical spatial behavior. Names and untrained initializer
+metadata may differ; all loaded weights, graph connections, kernels, dilation,
+activation and normalization settings must agree. Keep source hashes, original
+precision and verification inputs with the consumer; this library does not ship
+trained checkpoints. Accelerator arithmetic is not qualified by the CPU result.
 
 ## Export and benchmark consumers
 

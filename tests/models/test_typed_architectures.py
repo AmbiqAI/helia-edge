@@ -104,3 +104,48 @@ def test_public_factories_do_not_reset_seed_or_session(monkeypatch):
     second = TcnModel.model_from_params(keras.Input(shape=(32, 3)), params, 4)
     assert first.output_shape == second.output_shape == (None, 32, 4)
     assert any(not np.array_equal(a, b) for a, b in zip(first.get_weights(), second.get_weights(), strict=True))
+
+
+def test_tcn_config_keras_serialization_and_explicit_weights(tmp_path, monkeypatch):
+    params = compact_tcn_params()
+    encoded = keras.saving.serialize_keras_object(params)
+    decoded = keras.saving.deserialize_keras_object(json.loads(json.dumps(encoded)))
+    assert isinstance(decoded, TcnParams) and decoded == params
+    assert TcnParams.from_config(params.get_config()) == params
+
+    def forbidden(*args, **kwargs):
+        raise AssertionError("construction changed caller-owned state")
+
+    monkeypatch.setattr(keras.backend, "clear_session", forbidden)
+    monkeypatch.setattr(keras.utils, "set_random_seed", forbidden)
+    model = TcnModel.model_from_params(keras.Input((16, 2)), decoded, 3)
+    path = tmp_path / "source.weights.h5"
+    model.save_weights(path)
+    restored = TcnModel.model_from_params(keras.Input((16, 2)), decoded, 3)
+    restored.load_weights(path)
+    x = np.arange(32, dtype="float32").reshape(1, 16, 2) / 32
+    expected = keras.ops.convert_to_numpy(model(x, training=False))
+    np.testing.assert_array_equal(expected, keras.ops.convert_to_numpy(restored(x, training=False)))
+    restored.save(tmp_path / "restored.keras")
+    from helia_edge import register_keras_serializables
+
+    register_keras_serializables()
+    loaded = keras.models.load_model(tmp_path / "restored.keras", compile=False)
+    np.testing.assert_array_equal(expected, keras.ops.convert_to_numpy(loaded(x, training=False)))
+
+
+@pytest.mark.parametrize("field,value", [("filters", 0), ("depth", 0), ("branch", 0),
+    ("kernel", [1, 0]), ("dilation", -1), ("ex_ratio", 0), ("se_ratio", -1), ("dropout", 1.0)])
+def test_tcn_config_rejects_invalid_block_geometry(field, value):
+    config = compact_tcn_params().model_dump(mode="json")
+    config["blocks"][0][field] = value
+    with pytest.raises(ValidationError):
+        TcnParams.from_config(config)
+
+
+@pytest.mark.parametrize("field,value", [("input_kernel", [0, 3]), ("output_kernel", -1)])
+def test_tcn_config_rejects_invalid_outer_geometry(field, value):
+    config = compact_tcn_params().model_dump(mode="json")
+    config[field] = value
+    with pytest.raises(ValidationError):
+        TcnParams.from_config(config)
