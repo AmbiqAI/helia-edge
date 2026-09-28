@@ -2,6 +2,7 @@ from . import composer as composer
 from . import conformer as conformer
 from . import convmixer as convmixer
 from . import efficientnet as efficientnet
+from . import fastenhancer as fastenhancer
 from . import metaformer as metaformer
 from . import mobileone as mobileone
 from . import mobilenet as mobilenet
@@ -26,6 +27,11 @@ from .convmixer import conv_mixer_layer as conv_mixer_layer
 from .efficientnet import EfficientNetParams as EfficientNetParams
 from .efficientnet import EfficientNetV2Model as EfficientNetV2Model
 from .efficientnet import efficientnetv2_layer as efficientnetv2_layer
+from .fastenhancer import FastEnhancerModel as FastEnhancerModel
+from .fastenhancer_params import FastEnhancerParams as FastEnhancerParams
+from .fastenhancer_params import FastEnhancerRNNFormerParams as FastEnhancerRNNFormerParams
+from .fastenhancer_params import FastEnhancerResolvedConfig as FastEnhancerResolvedConfig
+from .fastenhancer_params import resolve_fastenhancer as resolve_fastenhancer
 from .metaformer import MetaFormerModel as MetaFormerModel
 from .metaformer import MetaFormerParams as MetaFormerParams
 from .metaformer import MetaFormerBlockParams as MetaFormerBlockParams
