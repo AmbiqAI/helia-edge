@@ -1,6 +1,7 @@
 from . import composer as composer
 from . import conformer as conformer
 from . import convmixer as convmixer
+from . import cornet as cornet
 from . import efficientnet as efficientnet
 from . import fastenhancer as fastenhancer
 from . import metaformer as metaformer
@@ -24,6 +25,8 @@ from .conformer import conformer_layer as conformer_layer
 from .convmixer import ConvMixerModel as ConvMixerModel
 from .convmixer import ConvMixerParams as ConvMixerParams
 from .convmixer import conv_mixer_layer as conv_mixer_layer
+from .cornet import CorNetModel as CorNetModel
+from .cornet_params import CorNetParams as CorNetParams
 from .efficientnet import EfficientNetParams as EfficientNetParams
 from .efficientnet import EfficientNetV2Model as EfficientNetV2Model
 from .efficientnet import efficientnetv2_layer as efficientnetv2_layer
