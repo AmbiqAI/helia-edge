@@ -32,4 +32,3 @@ class MiniResNetV1Params(BaseModel):
     def from_config(cls, config: Mapping[str, Any]) -> "MiniResNetV1Params":
         """Validate external config, rejecting unknown keys and coercions."""
         return cls.model_validate(dict(config))
-
