@@ -88,5 +88,9 @@ TensorFlow and PyTorch CPU backends. PyTorch on GPUs that allow TF32
 convolutions (the default for cuDNN) differs by about 7e-3, so disable TF32
 for FP32 comparisons.
 
+Other options (residuals, sigmoid/tanh masks, post-activations, attention
+bias, other sizes) are tested only against an independent NumPy reference of
+the exported graph; no released weights exercise them.
+
 Enhanced-audio quality, conversion to LiteRT, quantization and target timing
 or memory are not established by this model.
