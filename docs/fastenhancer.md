@@ -3,7 +3,8 @@
 `FastEnhancerModel` builds the inference form of
 [FastEnhancer](https://github.com/aask1357/fastenhancer) as a Keras Functional
 model that processes one STFT frame per call. `FastEnhancerParams` holds the
-backend-free architecture config. The `fastenhancer_t` preset matches upstream
+backend-free architecture config; `rnnformer.freq` may not exceed
+`n_fft / 2 / stride`. The `fastenhancer_t` preset matches upstream
 `configs/fastenhancer/t.yaml` at revision `e74cab1`, the revision of the
 `onnx-vd-v1.0.0` release.
 
@@ -51,8 +52,12 @@ It is not the trainable architecture. Every RNNFormer block runs:
 
 The first block also adds a learned positional embedding.
 
-`load_fastenhancer_weights` takes tensors in ONNX/PyTorch layout keyed by
-module path, as listed by `fastenhancer_weight_shapes(params)`. It rejects
+`load_fastenhancer_weights` takes folded tensors in ONNX export layout keyed by
+module path, as listed by `fastenhancer_weight_shapes(params)`. GRU tensors
+must use ONNX gate order z, r, h; PyTorch `nn.GRU` stores r, z, n and must be
+reordered first, because shapes alone cannot detect the difference. Only names
+and shapes are checked, so build the model from the params the tensors came
+from. It rejects
 any missing, unexpected or misshapen tensor before loading anything.
 `fastenhancer_t_onnx_weights` renames the anonymous initializers of the
 `fastenhancer_t.spec.onnx` release. It does not guess names for other exports.
@@ -60,7 +65,7 @@ any missing, unexpected or misshapen tensor before loading anything.
 Hydration applies the following layout conversions:
 
 - **Strided input convolution:** the source's reshape-based channel order is
-  converted to a standard stride-4 kernel.
+  converted to a standard strided kernel.
 - **GRU:** gates keep ONNX order z, r, h, and the reset gate is applied after
   the recurrent matmul.
 - **Attention:** qkv columns are interleaved per head.

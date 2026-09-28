@@ -157,6 +157,9 @@ def test_fixed_filterbanks_are_frozen_normalized_projections():
     assert pre.shape == (64, 16) and post.shape == (16, 64)
     np.testing.assert_allclose(pre.sum(axis=0), 1.0, rtol=1e-6)
     np.testing.assert_allclose(post.sum(axis=0), 1.0, rtol=1e-6)
+    # Values of the onnx-vd-v1.0.0 fixed projections; the later upstream formula differs.
+    np.testing.assert_allclose(pre[:5, 0], [0.36670548, 0.29802096, 0.2048894, 0.11175784, 0.01862631], atol=1e-6)
+    np.testing.assert_allclose(post[0, :3], [1.0, 0.7619048, 0.52380955], atol=1e-6)
     model = FastEnhancerModel.model_from_params(FastEnhancerParams())
     assert not model.get_layer("rf_pre_proj").trainable
     np.testing.assert_array_equal(keras.ops.convert_to_numpy(model.get_layer("rf_pre_proj").kernel), pre)

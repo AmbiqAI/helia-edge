@@ -34,6 +34,11 @@ def test_resolve_records_preset_overrides_and_identity():
     assert custom.params.channels == 32 and custom.params.rnnformer.num_heads == 5
     assert custom.params.rnnformer.channels == 20
     assert type(custom).model_validate_json(custom.model_dump_json()) == custom
+    listed = resolve_fastenhancer("fastenhancer_t", {"kernel_size": (8, 5, 3)})
+    assert listed.overrides == {"kernel_size": [8, 5, 3]}
+    assert type(listed).model_validate_json(listed.model_dump_json()) == listed
+    with pytest.raises(ValueError, match="JSON-compatible"):
+        resolve_fastenhancer("fastenhancer_t", {"channels": object()})
     with pytest.raises(ValueError, match="unknown FastEnhancer override"):
         resolve_fastenhancer("fastenhancer_t", {"width": 2})
     with pytest.raises(ValueError, match="unknown FastEnhancer preset"):
@@ -52,6 +57,7 @@ def test_resolve_records_preset_overrides_and_identity():
         {"form": "trainable"},
         {"width": 2},
         {"channels": "24"},
+        {"n_fft": 64},
     ],
 )
 def test_invalid_configs_fail(config):

@@ -63,6 +63,8 @@ class FastEnhancerParams(BaseModel):
             raise ValueError("encoder and decoder kernels after the first must be odd")
         if (self.n_fft // 2) % self.stride:
             raise ValueError("n_fft // 2 must be divisible by stride")
+        if self.rnnformer.freq > self.encoder_bins:
+            raise ValueError("rnnformer freq must not exceed n_fft // 2 // stride; filters would cover no bin")
         return self
 
     @property
@@ -115,7 +117,10 @@ def resolve_fastenhancer(preset: str, overrides: Mapping[str, Any] | None = None
     """Resolve an official preset with validated overrides into a full record."""
     if preset not in FASTENHANCER_PRESETS:
         raise ValueError(f"unknown FastEnhancer preset {preset!r}; choose from {sorted(FASTENHANCER_PRESETS)}")
-    overrides = dict(overrides or {})
+    try:
+        overrides = json.loads(json.dumps(dict(overrides or {})))
+    except TypeError as exc:
+        raise ValueError(f"FastEnhancer overrides must be JSON-compatible: {exc}") from exc
     base = FASTENHANCER_PRESETS[preset].get_config()
     for key, value in overrides.items():
         if key not in base:
