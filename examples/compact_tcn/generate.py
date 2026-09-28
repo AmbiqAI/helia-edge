@@ -1,4 +1,4 @@
-"""Generate retained, synthetic whole-window TCN performance fixtures."""
+"""Generate seeded compact TCN models and their FP32/INT8 LiteRT exports."""
 
 import argparse
 import copy
@@ -16,7 +16,7 @@ from ai_edge_litert.interpreter import Interpreter, OpResolverType
 from tensorflow.lite.python import schema_py_generated as schema
 
 from helia_edge.converters.litert import ConversionType, LiteRTKerasConverter, QuantizationType
-from helia_edge.models.tcn import TcnBlockParams, TcnModel, TcnParams
+from helia_edge.models.tcn import TcnModel, TcnParams
 
 
 def sha256(data):
@@ -32,53 +32,37 @@ def write_json(path, value):
     path.write_text(json.dumps(value, indent=2, sort_keys=True) + "\n")
 
 
-def read_recipe(path):
-    recipe = json.loads(path.read_text())
-    expected = {"schema_version", "seed", "widths", "input_shape", "num_classes", "calibration_samples", "tcn"}
-    if set(recipe) != expected or recipe["schema_version"] != 1:
-        raise ValueError("Unsupported recipe schema")
-    if recipe["input_shape"] != [240, 14] or recipe["num_classes"] != 2:
-        raise ValueError("This fixture requires 240x14 inputs and 240x2 logits")
-    widths = recipe["widths"]
-    if widths != [8, 16]:
-        raise ValueError("The bounded fixture requires widths [8, 16]")
-    if type(recipe["seed"]) is not int or not 0 <= recipe["seed"] < 2**32 - 1:
-        raise ValueError("seed must be an unsigned 32-bit integer with room for calibration seed")
-    if type(recipe["calibration_samples"]) is not int or not 1 <= recipe["calibration_samples"] <= 256:
-        raise ValueError("calibration_samples must be in [1, 256]")
-    params = TcnParams.model_validate(recipe["tcn"])
-    if set(recipe["tcn"]) - set(TcnParams.model_fields):
-        raise ValueError("Unknown TCN controls")
-    if params.block_type != "sm" or len(params.blocks) != 4:
-        raise ValueError("Expected four small TCN blocks")
-    if any(set(block) - set(TcnBlockParams.model_fields) for block in recipe["tcn"]["blocks"]):
-        raise ValueError("Unknown TCN block controls")
-    for block in params.blocks:
-        if block.se_ratio != 4 or block.depth != 1 or block.branch != 1 or block.norm != "batch":
-            raise ValueError("Expected SE ratio 4, depth/branch 1 and batch normalization")
-        if block.activation != "relu6" or block.ex_ratio != 1 or block.dropout is not None:
-            raise ValueError("Expected ReLU6, expansion 1 and no dropout")
-    if not params.include_top or not params.use_logits or params.output_activation is not None:
-        raise ValueError("Output must retain per-point logits")
-    if recipe["seed"] != 20260925:
-        raise ValueError("The compact TCN preset requires seed 20260925")
-    if params.input_kernel is not None or params.input_norm != "batch" or params.output_kernel != (1, 1):
-        raise ValueError("The compact TCN preset requires no input convolution and a 1x1 output kernel")
-    for index, block in enumerate(params.blocks):
-        if block.kernel != (1, 3) or block.dilation != (1, 2**index):
-            raise ValueError("The compact TCN preset requires 1x3 kernels and dilations 1/2/4/8")
-    return recipe
+SEED = 20260925
+WIDTHS = (8, 16)
+INPUT_SHAPE = (240, 14)
+NUM_CLASSES = 2
+TCN = {
+    "input_kernel": None,
+    "input_norm": "batch",
+    "block_type": "sm",
+    "blocks": [
+        {"depth": 1, "branch": 1, "filters": 8, "kernel": [1, 3], "dilation": [1, 2**stage], "ex_ratio": 1,
+         "se_ratio": 4, "dropout": None, "norm": "batch", "activation": "relu6"}
+        for stage in range(4)
+    ],
+    "output_kernel": [1, 1],
+    "include_top": True,
+    "use_logits": True,
+    "output_activation": None,
+    "name": "compact_tcn",
+}
 
 
-def build_model(recipe, width):
+def build_model(width, tcn=TCN):
+    """Build the seeded preset; ``filters`` in ``tcn`` are replaced by ``width``."""
     keras.backend.clear_session()
-    keras.utils.set_random_seed(recipe["seed"])
-    config = copy.deepcopy(recipe["tcn"])
+    keras.utils.set_random_seed(SEED)
+    config = copy.deepcopy(tcn)
     for block in config["blocks"]:
         block["filters"] = width
     params = TcnParams.model_validate(config)
-    inputs = keras.Input(shape=tuple(recipe["input_shape"]), batch_size=1, name="features")
-    model = TcnModel.model_from_params(inputs, params, num_classes=recipe["num_classes"])
+    inputs = keras.Input(shape=INPUT_SHAPE, batch_size=1, name="features")
+    model = TcnModel.model_from_params(inputs, params, num_classes=NUM_CLASSES)
     if model.output_shape != (1, 240, 2):
         raise ValueError(f"Unexpected output shape {model.output_shape}")
     return model, params.model_dump(mode="json")
@@ -147,19 +131,11 @@ def retain_license(output):
             "dependencies": "versions recorded separately; dependency license audit not provided"}
 
 
-def fixture_inputs(recipe):
-    shape = tuple(recipe["input_shape"])
-    calibration = np.random.default_rng(recipe["seed"] + 1).uniform(
-        -1.0, 1.0, (recipe["calibration_samples"], *shape)
-    ).astype(np.float32)
-    t = np.arange(shape[0], dtype=np.float32)[:, None]
-    c = np.arange(1, shape[1] + 1, dtype=np.float32)[None, :]
-    signal = (0.75 * np.sin(t * c * np.float32(0.03125))).astype(np.float32)
-    inputs = np.stack([np.zeros(shape, np.float32), -np.ones(shape, np.float32),
-                       np.ones(shape, np.float32), signal])
-    if set(map(array_hash, calibration)) & set(map(array_hash, inputs)):
-        raise ValueError("Calibration and golden inputs overlap")
-    return calibration, inputs
+def calibration_inputs(samples):
+    """Deterministic uniform [-1, 1] windows used only for INT8 calibration and export checks."""
+    if type(samples) is not int or not 1 <= samples <= 256:
+        raise ValueError("calibration samples must be in [1, 256]")
+    return np.random.default_rng(SEED + 1).uniform(-1.0, 1.0, (samples, *INPUT_SHAPE)).astype(np.float32)
 
 
 def runtime(content):
@@ -233,15 +209,6 @@ def graph_info(content, precision):
             "target_accumulator_and_dispatch": "not measured"}
 
 
-def quantize(inputs, detail):
-    if detail["dtype"] == np.float32:
-        return inputs.copy()
-    scale, zero = detail["quantization"]
-    if detail["dtype"] != np.int8 or scale <= 0:
-        raise ValueError("Expected per-tensor INT8 input quantization")
-    return np.clip(np.rint(inputs / scale + zero), -128, 127).astype(np.int8)
-
-
 def infer(interpreter, inputs):
     inp, = interpreter.get_input_details()
     out, = interpreter.get_output_details()
@@ -255,7 +222,7 @@ def infer(interpreter, inputs):
 
 def provenance():
     root = Path(__file__).resolve().parents[2]
-    files = [Path(__file__).resolve(), Path(__file__).with_name("recipe.json")]
+    files = [Path(__file__).resolve()]
     files += sorted((root / "helia_edge").rglob("*.py"))
     files += [root / "pyproject.toml", root / "uv.lock"]
     dependencies = dict(sorted((d.metadata["Name"], d.version) for d in importlib.metadata.distributions()))
@@ -265,32 +232,23 @@ def provenance():
             "dependencies_sha256": sha256(json.dumps(dependencies, sort_keys=True).encode())}
 
 
-def generate(recipe_path, output):
-    recipe = read_recipe(recipe_path)
+def generate(output, calibration_samples=32):
+    calibration = calibration_inputs(calibration_samples)
     output.mkdir(parents=True, exist_ok=False)
-    calibration, inputs = fixture_inputs(recipe)
-    write_json(output / "recipe.json", recipe)
     np.save(output / "calibration.npy", calibration, allow_pickle=False)
-    np.save(output / "held_out.npy", inputs, allow_pickle=False)
-    manifest = {"schema_version": 1, "kind": "synthetic performance fixture; no trained task-quality claim",
+    manifest = {"schema_version": 2, "kind": "seeded synthetic models and exports; no trained task-quality claim",
                 "state": "stateless same-padding whole windows; no streaming claim",
                 "source": provenance(), "license": retain_license(output),
-                "recipe_input": {"path": str(recipe_path.resolve()), "sha256": sha256(recipe_path.read_bytes())},
-                "recipe_sha256": sha256((output / "recipe.json").read_bytes()),
-                "calibration_sample_hashes": list(map(array_hash, calibration)),
-                "held_out_sample_hashes": list(map(array_hash, inputs)),
-                "golden_cases": ["zero", "negative_unit_limit", "positive_unit_limit", "deterministic_signal"],
-                "oracle": {"runtime": "ai-edge-litert", "version": importlib.metadata.version("ai-edge-litert"),
-                           "resolver": "BUILTIN_REF", "threads": 1}, "exports": []}
-    for width in recipe["widths"]:
-        model, config = build_model(recipe, width)
+                "preset": {"seed": SEED, "input_shape": list(INPUT_SHAPE), "num_classes": NUM_CLASSES,
+                           "calibration_samples": calibration_samples, "tcn": TCN},
+                "calibration_sample_hashes": list(map(array_hash, calibration)), "exports": []}
+    for width in WIDTHS:
+        model, config = build_model(width)
         validate_model(model, width)
         weights = model.get_weights()
         weight_hashes = list(map(array_hash, weights))
         np.savez(output / f"w{width}-weights.npz", **{f"weight_{i}": w for i, w in enumerate(weights)})
         write_json(output / f"w{width}-config.json", config)
-        keras_reference = np.concatenate([model(x[None], training=False).numpy() for x in inputs])
-        np.save(output / f"w{width}-keras.npy", keras_reference, allow_pickle=False)
         for precision in ("FP32", "INT8"):
             stem = f"tcn-w{width}-{precision.lower()}"
             converter = LiteRTKerasConverter(model)
@@ -309,105 +267,34 @@ def generate(recipe_path, output):
             expected_dtype = np.int8 if precision == "INT8" else np.float32
             if inp["dtype"] != expected_dtype or out["dtype"] != expected_dtype:
                 raise ValueError("Export interface dtype mismatch")
-            if inp["shape"].tolist() != [1, 240, 14] or out["shape"].tolist() != [1, 240, 2]:
+            if inp["shape"].tolist() != [1, *INPUT_SHAPE] or out["shape"].tolist() != [1, INPUT_SHAPE[0], NUM_CLASSES]:
                 raise ValueError("Export shape mismatch")
-            encoded = quantize(inputs, inp)
-            golden = infer(interpreter, encoded)
+            fp32_error = None
             if precision == "FP32":
-                np.testing.assert_allclose(golden, keras_reference, rtol=1e-5, atol=1e-5)
+                exported = infer(interpreter, calibration)
+                reference = np.concatenate([model(x[None], training=False).numpy() for x in calibration])
+                np.testing.assert_allclose(exported, reference, rtol=1e-5, atol=1e-5)
+                fp32_error = float(np.max(np.abs(exported - reference)))
             if weight_hashes != list(map(array_hash, model.get_weights())):
                 raise ValueError("Conversion changed the source weights")
-            np.savez(output / f"{stem}-goldens.npz", inputs=encoded, outputs=golden)
             manifest["exports"].append({"width": width, "precision": precision,
                 "model": f"{stem}.tflite", "model_sha256": sha256(content), "model_bytes": len(content),
-                "goldens": f"{stem}-goldens.npz", "graph": f"{stem}-graph.json",
-                "config": f"w{width}-config.json", "weights": f"w{width}-weights.npz",
+                "graph": f"{stem}-graph.json", "config": f"w{width}-config.json", "weights": f"w{width}-weights.npz",
                 "weight_array_hashes": weight_hashes, "parameter_count": model.count_params(),
                 "input": tensor_info(inp), "output": tensor_info(out),
                 "output_bytes": int(np.prod(out["shape"])) * np.dtype(out["dtype"]).itemsize,
-                "fp32_keras_max_abs_error": float(np.max(np.abs(golden - keras_reference)))
-                if precision == "FP32" else None,
-                "target_admission": "not run; full-output transport required"})
+                "fp32_keras_max_abs_error_on_calibration": fp32_error})
     manifest["files"] = {p.name: sha256(p.read_bytes()) for p in sorted(output.iterdir()) if p.is_file()}
     write_json(output / "manifest.json", manifest)
-    verify(output)
-    return manifest
-
-
-def validate_golden(array, detail, samples, label):
-    """Validate retained tensor metadata before passing bytes to the oracle."""
-    if array.dtype != np.dtype(detail["dtype"]):
-        raise ValueError(f"Golden {label} dtype differs from interpreter contract")
-    expected_shape = (samples, *detail["shape"].tolist()[1:])
-    if detail["shape"][0] != 1 or array.shape != expected_shape:
-        raise ValueError(f"Golden {label} shape differs from interpreter contract")
-
-
-def assert_raw_equal(actual, expected, label):
-    if actual.dtype != expected.dtype or actual.shape != expected.shape or actual.tobytes(order="C") != expected.tobytes(order="C"):
-        raise AssertionError(f"Golden {label} raw bytes differ from reference")
-
-
-def verify(output):
-    """Check retained bytes and replay every full-output golden with the recorded oracle."""
-    manifest = json.loads((output / "manifest.json").read_text())
-    if manifest["oracle"]["version"] != importlib.metadata.version("ai-edge-litert"):
-        raise ValueError("Oracle version mismatch")
-    for name, expected in manifest["files"].items():
-        if sha256((output / name).read_bytes()) != expected:
-            raise ValueError(f"Artifact hash mismatch: {name}")
-    if len(manifest["exports"]) != 4 or {(e["width"], e["precision"]) for e in manifest["exports"]} != {
-        (8, "FP32"), (8, "INT8"), (16, "FP32"), (16, "INT8")
-    }:
-        raise ValueError("Expected four distinct width/precision exports")
-    if sha256((output / "recipe.json").read_bytes()) != manifest["recipe_sha256"]:
-        raise ValueError("Recipe hash mismatch")
-    recipe = read_recipe(output / "recipe.json")
-    calibration = np.load(output / "calibration.npy", allow_pickle=False)
-    held_out = np.load(output / "held_out.npy", allow_pickle=False)
-    cal_hashes, held_hashes = list(map(array_hash, calibration)), list(map(array_hash, held_out))
-    if cal_hashes != manifest["calibration_sample_hashes"] or held_hashes != manifest["held_out_sample_hashes"]:
-        raise ValueError("Sample hash mismatch")
-    if set(cal_hashes) & set(held_hashes):
-        raise ValueError("Calibration and golden inputs overlap")
-    for export in manifest["exports"]:
-        content = (output / export["model"]).read_bytes()
-        if sha256(content) != export["model_sha256"]:
-            raise ValueError("Model hash mismatch")
-        expected_config = copy.deepcopy(recipe["tcn"])
-        for block in expected_config["blocks"]:
-            block["filters"] = export["width"]
-        expected_config = TcnParams.model_validate(expected_config).model_dump(mode="json")
-        if json.loads((output / export["config"]).read_text()) != expected_config:
-            raise ValueError("Export configuration differs from recipe")
-        graph = graph_info(content, export["precision"])
-        if graph != json.loads((output / export["graph"]).read_text()):
-            raise ValueError("Graph metadata mismatch")
-        interpreter = runtime(content)
-        inp, = interpreter.get_input_details()
-        out, = interpreter.get_output_details()
-        if tensor_info(inp) != export["input"] or tensor_info(out) != export["output"]:
-            raise ValueError("Interface metadata mismatch")
-        with np.load(output / export["weights"], allow_pickle=False) as weights:
-            hashes = [array_hash(weights[f"weight_{i}"]) for i in range(len(weights.files))]
-        if hashes != export["weight_array_hashes"]:
-            raise ValueError("Weight hash mismatch")
-        with np.load(output / export["goldens"], allow_pickle=False) as data:
-            validate_golden(data["inputs"], inp, len(held_out), "inputs")
-            validate_golden(data["outputs"], out, len(held_out), "outputs")
-            assert_raw_equal(data["inputs"], quantize(held_out, inp), "inputs")
-            actual = infer(interpreter, data["inputs"])
-            assert_raw_equal(actual, data["outputs"], "outputs")
     return manifest
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--recipe", type=Path, default=Path(__file__).with_name("recipe.json"))
     parser.add_argument("--output", type=Path, required=True)
-    parser.add_argument("--verify", action="store_true", help="Verify and replay an existing retained fixture")
+    parser.add_argument("--calibration-samples", type=int, default=32)
     args = parser.parse_args()
-    manifest = verify(args.output) if args.verify else generate(args.recipe, args.output)
+    manifest = generate(args.output, args.calibration_samples)
     print(json.dumps({"exports": len(manifest["exports"]), "manifest": str(args.output / "manifest.json")}))
 
 

@@ -1,10 +1,9 @@
-"""Structural and retained-artifact checks for the compact TCN example."""
+"""Structural and export checks for the compact TCN example."""
 
+import copy
 import importlib.util
 import json
-import os
 from pathlib import Path
-import shutil
 
 import keras
 import numpy as np
@@ -14,7 +13,6 @@ ROOT = Path(__file__).resolve().parents[2]
 SPEC = importlib.util.spec_from_file_location("compact_tcn", ROOT / "examples/compact_tcn/generate.py")
 fixture = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(fixture)
-RECIPE = ROOT / "examples/compact_tcn/recipe.json"
 
 
 def assert_architecture(model, width):
@@ -39,85 +37,61 @@ def assert_architecture(model, width):
 
 @pytest.mark.parametrize("width", [8, 16])
 def test_architecture_and_seeded_weights(width):
-    recipe = fixture.read_recipe(RECIPE)
-    model, _ = fixture.build_model(recipe, width)
+    model, _ = fixture.build_model(width)
     assert_architecture(model, width)
     expected = [fixture.array_hash(w) for w in model.get_weights()]
-    rebuilt, _ = fixture.build_model(recipe, width)
+    rebuilt, _ = fixture.build_model(width)
     assert expected == [fixture.array_hash(w) for w in rebuilt.get_weights()]
 
 
 def test_structure_check_detects_wrong_dilation():
-    recipe = fixture.read_recipe(RECIPE)
-    recipe["tcn"]["blocks"][2]["dilation"] = [1, 1]
-    mutant, _ = fixture.build_model(recipe, 8)
+    tcn = copy.deepcopy(fixture.TCN)
+    tcn["blocks"][2]["dilation"] = [1, 1]
+    mutant, _ = fixture.build_model(8, tcn)
     with pytest.raises(AssertionError):
         assert_architecture(mutant, 8)
 
 
-@pytest.mark.parametrize("field,value", [("input_shape", [120, 14]), ("widths", [8]),
-                                         ("calibration_samples", 0), ("seed", -1)])
-def test_invalid_recipe(tmp_path, field, value):
-    recipe = json.loads(RECIPE.read_text())
-    recipe[field] = value
-    path = tmp_path / "recipe.json"
-    path.write_text(json.dumps(recipe))
-    with pytest.raises(ValueError):
-        fixture.read_recipe(path)
+def test_calibration_is_reproducible_and_bounded():
+    calibration = fixture.calibration_inputs(32)
+    assert calibration.shape == (32, 240, 14) and calibration.dtype == np.float32
+    assert calibration.min() >= -1 and calibration.max() <= 1
+    np.testing.assert_array_equal(calibration, fixture.calibration_inputs(32))
 
 
-def test_calibration_is_separate_and_reproducible():
-    recipe = fixture.read_recipe(RECIPE)
-    calibration, held_out = fixture.fixture_inputs(recipe)
-    assert not set(map(fixture.array_hash, calibration)) & set(map(fixture.array_hash, held_out))
-    again, _ = fixture.fixture_inputs(recipe)
-    np.testing.assert_array_equal(calibration, again)
-    np.testing.assert_array_equal(held_out[0], np.zeros((240, 14), np.float32))
-    assert held_out[1].min() == -1 and held_out[2].max() == 1
-    assert np.ptp(held_out[3]) > 1
-
-
-def test_quantization_rounds_and_saturates():
-    detail = {"dtype": np.int8, "quantization": (0.25, -3)}
-    actual = fixture.quantize(np.array([-100, -0.3, 0, 0.3, 100], np.float32), detail)
-    np.testing.assert_array_equal(actual, np.array([-128, -4, -3, -2, 127], np.int8))
+@pytest.mark.parametrize("samples", [0, 257, 1.5])
+def test_invalid_calibration_samples_create_nothing(tmp_path, samples):
+    with pytest.raises(ValueError, match="calibration samples"):
+        fixture.generate(tmp_path / "exports", samples)
+    assert not (tmp_path / "exports").exists()
 
 
 @pytest.fixture(scope="module")
 def exported(tmp_path_factory):
-    retained = os.environ.get("HELIA_TCN_FIXTURE")
-    if retained:
-        output = Path(retained)
-        fixture.verify(output)
-    else:
-        output = tmp_path_factory.mktemp("compact-tcn") / "exports"
-        fixture.generate(RECIPE, output)
+    output = tmp_path_factory.mktemp("compact-tcn") / "exports"
+    fixture.generate(output)
     return output
 
 
-def test_four_exports_and_full_golden_replay(exported):
-    manifest = fixture.verify(exported)
+def test_four_exports_with_manifest(exported):
+    manifest = json.loads((exported / "manifest.json").read_text())
     assert {(e["width"], e["precision"]) for e in manifest["exports"]} == {
         (8, "FP32"), (8, "INT8"), (16, "FP32"), (16, "INT8")}
+    for name, digest in manifest["files"].items():
+        assert fixture.sha256((exported / name).read_bytes()) == digest
+    assert not [p for p in exported.iterdir() if "golden" in p.name or p.name == "recipe.json"]
     for export in manifest["exports"]:
         assert export["output"]["shape"] == [1, 240, 2]
         assert export["output_bytes"] == (480 if export["precision"] == "INT8" else 1920)
-        with np.load(exported / export["goldens"], allow_pickle=False) as data:
-            assert data["outputs"].shape == (4, 240, 2)
+        assert fixture.sha256((exported / export["model"]).read_bytes()) == export["model_sha256"]
         peers = [e for e in manifest["exports"] if e["width"] == export["width"]]
         assert peers[0]["weight_array_hashes"] == peers[1]["weight_array_hashes"]
         if export["precision"] == "INT8":
             graph = json.loads((exported / export["graph"]).read_text())
             assert all(t["dtype"] in {"INT8", "INT32"} for t in graph["tensors"])
-
-
-def test_verify_rejects_corrupted_model(exported, tmp_path):
-    copy_path = tmp_path / "corrupt"
-    shutil.copytree(exported, copy_path)
-    model = copy_path / "tcn-w8-int8.tflite"
-    model.write_bytes(model.read_bytes()[:-1] + b"x")
-    with pytest.raises(ValueError, match="Artifact hash mismatch"):
-        fixture.verify(copy_path)
+            assert export["fp32_keras_max_abs_error_on_calibration"] is None
+        else:
+            assert export["fp32_keras_max_abs_error_on_calibration"] <= 1e-5
 
 
 def test_int8_validator_rejects_float_graph(exported):
@@ -125,61 +99,22 @@ def test_int8_validator_rejects_float_graph(exported):
         fixture.graph_info((exported / "tcn-w8-fp32.tflite").read_bytes(), "INT8")
 
 
-def test_replay_detects_changed_golden_even_with_updated_file_hash(exported, tmp_path):
-    copy_path = tmp_path / "wrong-golden"
-    shutil.copytree(exported, copy_path)
-    manifest_path = copy_path / "manifest.json"
-    manifest = json.loads(manifest_path.read_text())
-    name = "tcn-w8-int8-goldens.npz"
-    with np.load(copy_path / name) as data:
-        inputs, outputs = data["inputs"], data["outputs"].copy()
-    outputs.flat[0] = 0 if outputs.flat[0] != 0 else 1
-    np.savez(copy_path / name, inputs=inputs, outputs=outputs)
-    manifest["files"][name] = fixture.sha256((copy_path / name).read_bytes())
-    fixture.write_json(manifest_path, manifest)
-    with pytest.raises(AssertionError):
-        fixture.verify(copy_path)
-
-
-@pytest.mark.parametrize("change", ["dilation", "kernel", "output_kernel", "input_kernel", "input_norm", "seed"])
-def test_generation_rejects_changed_named_preset(tmp_path, change):
-    recipe = json.loads(RECIPE.read_text())
-    if change == "dilation":
-        recipe["tcn"]["blocks"][3]["dilation"] = [1, 1]
-    elif change == "kernel":
-        recipe["tcn"]["blocks"][0]["kernel"] = [1, 5]
-    elif change == "output_kernel":
-        recipe["tcn"]["output_kernel"] = [1, 3]
-    elif change == "input_kernel":
-        recipe["tcn"]["input_kernel"] = [1, 3]
-    elif change == "input_norm":
-        recipe["tcn"]["input_norm"] = "layer"
-    else:
-        recipe["seed"] = 42
-    path = tmp_path / "wrong-recipe.json"
-    path.write_text(json.dumps(recipe))
-    output = tmp_path / "exports"
-    with pytest.raises(ValueError, match="preset"):
-        fixture.generate(path, output)
-    assert not output.exists()
-
-
 def test_emitted_graph_detects_builder_dilation_regression(tmp_path, monkeypatch):
     build = fixture.build_model
 
-    def wrong_builder(recipe, width):
-        changed = json.loads(json.dumps(recipe))
-        changed["tcn"]["blocks"][3]["dilation"] = [1, 1]
-        return build(changed, width)
+    def wrong_builder(width):
+        changed = copy.deepcopy(fixture.TCN)
+        changed["blocks"][3]["dilation"] = [1, 1]
+        return build(width, changed)
 
     monkeypatch.setattr(fixture, "build_model", wrong_builder)
     with pytest.raises(ValueError, match="violates compact TCN preset"):
-        fixture.generate(RECIPE, tmp_path / "wrong-builder")
+        fixture.generate(tmp_path / "wrong-builder")
 
 
 @pytest.mark.parametrize("mutation", ["se_pool", "se_multiply", "pointwise", "logits", "residual"])
 def test_generation_rejects_actual_builder_regression_before_conversion(tmp_path, monkeypatch, mutation):
-    model, config = fixture.build_model(fixture.read_recipe(RECIPE), 8)
+    model, config = fixture.build_model(8)
 
     def clone(layer):
         options = layer.get_config()
@@ -196,14 +131,14 @@ def test_generation_rejects_actual_builder_regression_before_conversion(tmp_path
         return type(layer).from_config(options)
 
     wrong = keras.models.clone_model(model, clone_function=clone)
-    monkeypatch.setattr(fixture, "build_model", lambda recipe, width: (wrong, config))
+    monkeypatch.setattr(fixture, "build_model", lambda width: (wrong, config))
 
     def must_not_convert(*args, **kwargs):
         raise RuntimeError("invalid model reached conversion")
 
     monkeypatch.setattr(fixture, "LiteRTKerasConverter", must_not_convert)
     with pytest.raises(ValueError, match="preset"):
-        fixture.generate(RECIPE, tmp_path / mutation)
+        fixture.generate(tmp_path / mutation)
 
 
 def test_int8_validator_rejects_non_int8_operand_without_export(exported):
@@ -220,12 +155,12 @@ def test_int8_validator_rejects_non_int8_operand_without_export(exported):
 
 @pytest.mark.parametrize("width", [8, 16])
 def test_production_guard_accepts_preset_and_template_filters_are_overridden(width):
-    recipe = fixture.read_recipe(RECIPE)
-    original, _ = fixture.build_model(recipe, width)
+    original, _ = fixture.build_model(width)
     fixture.validate_model(original, width)
-    for block in recipe["tcn"]["blocks"]:
+    tcn = copy.deepcopy(fixture.TCN)
+    for block in tcn["blocks"]:
         block["filters"] = 123
-    changed, config = fixture.build_model(recipe, width)
+    changed, config = fixture.build_model(width, tcn)
     fixture.validate_model(changed, width)
     assert all(block["filters"] == width for block in config["blocks"])
     assert [fixture.array_hash(w) for w in original.get_weights()] == [fixture.array_hash(w) for w in changed.get_weights()]
@@ -236,32 +171,3 @@ def test_retained_license_metadata_matches_copied_source(tmp_path):
     assert metadata["source_spdx"] == "BSD-3-Clause"
     assert metadata["sha256"] == fixture.sha256((ROOT / "LICENSE").read_bytes())
     assert (tmp_path / metadata["file"]).read_bytes() == (ROOT / "LICENSE").read_bytes()
-
-
-@pytest.mark.parametrize("mutation", ["output_dtype", "input_dtype", "output_shape", "input_shape", "signed_zero"])
-def test_replay_enforces_tensor_contract_and_raw_bytes(exported, tmp_path, mutation):
-    output = tmp_path / mutation
-    shutil.copytree(exported, output)
-    name = "tcn-w8-fp32-goldens.npz" if mutation == "signed_zero" else "tcn-w8-int8-goldens.npz"
-    with np.load(output / name) as arrays:
-        inputs, outputs = arrays["inputs"].copy(), arrays["outputs"].copy()
-    if mutation == "output_dtype":
-        outputs = outputs.astype(np.float32)
-    elif mutation == "input_dtype":
-        inputs = inputs.astype(np.float32)
-    elif mutation == "output_shape":
-        outputs = outputs.reshape(outputs.shape[0], -1)
-    elif mutation == "input_shape":
-        inputs = inputs.reshape(inputs.shape[0], -1)
-    else:
-        index = np.flatnonzero(outputs == 0)[0]
-        outputs.flat[index] = -outputs.flat[index]
-    np.savez(output / name, inputs=inputs, outputs=outputs)
-    manifest_path = output / "manifest.json"
-    manifest = json.loads(manifest_path.read_text())
-    manifest["files"][name] = fixture.sha256((output / name).read_bytes())
-    fixture.write_json(manifest_path, manifest)
-    error = AssertionError if mutation == "signed_zero" else ValueError
-    match = "raw bytes" if mutation == "signed_zero" else "Golden .* (dtype|shape)"
-    with pytest.raises(error, match=match):
-        fixture.verify(output)

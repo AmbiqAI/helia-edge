@@ -1,88 +1,72 @@
-# Compact TCN performance fixtures
+# Compact TCN models and exports
 
-This example produces **synthetic, untrained performance fixtures**, not task-quality
-models. It reuses `TcnModel` with four small depthwise/pointwise blocks, batch
-normalization and ReLU6, dilations 1/2/4/8, SE ratio 4, and widths 8 and 16.
-`recipe.json` records the per-stage kernel/dilation controls and all builder defaults.
-The CLI validates this bounded preset, including seed and topology; it rejects
-altered kernels/dilations instead of labeling them as this fixture. The underlying
-TcnModel remains configurable for other applications. Calibration sample count
-may be changed within the validated range; this example defaults to 32.
-The width variants replace every block's `filters` field. Inputs are `[1,240,14]`;
-outputs are `[1,240,2]` logits. Same padding and global SE pooling require whole
-windows: there is no causal/streaming or recurrent-state claim.
+This example builds **seeded, untrained compact TCN models** and their LiteRT
+exports for performance work. They are not task-quality models.
+
+It reuses `TcnModel` with a preset fixed in `generate.py`:
+
+- four small depthwise/pointwise blocks with batch normalization and ReLU6;
+- dilations 1/2/4/8 and SE ratio 4;
+- seed 20260925;
+- widths 8 and 16, where each width replaces every block's `filters`;
+- inputs `[1,240,14]` and outputs `[1,240,2]` logits.
+
+Same padding and global SE pooling require whole windows. There is no causal,
+streaming or recurrent-state claim. Benchmark recipes, reference inputs,
+golden outputs and replay belong to the benchmark consumer, not this example.
 
 Use Python 3.12 or 3.13 and the TensorFlow Keras backend with the repository's
-`litert` extra. From an installed checkout, with its source on `PYTHONPATH`:
+`litert` extra. From a checkout, with its source on `PYTHONPATH`:
 
 ```sh
 KERAS_BACKEND=tensorflow PYTHONPATH=. python examples/compact_tcn/generate.py \
-  --output /absolute/external/path/tcn-fixtures
-KERAS_BACKEND=tensorflow PYTHONPATH=. python examples/compact_tcn/generate.py \
-  --output /absolute/external/path/tcn-fixtures --verify
+  --output /absolute/external/path/tcn-exports
 ```
 
-The output directory must not exist for generation; partial failures are preserved
-and must not be treated as complete fixtures. A completed `manifest.json` plus a
-successful verification is the handoff. Keep all generated files outside Git.
-Do not regenerate published capture bytes in place.
+The output directory must not already exist. A partial failure leaves a
+partial directory, which must not be treated as complete; a written
+`manifest.json` marks a complete generation. Keep generated files outside Git.
 
-One seeded Keras weight lineage per width supplies FP32 and fully INT8 exports
-(four models total). Conversion uses the existing strict concrete-function path
-so dilation is retained without relying on filename claims. Graph reports contain
-actual operator names/versions, operand types, constant types and quantization.
-Emitted depthwise kernel/dilation/stride/padding options are checked independently
-of the recipe during generation and replay. INT8 graphs containing any
-floating-point tensor are rejected. Integer bias and
-shape tensors remain integer; target accumulator precision and optimized kernel
-dispatch are not inferred from graph types. This example does not export FP16 or
-A16W8 and makes no native FP16 claim.
+Each width has one seeded Keras weight lineage, which supplies an FP32 export
+and a fully INT8 export (four models in total).
 
-Calibration uses 32 deterministic uniform `[-1,1]` windows from seed+1. Held-out
-cases are zero, constant -1, constant +1 and a deterministic multichannel sinusoid.
-These limits describe the synthetic signal domain, not float32 numeric extremes.
-Input hashes are checked for calibration/golden overlap. INT8 inputs use nearest
-even rounding followed by saturation. The stored inputs are the exact bytes to
-pass to a consumer; outputs are all 480 elements from the **exported** model using
-LiteRT's single-thread `BUILTIN_REF` oracle. FP32 outputs additionally agree with
-Keras at `rtol=1e-5, atol=1e-5`. INT8 goldens are not FP32 outputs cast to integers;
-no quantized task accuracy or error budget is asserted.
+Before conversion, the generator validates the connected Keras graph against
+the preset: SE pooling and gates, residual paths, pointwise kernels, dilations
+and the linear output.
 
-The manifest records source-file hashes, Git head, Python and installed dependency
-versions plus a dependency-list hash, the actual input-recipe path/raw hash and normalized recipe/configuration, seed, weight-array
-hashes, artifact byte hashes, I/O quantization and graph reports. Retained weight
-archives allow exact array restoration with `model.set_weights`; preserve the
-recorded environment to reproduce conversion. A seed alone does not guarantee
-identical bytes across dependency versions. Dependency hashes identify the version
-list and repository lock, not hashes of installed binary distributions. Source
-hashes describe the actual generator, including uncommitted changes if present.
-The verifier assumes a trusted manifest; it detects corruption, checks metadata
-against the model and replays goldens, but is not a signed supply-chain verifier.
+Conversion uses the existing strict concrete-function path, so dilation is
+preserved. The emitted depthwise kernel, dilation, stride and padding options
+are then checked in the exported graph. Operand types are restricted:
 
-Full output sizes are 480 bytes for INT8 and 1920 bytes for FP32. Consumers must
-support those complete outputs; do not truncate to fit a transport limit. Board
-admission, numerical comparison, timing, linked footprint, peak memory and energy
-are separate measurements. No target measurements are made here.
+- FP32 exports may contain only FLOAT32 and INT32 operands;
+- INT8 exports may contain only INT8 and INT32 operands, so any floating-point
+  tensor is rejected.
+
+Target accumulator precision and optimized kernel dispatch are not inferred
+from graph types.
+
+INT8 calibration uses 32 deterministic uniform `[-1,1]` windows from seed+1
+(`--calibration-samples`, 1–256). On those windows, each FP32 export must agree
+with Keras at `rtol=1e-5, atol=1e-5`, and the maximum error is recorded. The
+windows are calibration data, not golden cases.
+
+`manifest.json` records:
+
+- source-file hashes, the Git head, Python and installed dependency versions;
+- the preset and seed;
+- calibration hashes and weight-array hashes;
+- artifact byte hashes;
+- I/O tensor details and quantization;
+- graph reports and full output sizes (480 bytes INT8, 1920 bytes FP32).
+
+Retained weight archives restore exact arrays with `model.set_weights`. A seed
+alone does not guarantee identical bytes across dependency versions. New
+output directories retain `LICENSE` and BSD-3-Clause source and
+synthetic-weight provenance. Dependency versions are recorded for
+reproducibility; they are not a dependency-license audit.
 
 Run the focused tests in the same environment:
 
 ```sh
 KERAS_BACKEND=tensorflow PYTHONPATH=. pytest -q tests/examples/test_compact_tcn.py
 ```
-
-To reuse a retained generation during local tests, set `HELIA_TCN_FIXTURE` to its
-absolute directory. Tests check topology and seeded weights, malformed recipes,
-rounding/saturation, full golden replay, corruption rejection, float-fallback
-rejection, and detection of an intentionally wrong dilation or golden output.
-
-Before conversion, the generator validates the connected Keras preset, including
-SE pooling/gates, residual paths, pointwise kernels and linear output. Export
-operands must be FLOAT32/INT32 for FP32 or INT8/INT32 for INT8. Recipe block
-`filters` are template values: each selected width replaces all four before
-construction, and the effective values are retained in the per-width config.
-
-New fixture directories retain `LICENSE` and explicit BSD-3-Clause source and
-synthetic-weight provenance in the manifest. Dependency versions are recorded
-for reproducibility; this is not a dependency-license audit. Existing immutable
-packages keep their original manifests. NPZ file hashes identify retained bytes;
-array hashes identify dtype, shape and data independently of archive metadata.
