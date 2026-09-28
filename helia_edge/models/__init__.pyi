@@ -76,5 +76,5 @@ from .mlperf_tiny import MlperfTinyParams as MlperfTinyParams
 from .mlperf_tiny import MlperfTinyModel as MlperfTinyModel
 
 from . import miniresnet as miniresnet
-from .miniresnet import MiniResNetV1Params as MiniResNetV1Params
+from .miniresnet_params import MiniResNetV1Params as MiniResNetV1Params
 from .miniresnet import MiniResNetV1Model as MiniResNetV1Model

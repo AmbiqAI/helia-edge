@@ -22,6 +22,7 @@ model = MiniResNetV1Model.model_from_params(
 # model.save("classifier.keras")
 ```
 
+Public config import/validation does not import Keras or an execution backend.
 Config serialization uses `params.get_config()` / `from_config()` or Pydantic
 JSON methods. Unknown fields, invalid dimensions and coercions such as string
 channel counts are rejected. The config is immutable. One to three stacks,

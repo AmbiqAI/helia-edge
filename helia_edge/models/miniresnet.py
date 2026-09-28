@@ -10,41 +10,11 @@ Constructors initialize weights; callers explicitly load trained weights using
 Keras, and own audio preprocessing, seeds, class labels and export policy.
 """
 
-from collections.abc import Mapping
-from typing import Any, Literal
-
 import keras
-from pydantic import BaseModel, ConfigDict, Field
 
+from .miniresnet_params import MiniResNetV1Params
 
-@keras.saving.register_keras_serializable(package="helia_edge")
-class MiniResNetV1Params(BaseModel):
-    """Validated architecture config, independent of inputs and weight assets.
-
-    Each stack has two residual blocks; stack widths double from base_filters.
-    Changing defaults defines a new architecture, not a pretrained variant.
-    Flatten pooling requires fixed spatial dimensions. Backbone trainability
-    defaults to True; freeze layers explicitly when fine-tuning a new head.
-    """
-
-    model_config = ConfigDict(extra="forbid", strict=True, frozen=True)
-
-    stacks: int = Field(default=1, ge=1, le=3)
-    base_filters: int = Field(default=64, gt=0)
-    pooling: Literal["flatten", "avg", "max"] = "flatten"
-    dropout: float = Field(default=0.0, ge=0, lt=1, allow_inf_nan=False)
-    output_activation: Literal["softmax", "sigmoid", "linear"] = "softmax"
-    name: str = Field(default="miniresnet_v1", min_length=1, pattern=r"^[A-Za-z0-9_.-]+$")
-
-    def get_config(self) -> dict[str, Any]:
-        """Return a JSON-compatible constructor config without weights."""
-        return self.model_dump(mode="json")
-
-    @classmethod
-    def from_config(cls, config: Mapping[str, Any]) -> "MiniResNetV1Params":
-        """Validate external config, rejecting unknown keys and coercions."""
-        return cls.model_validate(dict(config))
-
+keras.saving.register_keras_serializable(package="helia_edge")(MiniResNetV1Params)
 
 def _block(inputs: keras.KerasTensor, filters: int, *, projection: bool, name: str) -> keras.KerasTensor:
     stride = 2 if projection else 1
