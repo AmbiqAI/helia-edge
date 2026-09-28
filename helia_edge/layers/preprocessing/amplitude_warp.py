@@ -61,6 +61,8 @@ class AmplitudeWarp(BaseAugmentation1D):
 
         super().__init__(**kwargs)
 
+        if sample_rate <= 0:
+            raise ValueError("sample_rate must be positive")
         self.sample_rate = sample_rate
         self.frequency = parse_factor(frequency, min_value=None, max_value=sample_rate / 2, param_name="frequency")
         self.amplitude = parse_factor(amplitude, min_value=0, max_value=None, param_name="amplitude")
@@ -80,7 +82,7 @@ class AmplitudeWarp(BaseAugmentation1D):
 
         # Add one period to the noise and clip later
         if self.frequency[0] == self.frequency[1]:
-            frequency = keras.cast(self.frequency[0], dtype=self.compute_dtype)
+            frequency = keras.ops.cast(self.frequency[0], dtype=self.compute_dtype)
         else:
             frequency = keras.random.uniform(
                 shape=(),
@@ -94,7 +96,7 @@ class AmplitudeWarp(BaseAugmentation1D):
         warp_duration = keras.ops.cast(duration_sec * frequency + frequency, dtype="int32")
 
         if self.data_format == "channels_first":
-            warp_shape = (batch_size, 1, ch_size, warp_duration)
+            warp_shape = (batch_size, ch_size, 1, warp_duration)
         else:
             warp_shape = (batch_size, 1, warp_duration, ch_size)
 
@@ -112,15 +114,14 @@ class AmplitudeWarp(BaseAugmentation1D):
             data_format=self.data_format,
         )
         # Remove height dimension
-        warp = keras.ops.squeeze(warp, axis=1)
+        warp = keras.ops.squeeze(warp, axis=2 if self.data_format == "channels_first" else 1)
         return {"warp": warp}
 
     def augment_samples(self, inputs) -> keras.KerasTensor:
         """Augment all samples in the batch as it's faster."""
         samples = inputs[self.SAMPLES]
-        if self.training:
-            warp = inputs[self.TRANSFORMS]["warp"]
-            return samples * warp
+        warp = inputs[self.TRANSFORMS]["warp"]
+        return samples * warp
         return samples
 
     def get_config(self):
@@ -128,10 +129,9 @@ class AmplitudeWarp(BaseAugmentation1D):
         config = super().get_config()
         config.update(
             {
-                "sample_rate": self.sample,
+                "sample_rate": self.sample_rate,
                 "frequency": self.frequency,
                 "amplitude": self.amplitude,
-                "noise_type": self.noise_type,
             }
         )
         return config

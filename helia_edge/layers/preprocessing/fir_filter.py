@@ -18,10 +18,12 @@ from ...utils import helia_export
 
 @helia_export(path="helia_edge.layers.preprocessing.FirFilter")
 class FirFilter(BaseAugmentation1D):
+    training_only = False
+
     def __init__(
         self,
-        b: npt.NDArray[np.float32],
-        a: npt.NDArray[np.float32] | None = None,
+        b: npt.NDArray[np.float32] | list[float],
+        a: npt.NDArray[np.float32] | list[float] | None = None,
         forward_backward: bool = False,
         **kwargs,
     ):
@@ -57,7 +59,9 @@ class FirFilter(BaseAugmentation1D):
         ```
         """
         super().__init__(**kwargs)
-        b = b.reshape(-1, 1, 1)
+        b = np.asarray(b).reshape(-1, 1, 1)
+        if not b.size:
+            raise ValueError("b must contain at least one coefficient")
         self.b = self.add_weight(
             name="b",
             shape=b.shape,
@@ -65,7 +69,7 @@ class FirFilter(BaseAugmentation1D):
         )
         self.b.assign(b)
         if a is not None:
-            a = a.reshape(-1, 1, 1)
+            a = np.asarray(a).reshape(-1, 1, 1)
             self.a = self.add_weight(
                 name="a",
                 shape=a.shape,
@@ -86,11 +90,16 @@ class FirFilter(BaseAugmentation1D):
         if self.a is not None:
             raise NotImplementedError("Denominator coefficients 'a' are not supported yet.")
 
-        outputs = keras.ops.depthwise_conv(samples, self.b, padding="same")
+        channel_axis = 1 if self.data_format == "channels_first" else -1
+        channels = samples.shape[channel_axis]
+        if channels is None:
+            raise ValueError("FIR requires a statically known channel count")
+        kernel = keras.ops.tile(keras.ops.cast(self.b, samples.dtype), (1, channels, 1))
+        outputs = keras.ops.depthwise_conv(samples, kernel, padding="same", data_format=self.data_format)
 
         if self.forward_backward:
             outputs = keras.ops.flip(outputs, axis=self.data_axis)
-            outputs = keras.ops.depthwise_conv(outputs, self.b, padding="same")
+            outputs = keras.ops.depthwise_conv(outputs, kernel, padding="same", data_format=self.data_format)
             outputs = keras.ops.flip(outputs, axis=self.data_axis)
         # END IF
         return outputs
@@ -101,6 +110,8 @@ class FirFilter(BaseAugmentation1D):
         config.update(
             {
                 "forward_backward": self.forward_backward,
+                "b": keras.ops.convert_to_numpy(self.b).reshape(-1).tolist(),
+                "a": None if self.a is None else keras.ops.convert_to_numpy(self.a).reshape(-1).tolist(),
             }
         )
         return config

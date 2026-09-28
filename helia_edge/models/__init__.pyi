@@ -64,3 +64,17 @@ from .unext import unext_layer as unext_layer
 from .utils import make_divisible as make_divisible
 from .utils import load_model as load_model
 from .utils import append_layers as append_layers
+
+from . import mlperf_tiny as mlperf_tiny
+from .mlperf_tiny import mlperf_tiny_kws as mlperf_tiny_kws
+from .mlperf_tiny import mlperf_tiny_vww as mlperf_tiny_vww
+from .mlperf_tiny import mlperf_tiny_resnet as mlperf_tiny_resnet
+from .mlperf_tiny import mlperf_tiny_ad as mlperf_tiny_ad
+
+from .tcn import compact_tcn_params as compact_tcn_params
+from .mlperf_tiny import MlperfTinyParams as MlperfTinyParams
+from .mlperf_tiny import MlperfTinyModel as MlperfTinyModel
+
+from . import miniresnet as miniresnet
+from .miniresnet_params import MiniResNetV1Params as MiniResNetV1Params
+from .miniresnet import MiniResNetV1Model as MiniResNetV1Model

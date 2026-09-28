@@ -1,132 +1,62 @@
-"""
-# Random Augmentation Pipeline Layer API
-
-This module provides classes to build random augmentation pipeline layers.
-
-Classes:
-    RandomAugmentation1DPipeline: Random augmentation 1D pipeline
-    RandomAugmentation2DPipeline: Random augmentation 2D pipeline
-
-"""
+"""Repeated batchwise random choices sharing the standard training contract."""
 
 import keras
-from .base_augmentation import BaseAugmentation1D
 from .random_choice import RandomChoice
 from ...utils import helia_export
 
 
 @helia_export(path="helia_edge.layers.preprocessing.RandomAugmentation1DPipeline")
-class RandomAugmentation1DPipeline(BaseAugmentation1D):
-    layers: list[BaseAugmentation1D]
-    augmentations_per_sample: int
-    rate: float
-
+class RandomAugmentation1DPipeline(RandomChoice):
     def __init__(
         self,
-        layers: list[BaseAugmentation1D],
+        layers: list[keras.Layer],
         augmentations_per_sample: int = 1,
         rate: float = 1.0,
-        batchwise: bool = False,
+        batchwise: bool = True,
         force_training: bool = False,
         **kwargs,
     ):
-        """Apply N random augmentations from a list of augmentation layers to each sample.
-
-        Args:
-            layers (list[BaseAugmentation1D]): List of augmentation layers to choose from.
-            augmentations_per_sample (int): Number of augmentations to apply to each sample.
-            rate (float): Probability of applying the augmentation pipeline.
-            batchwise (bool): If True, apply same layer to all samples in the batch.
-            force_training (bool, optional): Force training mode. Defaults to False.
-        """
-        super().__init__(**kwargs)
-        self.layers = layers
+        super().__init__(layers=layers, batchwise=batchwise, **kwargs)
+        if (
+            isinstance(augmentations_per_sample, bool)
+            or not isinstance(augmentations_per_sample, int)
+            or augmentations_per_sample < 0
+        ):
+            raise ValueError("augmentations_per_sample must be a nonnegative integer")
+        if not 0 <= rate <= 1:
+            raise ValueError("rate must be in [0,1]")
         self.augmentations_per_sample = augmentations_per_sample
         self.rate = rate
-        self.batchwise = batchwise
-        kwargs.update({"name": "random_choice"})
-        self._random_choice = RandomChoice(layers=layers, batchwise=batchwise, **kwargs)
         self.force_training = force_training
-        if not self.layers:
-            raise ValueError("At least one layer must be provided.")
 
-    def apply_random_choice(self, inputs):
-        skip_augment = keras.random.uniform(
-            shape=(), minval=0.0, maxval=1.0, dtype="float32", seed=self.random_generator
-        )
-        return keras.ops.cond(
-            skip_augment > self.rate,
-            lambda: inputs,
-            lambda: self._random_choice.batch_augment(inputs),
-        )
+    def batch_augment(self, inputs, transformations=None):
+        if transformations is not None:
+            raise ValueError("Supply explicit transformations to child layers, not the random pipeline")
+        for _ in range(self.augmentations_per_sample):
+            if self.rate == 0:
+                continue
+            if self.rate == 1:
+                inputs = super().batch_augment(inputs)
+            else:
+                apply = keras.random.uniform((), seed=self.random_generator) < self.rate
+                current = inputs
+                inputs = keras.ops.cond(
+                    apply, lambda: super(RandomAugmentation1DPipeline, self).batch_augment(current), lambda: current
+                )
+        return inputs
 
-    def batch_augment(self, inputs):
-        """Apply N random augmentations to each"""
-        return keras.ops.fori_loop(
-            lower=0,
-            upper=self.augmentations_per_sample,
-            body_fun=lambda _, x: self.apply_random_choice(x),
-            init_val=inputs,
-        )
-
-    def call(self, inputs, training: bool = True, **kwargs):
-        self._random_choice.training = training or self.force_training
-        super().call(inputs, training=training or self.force_training, **kwargs)
+    def call(self, inputs, training=None, transformations=None):
+        return super().call(inputs, training=True if self.force_training else training, transformations=transformations)
 
     def get_config(self):
-        """Serializes the configuration of the layer."""
-        config = super().get_config()
-        config.update(
-            {
-                "layers": [lyr.get_config() for lyr in self.layers],
-                "augmentations_per_sample": self.augmentations_per_sample,
-                "rate": self.rate,
-                "batchwise": self.batchwise,
-                "force_training": self.force_training,
-            }
-        )
-        return config
+        return {
+            **super().get_config(),
+            "augmentations_per_sample": self.augmentations_per_sample,
+            "rate": self.rate,
+            "force_training": self.force_training,
+        }
 
 
 @helia_export(path="helia_edge.layers.preprocessing.RandomAugmentation2DPipeline")
 class RandomAugmentation2DPipeline(RandomAugmentation1DPipeline):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self._random_choice = RandomChoice(layers=self.layers, batchwise=self.batchwise, **kwargs)
-
-    def apply_random_choice(self, inputs):
-        skip_augment = keras.random.uniform(
-            shape=(), minval=0.0, maxval=1.0, dtype="float32", seed=self.random_generator
-        )
-        return keras.ops.cond(
-            skip_augment > self.rate,
-            lambda: inputs,
-            lambda: self._random_choice.batch_augment(inputs),
-        )
-
-    def batch_augment(self, inputs):
-        """Apply N random augmentations to each"""
-        return keras.ops.fori_loop(
-            lower=0,
-            upper=self.augmentations_per_sample,
-            body_fun=lambda _, x: self.apply_random_choice(x),
-            init_val=inputs,
-        )
-
-    def call(self, inputs, training: bool = True, **kwargs):
-        self._random_choice.training = training or self.force_training
-        super().call(inputs, training=training or self.force_training, **kwargs)
-
-    def get_config(self):
-        """Serializes the configuration of the layer."""
-        config = super().get_config()
-        config.update(
-            {
-                "layers": [lyr.get_config() for lyr in self.layers],
-                "augmentations_per_sample": self.augmentations_per_sample,
-                "rate": self.rate,
-                "batchwise": self.batchwise,
-                "force_training": self.force_training,
-            }
-        )
-        return config
+    """The same batchwise composition contract for image transforms."""

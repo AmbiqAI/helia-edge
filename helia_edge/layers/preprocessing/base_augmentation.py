@@ -1,421 +1,250 @@
-"""
-# Base Augmentation API
+"""Unified public-Keras hooks for deterministic preprocessing and augmentation."""
 
-Classes:
-    BaseAugmentation: Base augmentation
-    BaseAugmentation1D: Base 1D augmentation
-    BaseAugmentation2D: Base 2D augmentation
+from typing import Literal
 
-Functions:
-    tf_keras_map: Map function for TensorFlow Keras
-"""
-
-from typing import Callable
 import keras
-
-from .tf_data_layer import TFDataLayer
-from .defines import NestedTensorValue
-from ...utils import helia_export
+from pydantic import BaseModel, ConfigDict
 
 
-def tf_keras_map(f, xs):
-    # NOTE: Workaround until (https://github.com/keras-team/keras/issues/20048)
-    import tensorflow as tf
+class BaseAugmentationParams(BaseModel):
+    """Shared construction-time configuration; never validates live tensors."""
 
-    xs = keras.tree.map_structure(tf.convert_to_tensor, xs)
-
-    def get_fn_output_signature(x):
-        out = f(x)
-        return keras.tree.map_structure(tf.TensorSpec.from_tensor, out)
-
-    # Grab single element unpacking and repacking single element
-    xe = tf.nest.pack_sequence_as(xs, [y[0] for y in tf.nest.flatten(xs)])
-
-    fn_output_signature = get_fn_output_signature(xe)
-    return tf.map_fn(f, xs, fn_output_signature=fn_output_signature)
+    model_config = ConfigDict(extra="forbid", frozen=True)
+    seed: int | None = None
+    auto_vectorize: bool = False
+    data_format: Literal["channels_first", "channels_last"] = "channels_last"
+    device: str = "cpu"
+    aligned_targets: tuple[str, ...] | None = None
+    aligned_masks: tuple[str, ...] | None = None
 
 
-@helia_export(path="helia_edge.layers.preprocessing.BaseAugmentation")
-class BaseAugmentation(TFDataLayer):
+class BaseAugmentation(keras.Layer):
+    """Base for rank-specific transforms, with one sampling/application contract.
+
+    Override ``augment_samples`` or ``augment_sample`` and optionally
+    ``get_random_transformations``. Sample parameters once per signal batch;
+    joint transforms reuse them across aligned signals, targets and masks.
+    Per-example parameter leaves must have a leading batch axis. Deterministic
+    subclasses set ``training_only=False``. Bases are not serialized transforms.
+    """
+
     SAMPLES = "data"
     LABELS = "labels"
     TARGETS = "targets"
-    ALL_KEYS = (SAMPLES, LABELS, TARGETS)
     TRANSFORMS = "transforms"
-    IS_DICT = "is_dict"
-    BATCHED = "is_batched"
-    USE_TARGETS = "use_targets"
-    NDIMS = 4  # Modify in subclass (includes batch size)
+    NDIMS = 4
+    training_only = True
+    joint = False
 
     def __init__(
         self,
-        seed: int | None = None,
-        auto_vectorize: bool = True,
-        data_format: str | None = None,
-        name: str | None = None,
+        seed=None,
+        auto_vectorize=False,
+        data_format=None,
+        device="cpu",
+        aligned_targets=None,
+        aligned_masks=None,
         **kwargs,
     ):
-        """BaseAugmentation acts as a base class for various custom augmentation layers.
-        This class provides a common interface for augmenting samples and labels. In the future, we will
-        add support for segmentation and bounding boxes.
-
-        The only method that needs to be implemented by the subclass is
-
-        - augment_sample: Augment a single sample during training.
-
-        Optionally, you can implement the following methods:
-
-        - augment_label: Augment a single label during training.
-        - get_random_transformations: Returns a nested structure of random transformations that should be applied to the batch.
-            This is required to have unique transformations for each sample in the batch and maintain the same transformations for samples and labels.
-        - batch_augment: Augment a batch of samples and labels during training. Needed if layer requires access to all samples (e.g. CutMix).
-
-        By default, this method will coerce the input into a batch as well as a nested structure of inputs.
-        If auto_vectorize is set to True, the augment_sample and augment_label methods will be vectorized using keras.ops.vectorized_map.
-        Otherwise, it will use keras.ops.map which runs sequentially.
-
-        Args:
-            seed (int | None): Random seed. Defaults to None.
-            auto_vectorize (bool): If True, augment_sample and augment_label methods will be vectorized using keras.ops.vectorized_map.
-                Otherwise, it will use keras.ops.map which runs sequentially. Defaults to True.
-            data_format (str | None): Data format. Defaults to None. Will use keras.backend.image_data_format() if None.
-            name (str | None): Layer name. Defaults to None.
-
-        """
-        super().__init__(name=name, **kwargs)
-
-        self.seed = seed
-        self.generator = keras.random.SeedGenerator(seed)
-        self.data_format = data_format or keras.backend.image_data_format()
-
-        # This is needed for compatibility with tf.data.Dataset pipeline
-        self._allow_non_tensor_positional_args = True
-        self.built = True
-        self._convert_input_args = False
-
-        self.training = True
-        self.auto_vectorize = auto_vectorize
+        kwargs.setdefault("autocast", False)
+        super().__init__(**kwargs)
+        params = BaseAugmentationParams(
+            seed=seed,
+            auto_vectorize=auto_vectorize,
+            data_format=data_format or keras.backend.image_data_format(),
+            device=device,
+            aligned_targets=aligned_targets,
+            aligned_masks=aligned_masks,
+        )
+        self.seed = params.seed
+        self.auto_vectorize = params.auto_vectorize
+        self.data_format = params.data_format
+        self.device = params.device
+        self.aligned_targets = params.aligned_targets
+        self.aligned_masks = params.aligned_masks
+        self.generator = keras.random.SeedGenerator(self.seed)
 
     @property
-    def random_generator(self) -> keras.random.SeedGenerator:
-        return self._get_seed_generator(self.backend._backend)
+    def random_generator(self):
+        return self.generator
 
-    def _map_fn(
-        self, func: Callable[[NestedTensorValue], keras.KerasTensor], inputs: NestedTensorValue
-    ) -> keras.KerasTensor:
-        """Calls appropriate mapping function with given inputs.
+    @property
+    def ch_axis(self):
+        return -(self.NDIMS - 1) if self.data_format == "channels_first" else -1
 
-        Args:
-            func (Callable): Function to be mapped.
-            inputs (dict): Dictionary containing inputs.
+    @property
+    def data_axis(self):
+        return -1 if self.data_format == "channels_first" else -2
 
-        Returns:
-            KerasTensor: Augmented samples or labels
-        """
+    @property
+    def height_axis(self):
+        return -2 if self.data_format == "channels_first" else -3
+
+    @property
+    def width_axis(self):
+        return -1 if self.data_format == "channels_first" else -2
+
+    def _map_fn(self, func, inputs):
         if self.auto_vectorize:
             return keras.ops.vectorized_map(func, inputs)
-        # NOTE: Workaround until (https://github.com/keras-team/keras/issues/20048)
-        if keras.backend.backend() == "tensorflow":
-            return tf_keras_map(func, inputs)
         return keras.ops.map(func, inputs)
 
-    def call(self, inputs: NestedTensorValue, training: bool = True) -> NestedTensorValue:
-        """This method will serve as the main entry point for the layer. It will handle the input formatting and output formatting.
+    def get_random_transformations(self, input_shape):
+        """Return batched parameter tensors, or None for deterministic transforms."""
+        return None
 
-        Args:
-            inputs (NestedTensorValue): Inputs to be augmented.
-            training (bool): Whether the model is training or not.
+    def augment_sample(self, inputs):
+        raise NotImplementedError("Implement augment_sample or augment_samples")
 
-        Returns:
-            NestedTensorValue: Augmented samples or labels.
-        """
-        self.training = training
-        inputs, metadata = self._format_inputs(inputs)
-        return self._format_outputs(self.batch_augment(inputs), metadata)
+    def augment_samples(self, inputs):
+        if inputs[self.TRANSFORMS] is None:
+            return self._map_fn(
+                lambda x: self.augment_sample({self.SAMPLES: x, self.TRANSFORMS: None}), inputs[self.SAMPLES]
+            )
+        return self._map_fn(self.augment_sample, inputs)
 
-    def augment_sample(self, inputs: NestedTensorValue) -> keras.KerasTensor:
-        """Augment a single sample during training.
+    def augment_targets(self, inputs):
+        """Apply geometry to selected targets using the signal parameters."""
+        return self.augment_samples(inputs)
 
-        !!! note
+    def augment_masks(self, inputs):
+        """Apply geometry to selected masks using the signal parameters."""
+        return self.augment_targets(inputs)
 
-                This method should be implemented by the subclass.
-        Args:
-            input(NestedTensorValue): Single sample.
+    def _batch(self, value, *, signal):
+        value = keras.ops.convert_to_tensor(value)
+        rank = len(value.shape)
+        if rank not in (self.NDIMS - 1, self.NDIMS):
+            raise ValueError(f"Expected rank {self.NDIMS - 1} or {self.NDIMS}, received {value.shape}")
+        if signal:
+            value = keras.ops.cast(value, self.compute_dtype)
+        unbatched = rank == self.NDIMS - 1
+        return (keras.ops.expand_dims(value, 0) if unbatched else value), unbatched
 
-        Returns:
-            KerasTensor: Augmented sample.
-        """
-        return inputs[self.SAMPLES]
+    def _aligned(self, value, reference):
+        for axis, (size, expected) in enumerate(zip(value.shape, reference.shape, strict=True)):
+            if axis == self.ch_axis % self.NDIMS:
+                continue
+            if size is not None and expected is not None and size != expected:
+                raise ValueError("Aligned leaves must match batch and spatial dimensions")
 
-    def augment_samples(self, inputs: NestedTensorValue) -> keras.KerasTensor:
-        """Augment a batch of samples during training.
+    def _apply(self, value, params, method, *, signal, reference=None):
+        batch, unbatched = self._batch(value, signal=signal)
+        if reference is not None:
+            self._aligned(batch, reference)
+        output = method({self.SAMPLES: batch, self.TRANSFORMS: params})
+        return keras.ops.squeeze(output, 0) if unbatched else output
 
-        Args:
-            inputs (NestedTensorValue): Batch of samples.
-
-        Returns:
-            KerasTensor: Augmented batch of samples.
-        """
-        return self._map_fn(self.augment_sample, inputs=inputs)
-
-    def augment_label(self, inputs: NestedTensorValue) -> keras.KerasTensor:
-        """Augment a single label during training.
-
-        !!! note
-
-            Implement this method if you need to augment labels.
-
-        Args:
-            inputs (NestedTensorValue): Single label.
-
-        Returns:
-            keras.KerasTensor: Augmented label.
-        """
-        return inputs[self.LABELS]
-
-    def augment_labels(self, inputs: NestedTensorValue) -> keras.KerasTensor:
-        """Augment a batch of labels during training.
-
-        Args:
-            inputs (NestedTensorValue): Batch of labels.
-
-        Returns:
-            keras.KerasTensor: Augmented batch of labels.
-        """
-        return self._map_fn(self.augment_label, inputs=inputs)
-
-    def get_random_transformations(self, input_shape: tuple[int, ...]) -> NestedTensorValue:
-        """Generates random transformations needed for augmenting samples and labels.
-
-        Args:
-            input_shape (tuple[int,...]): Shape of the input (N, ...).
-
-        Returns:
-            NestedTensorValue: Batch of random transformations.
-
-        !!! note
-                This method should be implemented by the subclass if the layer requires random transformations.
-        """
-        return keras.ops.arange(input_shape[0])
-
-    def batch_augment(self, inputs: NestedTensorValue) -> NestedTensorValue:
-        """Handles processing entire batch of samples and labels in a nested structure.
-        Responsible for calling augment_samples and augment_labels.
-
-        Args:
-            inputs (NestedTensorValue): Batch of samples and labels.
-
-        Returns:
-            NestedTensorValue: Augmented batch of samples and labels.
-        """
-        samples = inputs.get(self.SAMPLES, None)
-        labels = inputs.get(self.LABELS, None)
+    def batch_augment(self, inputs, transformations=None):
+        """Apply to a tensor or schema, with optional pre-sampled parameters."""
+        is_dict = isinstance(inputs, dict)
+        if is_dict and "signals" in inputs and "data" in inputs:
+            raise ValueError("Use either signals or legacy data, not both")
+        canonical = is_dict and "signals" in inputs
+        if canonical:
+            signals = inputs["signals"]
+            if not isinstance(signals, dict) or not signals:
+                raise ValueError("signals must be a nonempty dictionary of tensor leaves")
+        elif is_dict:
+            if self.SAMPLES not in inputs:
+                raise ValueError("Expected signals or legacy data")
+            signals = {"default": inputs[self.SAMPLES]}
+        else:
+            signals = {"default": inputs}
+        reference, _ = self._batch(next(iter(signals.values())), signal=True)
+        shared = transformations
+        if self.joint and shared is None:
+            shared = self.get_random_transformations(keras.ops.shape(reference))
         result = {}
-
-        transformations = self.get_random_transformations(input_shape=keras.ops.shape(samples))
-
-        result[self.SAMPLES] = self.augment_samples(inputs={self.SAMPLES: samples, self.TRANSFORMS: transformations})
-
-        if labels is not None:
-            result[self.LABELS] = self.augment_labels(inputs={self.LABELS: labels, self.TRANSFORMS: transformations})
-        # END IF
-
-        # preserve any additional inputs unmodified by this layer.
-        for key in inputs.keys() - result.keys():
-            result[key] = inputs[key]
-        return result
-
-    def _format_inputs(self, inputs: NestedTensorValue) -> tuple[NestedTensorValue, dict[str, bool]]:
-        """Validate and force inputs to be batched and placed in structured format.
-
-        Args:
-            inputs (NestedTensorValue): Inputs to be formatted.
-
-        Returns:
-            tuple[NestedTensorValue, dict[str, bool]]: Formatted inputs and metadata.
-
-        """
-        metadata = {self.IS_DICT: True, self.USE_TARGETS: False, self.BATCHED: True}
-        if not isinstance(inputs, dict):
-            inputs = {self.SAMPLES: inputs}
-            metadata[self.IS_DICT] = False
-
-        samples = inputs.get(self.SAMPLES, None)
-        if inputs.get(self.SAMPLES) is None:
-            raise ValueError(f"Expect the inputs to have key {self.SAMPLES}. Got keys: {list(inputs.keys())}")
-        # END IF
-        if inputs[self.SAMPLES].shape.rank != self.NDIMS - 1 and samples.shape.rank != self.NDIMS:
-            raise ValueError(f"Invalid input shape: {samples.shape}")
-        # END IF
-        if inputs[self.SAMPLES].shape.rank == self.NDIMS - 1:
-            metadata[self.BATCHED] = False
-            # Expand dims to make it batched for keys of interest
-            for key in set(self.ALL_KEYS).intersection(inputs.keys()):
-                if inputs[key] is not None:
-                    inputs[key] = keras.ops.expand_dims(inputs[key], axis=0)
-                # END IF
-            # END FOR
-        # END IF
-        return inputs, metadata
-
-    def _format_outputs(self, output: NestedTensorValue, metadata: dict[str, bool]) -> NestedTensorValue:
-        """Format the output to match the initial input format.
-
-        Args:
-            output: Output to be formatted.
-            metadata: Metadata used for formatting.
-
-        Returns:
-            Output in the original format.
-        """
-        if not metadata[self.BATCHED]:
-            for key in set(self.ALL_KEYS).intersection(output.keys()):
-                if output[key] is not None:  # check if tensor
-                    output[key] = keras.ops.squeeze(output[key], axis=0)
-                # END IF
-            # END FOR
-        # END IF
-        if not metadata[self.IS_DICT]:
-            return output[self.SAMPLES]
-        if metadata[self.USE_TARGETS]:
-            output[self.TARGETS] = output[self.LABELS]
-            del output[self.LABELS]
+        for key, value in signals.items():
+            batch, _ = self._batch(value, signal=True)
+            params = (
+                shared
+                if self.joint or transformations is not None
+                else self.get_random_transformations(keras.ops.shape(batch))
+            )
+            result[key] = self._apply(
+                value, params, self.augment_samples, signal=True, reference=reference if self.joint else None
+            )
+        if not is_dict:
+            return result["default"]
+        output = {**inputs, **({"signals": result} if canonical else {self.SAMPLES: result["default"]})}
+        if self.joint:
+            for group, keys, method in (
+                ("targets", self.aligned_targets, self.augment_targets),
+                ("masks", self.aligned_masks, self.augment_masks),
+            ):
+                if group not in inputs:
+                    continue
+                leaves = inputs[group]
+                mapping = isinstance(leaves, dict)
+                if canonical and not mapping:
+                    raise ValueError(f"{group} must be a dictionary of tensor leaves")
+                leaves = leaves if mapping else {"default": leaves}
+                selected = tuple(leaves) if keys is None else keys
+                if any(key not in leaves for key in selected):
+                    raise ValueError(f"Unknown aligned key in {group}: {selected}")
+                converted = dict(leaves)
+                for key in selected:
+                    converted[key] = self._apply(leaves[key], shared, method, signal=False, reference=reference)
+                output[group] = converted if mapping else converted["default"]
         return output
 
-    def compute_output_shape(self, input_shape: tuple[int, ...], *args, **kwargs) -> tuple[int, ...]:
-        """By default assumes the shape of the input is the same as the output.
+    def _identity(self, inputs, *, validate_rank=True):
+        def identity(x):
+            return x[self.SAMPLES]
 
-        Args:
-            input_shape (tuple[int,...]): Input shape.
+        def convert(value):
+            if not validate_rank:
+                # Generic composites defer spatial rank validation to their children.
+                return keras.ops.cast(keras.ops.convert_to_tensor(value), self.compute_dtype)
+            return self._apply(value, None, identity, signal=True)
 
-        Returns:
-            tuple[int,...]: Output shape.
+        if not isinstance(inputs, dict):
+            return convert(inputs)
+        if "signals" in inputs and "data" in inputs:
+            raise ValueError("Use either signals or legacy data, not both")
+        if "signals" in inputs:
+            if not isinstance(inputs["signals"], dict) or not inputs["signals"]:
+                raise ValueError("signals must be a nonempty dictionary of tensor leaves")
+            return {**inputs, "signals": {key: convert(value) for key, value in inputs["signals"].items()}}
+        if self.SAMPLES not in inputs:
+            raise ValueError("Expected signals or legacy data")
+        return {**inputs, self.SAMPLES: convert(inputs[self.SAMPLES])}
 
-        !!! note
-                This method should be implemented by the subclass if the output shape is different from the input shape.
-        """
-        return input_shape
+    def call(self, inputs, training=None, transformations=None):
+        with keras.device(self.device):
+            if not self.training_only:
+                return self.batch_augment(inputs, transformations=transformations)
+            if training is False or training is None:
+                return self._identity(inputs)
+            if training is True:
+                return self.batch_augment(inputs, transformations=transformations)
+            return keras.ops.cond(
+                training,
+                lambda: self.batch_augment(inputs, transformations=transformations),
+                lambda: self._identity(inputs),
+            )
 
     def get_config(self):
-        """Serialize the layer configuration."""
-        config = super().get_config()
-        config.update(
-            {
-                "seed": self.seed,
-                "auto_vectorize": self.auto_vectorize,
-                "data_format": self.data_format,
-            }
-        )
-        return config
+        return {
+            **super().get_config(),
+            "seed": self.seed,
+            "auto_vectorize": self.auto_vectorize,
+            "data_format": self.data_format,
+            "device": self.device,
+            "aligned_targets": self.aligned_targets,
+            "aligned_masks": self.aligned_masks,
+        }
 
 
-@helia_export(path="helia_edge.layers.preprocessing.BaseAugmentation1D")
 class BaseAugmentation1D(BaseAugmentation):
-    NDIMS = 3  # (N, T, C) or (N, C, T)
+    """One-dimensional signals with optional batch axis."""
 
-    def __init__(self, **kwargs):
-        """BaseAugmentation1D acts as a base class for various custom augmentation layers.
-        This class provides a common interface for augmenting samples and labels. In the future, we will
-        add support for segmentation and 1D bounding boxes.
-
-        The only method that needs to be implemented by the subclass is
-
-        - augment_sample: Augment a single sample during training.
-
-        Optionally, you can implement the following methods:
-
-        - augment_label: Augment a single label during training.
-        - get_random_transformations: Returns a nested structure of random transformations that should be applied to the batch.
-            This is required to have unique transformations for each sample in the batch and maintain the same transformations for samples and labels.
-        - batch_augment: Augment a batch of samples and labels during training. Needed if layer requires access to all samples (e.g. CutMix).
-
-        By default, this method will coerce the input into a batch as well as a nested structure of inputs.
-        If auto_vectorize is set to True, the augment_sample and augment_label methods will be vectorized using keras.ops.vectorized_map.
-        Otherwise, it will use keras.ops.map which runs sequentially.
-
-        Example:
-
-        ```python
-
-        class NormalizeLayer1D(BaseAugmentation1D):
-
-            def __init__(self, **kwargs):
-                ...
-
-            def augment_sample(self, inputs):
-                sample = inputs["data"]
-                mu = keras.ops.mean()
-                std = keras.ops.std()
-                return (sample - mu) / (std + self.epsilon)
-
-        x = np.random.rand(100, 3)
-        lyr = NormalizeLayer(...)
-        y = lyr(x, training=True)
-        ```
-        """
-        super().__init__(**kwargs)
-
-        if self.data_format == "channels_first":
-            self.data_axis = -1
-            self.ch_axis = -2
-        else:
-            self.data_axis = -2
-            self.ch_axis = -1
-        # END IF
+    NDIMS = 3
 
 
-@helia_export(path="helia_edge.layers.preprocessing.BaseAugmentation2D")
 class BaseAugmentation2D(BaseAugmentation):
-    NDIMS = 4  # (N, H, W, C) or (N, C, H, W)
+    """Two-dimensional images with optional batch axis."""
 
-    def __init__(self, **kwargs):
-        """BaseAugmentation2D acts as a base class for various custom augmentation layers.
-        This class provides a common interface for augmenting samples and labels. In the future, we will
-        add support for segmentation and 1D bounding boxes.
-
-        The only method that needs to be implemented by the subclass is
-
-        - augment_sample: Augment a single sample during training.
-
-        Optionally, you can implement the following methods:
-
-        - augment_label: Augment a single label during training.
-        - get_random_transformations: Returns a nested structure of random transformations that should be applied to the batch.
-            This is required to have unique transformations for each sample in the batch and maintain the same transformations for samples and labels.
-        - batch_augment: Augment a batch of samples and labels during training. Needed if layer requires access to all samples (e.g. CutMix).
-
-        By default, this method will coerce the input into a batch as well as a nested structure of inputs.
-        If auto_vectorize is set to True, the augment_sample and augment_label methods will be vectorized using keras.ops.vectorized_map.
-        Otherwise, it will use keras.ops.map which runs sequentially.
-
-        Example:
-
-        ```python
-
-        class NormalizeLayer2D(BaseAugmentation2D):
-
-            def __init__(self, name=None, **kwargs):
-                ...
-
-            def augment_sample(self, inputs):
-                sample = inputs["data"]
-                mu = keras.ops.mean()
-                std = keras.ops.std()
-                return (sample - mu) / (std + self.epsilon)
-
-        x = np.random.rand(32, 32, 3)
-        lyr = NormalizeLayer(...)
-        y = lyr(x, training=True)
-        ```
-        """
-        super().__init__(**kwargs)
-
-        if self.data_format == "channels_first":
-            self.ch_axis = -3
-            self.height_axis = -2
-            self.width_axis = -1
-        else:
-            self.ch_axis = -1
-            self.height_axis = -3
-            self.width_axis = -2
-        # END IF
+    NDIMS = 4

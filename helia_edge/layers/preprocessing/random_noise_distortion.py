@@ -59,6 +59,8 @@ class RandomNoiseDistortion1D(BaseAugmentation1D):
 
         super().__init__(**kwargs)
 
+        if sample_rate <= 0:
+            raise ValueError("sample_rate must be positive")
         self.sample_rate = sample_rate
         self.frequency = parse_factor(frequency, min_value=None, max_value=sample_rate / 2, param_name="frequency")
         self.amplitude = parse_factor(amplitude, min_value=None, max_value=None, param_name="amplitude")
@@ -95,7 +97,7 @@ class RandomNoiseDistortion1D(BaseAugmentation1D):
         noise_duration = keras.ops.cast((duration_size / self.sample_rate) * frequency + frequency, dtype="int32")
 
         if self.data_format == "channels_first":
-            noise_shape = (batch_size, 1, ch_size, noise_duration)
+            noise_shape = (batch_size, ch_size, 1, noise_duration)
         else:
             noise_shape = (batch_size, 1, noise_duration, ch_size)
 
@@ -109,20 +111,19 @@ class RandomNoiseDistortion1D(BaseAugmentation1D):
         noise = keras.ops.image.resize(
             noise_pts,
             size=(1, duration_size),
-            interpolation="bicubic",
+            interpolation=self.interpolation,
             crop_to_aspect_ratio=False,
             data_format=self.data_format,
         )
         # Remove height dimension
-        noise = keras.ops.squeeze(noise, axis=1)
+        noise = keras.ops.squeeze(noise, axis=2 if self.data_format == "channels_first" else 1)
         return {"noise": noise}
 
     def augment_samples(self, inputs) -> keras.KerasTensor:
         """Augment all samples in the batch as it's faster."""
         samples = inputs[self.SAMPLES]
-        if self.training:
-            noise = inputs[self.TRANSFORMS]["noise"]
-            return samples + noise
+        noise = inputs[self.TRANSFORMS]["noise"]
+        return samples + noise
         return samples
 
     def get_config(self):
@@ -130,10 +131,11 @@ class RandomNoiseDistortion1D(BaseAugmentation1D):
         config = super().get_config()
         config.update(
             {
-                "sample_rate": self.sample,
+                "sample_rate": self.sample_rate,
                 "frequency": self.frequency,
                 "amplitude": self.amplitude,
                 "noise_type": self.noise_type,
+                "interpolation": self.interpolation,
             }
         )
         return config

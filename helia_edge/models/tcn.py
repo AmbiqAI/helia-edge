@@ -64,10 +64,11 @@ model = helia.models.TcnModel.model_from_params(
 
 """
 
-from typing import Literal
+from collections.abc import Mapping
+from typing import Any, Literal
 
 import keras
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from ..layers.squeeze_excite import se_layer
 
@@ -100,6 +101,7 @@ class TcnBlockParams(BaseModel):
     activation: str = Field(default="relu6", description="Activation function")
 
 
+@keras.saving.register_keras_serializable(package="helia_edge")
 class TcnParams(BaseModel):
     """TCN parameters
 
@@ -124,6 +126,65 @@ class TcnParams(BaseModel):
     use_logits: bool = Field(default=True, description="Use logits")
     output_activation: str | None = Field(default=None, description="Output activation")
     name: str = Field(default="TCN", description="Model name")
+
+
+    def get_config(self) -> dict[str, Any]:
+        """Return a JSON-shaped architecture config, excluding inputs and weights."""
+        return self.model_dump(mode="json")
+
+    @classmethod
+    def from_config(cls, config: Mapping[str, Any]) -> "TcnParams":
+        """Parse JSON-shaped config with unknown model/block fields rejected.
+
+        This opt-in boundary leaves legacy model_validate and dict factory calls
+        compatible. Seed, input signatures, weights and export policy are external.
+        """
+        parsed = _StrictTcnParams.model_validate(dict(config))
+        return cls.model_validate(parsed.model_dump())
+
+
+def _positive_spatial(value):
+    if value is not None:
+        dimensions = (value,) if isinstance(value, int) else value
+        if any(dimension <= 0 for dimension in dimensions):
+            raise ValueError("Spatial dimensions must be positive")
+    return value
+
+
+class _StrictTcnBlockParams(TcnBlockParams):
+    model_config = ConfigDict(extra="forbid")
+    depth: int = Field(default=1, gt=0)
+    branch: int = Field(default=1, gt=0)
+    filters: int = Field(gt=0)
+    ex_ratio: float = Field(default=1, gt=0, allow_inf_nan=False)
+    se_ratio: float = Field(default=0, ge=0, allow_inf_nan=False)
+    dropout: float | None = Field(default=None, ge=0, lt=1, allow_inf_nan=False)
+    _spatial = field_validator("kernel", "dilation")(_positive_spatial)
+
+
+class _StrictTcnParams(TcnParams):
+    model_config = ConfigDict(extra="forbid")
+    blocks: list[_StrictTcnBlockParams] = Field(default_factory=list)
+    _spatial = field_validator("input_kernel", "output_kernel")(_positive_spatial)
+
+
+def compact_tcn_params(*, filters: int = 8) -> TcnParams:
+    """Four small SE4 blocks with 1/2/4/8 dilations and per-point linear output.
+
+    Input shape and output class count are supplied to TcnModel by the caller.
+    At least eight channels retain the existing builder's SE squeeze path.
+    """
+    if type(filters) is not int or filters < 8:
+        raise ValueError("compact TCN filters must be an integer >= 8")
+    return TcnParams(
+        input_kernel=None, input_norm="batch", block_type="sm",
+        blocks=[TcnBlockParams(filters=filters, kernel=(1, 3), dilation=(1, dilation),
+                               depth=1, branch=1, ex_ratio=1, se_ratio=4,
+                               dropout=None, norm="batch", activation="relu6")
+                for dilation in (1, 2, 4, 8)],
+        output_kernel=(1, 1), include_top=True, use_logits=True,
+        output_activation=None, name="compact_tcn",
+    )
 
 
 def normalization(norm: str, name: str) -> keras.Layer:
@@ -391,7 +452,7 @@ def tcn_block_sm(params: TcnBlockParams, name: str) -> keras.Layer:
         # END FOR
 
         # Squeeze and excite
-        if y.shape[-1] // params.se_ratio > 1:
+        if params.se_ratio > 0 and y.shape[-1] // params.se_ratio > 1:
             y = se_layer(ratio=params.se_ratio, name=f"{name}_SE")(y)
         # END IF
 
@@ -500,14 +561,16 @@ class TcnModel:
     """Helper class to generate model from parameters"""
 
     @staticmethod
-    def layer_from_params(inputs: keras.Input, params: TcnParams | dict, num_classes: int | None = None):
+    def layer_from_params(inputs: keras.KerasTensor, params: TcnParams | dict[str, Any],
+                          num_classes: int | None = None) -> keras.KerasTensor:
         """Create layer from parameters"""
         if isinstance(params, dict):
             params = TcnParams(**params)
         return tcn_layer(x=inputs, params=params, num_classes=num_classes)
 
     @staticmethod
-    def model_from_params(inputs: keras.Input, params: TcnParams | dict, num_classes: int | None = None):
+    def model_from_params(inputs: keras.KerasTensor, params: TcnParams | dict[str, Any],
+                          num_classes: int | None = None) -> keras.Model:
         """Create model from parameters"""
         outputs = TcnModel.layer_from_params(inputs=inputs, params=params, num_classes=num_classes)
         return keras.Model(inputs=inputs, outputs=outputs)

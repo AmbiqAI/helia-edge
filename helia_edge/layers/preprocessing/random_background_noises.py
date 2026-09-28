@@ -10,6 +10,7 @@ Classes:
 """
 
 import keras
+import numpy as np
 
 from .base_augmentation import BaseAugmentation1D
 from ...utils import parse_factor, helia_export
@@ -45,7 +46,12 @@ class RandomBackgroundNoises1D(BaseAugmentation1D):
 
         self.amplitude = parse_factor(amplitude, min_value=0, max_value=None, param_name="amplitude")
         self.num_noises = num_noises
-        self.noises = noises
+        noises = np.asarray(noises)
+        if noises.ndim != 2 or min(noises.shape) < 1 or num_noises < 1:
+            raise ValueError("noises must be nonempty (time, sources) and num_noises positive")
+        self.noises = self.add_weight(
+            name="noises", shape=noises.shape, initializer=keras.initializers.Constant(noises), trainable=False
+        )
 
     def get_random_transformations(self, input_shape: tuple[int, int, int]) -> dict:
         """Generate noise tensor
@@ -63,6 +69,8 @@ class RandomBackgroundNoises1D(BaseAugmentation1D):
             shape=(batch_size, self.num_noises),
             minval=0,
             maxval=self.noises.shape[1],
+            seed=self.random_generator,
+            dtype="int32",
         )
         start = keras.random.randint(
             shape=(batch_size, self.num_noises),
@@ -95,7 +103,7 @@ class RandomBackgroundNoises1D(BaseAugmentation1D):
             start = inputs[self.TRANSFORMS]["start"][i]
             amplitude = inputs[self.TRANSFORMS]["amplitude"][i]
             noise = keras.ops.slice(self.noises, (start, noise_idx), (duration_size, 1))
-            noise = keras.ops.squeeze(noise)
+            noise = keras.ops.squeeze(noise, axis=-1)
             if self.data_format == "channels_first":
                 noise = keras.ops.reshape(noise, (1, duration_size))
                 noise = keras.ops.tile(noise, (ch_size, 1))
@@ -106,11 +114,8 @@ class RandomBackgroundNoises1D(BaseAugmentation1D):
 
         # END DEF
 
-        if self.training:
-            sample = inputs[self.SAMPLES]
-            outputs = keras.ops.fori_loop(lower=0, upper=self.num_noises, body_fun=random_noise, init_val=sample)
-        else:
-            outputs = inputs[self.SAMPLES]
+        sample = inputs[self.SAMPLES]
+        outputs = keras.ops.fori_loop(lower=0, upper=self.num_noises, body_fun=random_noise, init_val=sample)
         return outputs
 
     def get_config(self):
@@ -120,6 +125,7 @@ class RandomBackgroundNoises1D(BaseAugmentation1D):
             {
                 "amplitude": self.amplitude,
                 "num_noises": self.num_noises,
+                "noises": keras.ops.convert_to_numpy(self.noises).tolist(),
             }
         )
         return config

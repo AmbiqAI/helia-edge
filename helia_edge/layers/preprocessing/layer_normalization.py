@@ -16,6 +16,8 @@ from ...utils import helia_export
 
 @helia_export(path="helia_edge.layers.preprocessing.LayerNormalization1D")
 class LayerNormalization1D(BaseAugmentation1D):
+    training_only = False
+
     def __init__(
         self,
         epsilon: float = 1e-6,
@@ -41,9 +43,14 @@ class LayerNormalization1D(BaseAugmentation1D):
 
         return outputs  # (batch, duration, channels)
 
+    def get_config(self):
+        return {**super().get_config(), "epsilon": self.epsilon}
+
 
 @helia_export(path="helia_edge.layers.preprocessing.LayerNormalization2D")
 class LayerNormalization2D(BaseAugmentation2D):
+    training_only = False
+
     def __init__(
         self,
         epsilon: float = 1e-6,
@@ -68,3 +75,6 @@ class LayerNormalization2D(BaseAugmentation2D):
         outputs = (samples - mean) / keras.ops.sqrt(variance + self.epsilon)
 
         return outputs  # (batch, duration, channels)
+
+    def get_config(self):
+        return {**super().get_config(), "epsilon": self.epsilon}
