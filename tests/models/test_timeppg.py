@@ -74,7 +74,9 @@ def randomized(params, seed=0):
     for layer in model.layers:
         if isinstance(layer, keras.layers.BatchNormalization):
             c = layer.get_weights()[0].shape
-            layer.set_weights([rng.uniform(0.5, 1.5, c), rng.normal(0, 0.1, c), rng.normal(0, 0.1, c), rng.uniform(0.5, 1.5, c)])
+            layer.set_weights(
+                [rng.uniform(0.5, 1.5, c), rng.normal(0, 0.1, c), rng.normal(0, 0.1, c), rng.uniform(0.5, 1.5, c)]
+            )
     return model
 
 
@@ -96,13 +98,13 @@ def test_medium_preset_size():
     assert upstream_params(TIMEPPG_PRESETS["timeppg_medium"].channels) == 40542
 
 
-@pytest.mark.parametrize("preset", ["timeppg_medium", "timeppg_small"])
+@pytest.mark.parametrize("preset", sorted(TIMEPPG_PRESETS))
 def test_forward_matches_upstream_layout(preset):
     params = TIMEPPG_PRESETS[preset]
     model = randomized(params)
     x = np.random.default_rng(1).normal(size=(3, 256, 4)).astype(np.float32)
     actual = keras.ops.convert_to_numpy(model(x, training=False))
-    np.testing.assert_allclose(actual, reference(model, params, x), rtol=1e-4, atol=1e-4)
+    np.testing.assert_allclose(actual, reference(model, params, x), rtol=1e-5, atol=1e-6)
 
 
 def test_invalid_configs_fail():
@@ -124,7 +126,7 @@ def test_keras_file_roundtrip(tmp_path):
 
 def test_params_import_without_backends():
     root = Path(__file__).resolve().parents[2]
-    code = '''
+    code = """
 import importlib.abc
 import sys
 class NoBackend(importlib.abc.MetaPathFinder):
@@ -135,6 +137,12 @@ sys.meta_path.insert(0, NoBackend())
 from helia_edge.models import TIMEPPG_PRESETS, TimePPGParams
 params = TIMEPPG_PRESETS['timeppg_medium']
 assert TimePPGParams.from_config(params.get_config()) == params
-'''
-    subprocess.run([sys.executable, "-c", code], check=True, cwd=root,
-                   env={**os.environ, "PYTHONPATH": str(root)}, capture_output=True, text=True)
+"""
+    subprocess.run(
+        [sys.executable, "-c", code],
+        check=True,
+        cwd=root,
+        env={**os.environ, "PYTHONPATH": str(root)},
+        capture_output=True,
+        text=True,
+    )

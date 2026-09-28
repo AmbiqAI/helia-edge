@@ -30,7 +30,10 @@ single linear output. Upstream order is kept exactly:
 | Regressor | Dense without bias, then BatchNorm, then ReLU6 | two layers |
 
 - Features are flattened channel-major, matching the upstream PyTorch layout.
-- BatchNorm uses PyTorch's defaults (epsilon 1e-5, momentum 0.1).
+- BatchNorm uses PyTorch's defaults (epsilon 1e-5, momentum 0.1). During
+  training, Keras updates the running variance with the biased batch variance
+  where PyTorch uses the unbiased one, so running statistics drift slightly
+  apart; inference is unaffected.
 - Trainable parameter counts equal the upstream definition. For example,
   `timeppg_medium` has 40,542 parameters and about 3.9M MACs per window.
 
