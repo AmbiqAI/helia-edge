@@ -29,6 +29,7 @@ nav:
     - Typed architectures: typed-architectures.md
     - FastEnhancer streaming: fastenhancer.md
     - CorNET heart rate: cornet.md
+    - TimePPG heart rate: timeppg.md
     - Custom Model Architecture: ./guides/custom-model-architecture.ipynb
     - Train CIFAR10 Model: ./guides/train-cifar-model.ipynb
 
