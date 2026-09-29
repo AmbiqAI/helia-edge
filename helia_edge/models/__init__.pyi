@@ -9,6 +9,7 @@ from . import mobilenet as mobilenet
 from . import regnet as regnet
 from . import resnet as resnet
 from . import tcn as tcn
+from . import timeppg as timeppg
 from . import tsmixer as tsmixer
 from . import unet as unet
 from . import unext as unext
@@ -55,6 +56,9 @@ from .tcn import TcnModel as TcnModel
 from .tcn import TcnParams as TcnParams
 from .tcn import TcnBlockParams as TcnBlockParams
 from .tcn import tcn_layer as tcn_layer
+from .timeppg import TimePPGModel as TimePPGModel
+from .timeppg_params import TIMEPPG_PRESETS as TIMEPPG_PRESETS
+from .timeppg_params import TimePPGParams as TimePPGParams
 from .tsmixer import TsMixerModel as TsMixerModel
 from .tsmixer import TsMixerParams as TsMixerParams
 from .tsmixer import TsMixerBlockParams as TsMixerBlockParams
