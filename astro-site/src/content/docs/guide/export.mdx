@@ -1,0 +1,49 @@
+---
+title: Export and quantization
+description: Convert a TensorFlow-backed Keras model to LiteRT, inspect predictions and save the model artifact.
+---
+
+heliaEDGE's LiteRT/TFLite converters prepare model artifacts for inference. Conversion uses TensorFlow even when another part of your project uses the Torch backend. Run it in the appropriate environment and check the operators and input contract required by your deployment target.
+
+## Install the conversion capability
+
+```sh
+pip install 'helia-edge[litert]'
+```
+
+Use a TensorFlow-backed Keras model. See [Backend support](/helia-edge/getting-started/backends/) for the supported Python environment. The Torch converter namespace is a placeholder and does not provide a working export path in this source version.
+
+## Convert and inspect
+
+With a trained `model` and a NumPy array `representative_x` matching its input shape:
+
+```python
+from helia_edge.converters.litert import LiteRTKerasConverter, QuantizationType
+
+converter = LiteRTKerasConverter(model)
+content = converter.convert(
+    representative_x,
+    quantization=QuantizationType.INT8,
+)
+converted_predictions = converter.predict(representative_x)
+converter.export("model.tflite")
+```
+
+Choose representative inputs from the distribution the model will encounter. INT8 and INT16X8 conversion require representative data. Compare converted predictions against the original model and evaluate task quality on held-out data before deployment.
+
+## Choose a precision
+
+| Format | Use |
+|---|---|
+| FP32 | Establish a floating-point conversion baseline. |
+| FP16 | Request float16 quantization; confirm target support. |
+| INT8 | Quantize with representative data and validate the resulting input/output types. |
+| INT16X8 | Request the converter's 16-bit activation / 8-bit weight path where supported by the model and target. |
+
+A converter accepting a precision option does not establish that every operator, runtime or hardware target supports it. Inspect the exported artifact and validate it with the intended runtime.
+
+## Save bytes or a C header
+
+`export()` writes the converted content. `export_header()` emits a C byte array when your firmware integration needs one. These methods are inherited from [TfLiteKerasConverter](/helia-edge/reference/api/helia_edge/converters/tflite/converter/); [LiteRTKerasConverter](/helia-edge/reference/api/helia_edge/converters/litert/converter/) supplies LiteRT runtime prediction.
+
+Keep the original trained model, calibration selection, conversion settings and validation results with the exported file. Firmware integration and on-device measurements are separate steps from host conversion.

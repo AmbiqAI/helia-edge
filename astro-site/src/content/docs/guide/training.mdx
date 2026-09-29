@@ -1,0 +1,58 @@
+---
+title: Training and callbacks
+description: Combine heliaEDGE components with Keras training and choose specialized trainers when needed.
+---
+
+import Button from '@ambiqai/helia-ui/astro/Button';
+
+Use normal Keras `compile()` and `fit()` for supervised models. heliaEDGE adds components you can select individually: architectures, augmentation, task metrics, a progress callback and specialized trainers.
+
+## Start with ordinary Keras training
+
+Choose a loss that matches the model's outputs and your target encoding. Use the same deterministic preprocessing for validation and deployment, and enable random augmentation only where intended.
+
+For generator-based data, the input-pipeline helpers create TensorFlow datasets. They do not provide a Torch data-loader abstraction.
+
+<div className="edge-actions">
+  <Button variant="secondary" size="sm" href="/helia-edge/examples/train-cifar-model/">CIFAR-10 training notebook</Button>
+  <Button variant="secondary" size="sm" href="../input-pipeline/">Input pipelines</Button>
+</div>
+
+## Add progress reporting
+
+Use `TQDMProgressBar` with a compiled Keras model and your training data:
+
+```python
+from helia_edge.callbacks import TQDMProgressBar
+
+history = model.fit(
+    train_x,
+    train_y,
+    validation_data=(validation_x, validation_y),
+    epochs=10,
+    callbacks=[TQDMProgressBar()],
+    verbose=0,
+)
+```
+
+`model` and the arrays come from your task. Keras's own callbacks provide checkpointing, early stopping and learning-rate scheduling. Add EDGE's progress callback alongside the Keras callbacks your workflow needs.
+
+## Choose a specialized objective
+
+| Training approach | Components | Where to start |
+|---|---|---|
+| Masked reconstruction | MaskedAutoencoder and patch layers | [Masked-autoencoder guide](../masked-autoencoders/) |
+| Contrastive representation learning | ContrastiveTrainer, SimCLRTrainer, SimCLR loss | [Trainer API](/helia-edge/reference/api/helia_edge/trainers/) |
+| Knowledge distillation | Distiller | [Distiller API](/helia-edge/reference/api/helia_edge/trainers/distiller/) |
+| Discrete latent representations | GSAutoencoder, VQAutoencoder and quantizer layers | [Trainer API](/helia-edge/reference/api/helia_edge/trainers/) |
+
+Backend support is component-specific. Masked-autoencoder paths have separate TensorFlow/Torch checks; contrastive training remains TensorFlow-specific in this source version. Consult [Backend support](/helia-edge/getting-started/backends/) before adopting a trainer.
+
+## Evaluate and preserve the result
+
+Keep the data split, preprocessing configuration and architecture parameters with the trained model so the result can be reproduced.
+
+<div className="edge-actions">
+  <Button variant="secondary" size="sm" href="../evaluation/">Choose evaluation metrics</Button>
+  <Button variant="secondary" size="sm" href="../serialization/">Save the trained model</Button>
+</div>

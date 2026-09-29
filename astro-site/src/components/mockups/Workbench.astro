@@ -1,0 +1,62 @@
+---
+import { Code } from 'astro:components';
+interface Props { layout?: 'horizontal' | 'vertical'; initial?: number; }
+const {layout='horizontal', initial=1}=Astro.props;
+const steps=[
+{label:'Prepare',title:'Give your model a consistent input.',text:'Normalize signals and compose transforms with explicit training behavior. Keep selected targets and masks aligned with the data.',tag:'PREPROCESSING',guide:'preprocessing',code:'import keras\nfrom helia_edge.layers.preprocessing import Normalization1D\n\nsignals = keras.ops.ones((2, 128, 1))\nnormalize = Normalization1D(mean=0., variance=4.)\ninputs = normalize(signals)',note:'A small tensor example. Select your Keras backend before importing.'},
+{label:'Build',title:'A model family. Your configuration.',text:'Start with a configurable architecture, then make the input shape and output classes your own. Keep the parameters alongside the trained weights.',tag:'ARCHITECTURES',guide:'architectures',code:'import keras\nfrom helia_edge.models import TcnModel, compact_tcn_params\n\nparams = compact_tcn_params(filters=8)\ninputs = keras.Input(shape=(240, 14), batch_size=1)\nmodel = TcnModel.model_from_params(\n    inputs, params, num_classes=2\n)',note:'Constructs a model with fresh weights. Training data comes from your task.'},
+{label:'Train',title:'Keep your Keras training workflow.',text:'Use compile() and fit() with the components your task needs. Add progress reporting or explore a specialized training objective.',tag:'TRAINING',guide:'training',code:'from helia_edge.callbacks import TQDMProgressBar\n\nhistory = model.fit(\n    train_x, train_y,\n    validation_data=(validation_x, validation_y),\n    callbacks=[TQDMProgressBar()],\n    epochs=10, verbose=0,\n)',note:'Uses your compiled model and training/validation arrays.'},
+{label:'Evaluate',title:'Measure what matters to your task.',text:'Inspect classification errors or signal reconstruction quality. Choose metrics for the meaning of your outputs, not just a single aggregate score.',tag:'METRICS',guide:'evaluation',code:'from helia_edge.metrics import Snr\n\nmetric = Snr()\nmetric.update_state(reference_signals, predicted_signals)\nprint(metric.result())\nmetric.reset_state()',note:'SNR example for aligned reference and predicted signals.'},
+{label:'Export',title:'Take a measured step toward inference.',text:'Convert a supported TensorFlow-backed model to LiteRT, inspect its predictions and keep the settings with the artifact.',tag:'CONVERSION',guide:'export',code:'from helia_edge.converters.litert import (\n    LiteRTKerasConverter, QuantizationType,\n)\n\nconverter = LiteRTKerasConverter(model)\nconverter.convert(representative_x,\n                  quantization=QuantizationType.INT8)\nconverter.export("model.tflite")',note:'Requires a trained TensorFlow-backed model and representative inputs.'},
+];
+---
+<edge-workbench class:list={['workbench',layout]}>
+  <div class="tabs" role="tablist" aria-label="Explore the model workflow" aria-orientation={layout==='vertical'?'vertical':'horizontal'}>
+    {steps.map((step,i)=><button type="button" role="tab" id={`step-${i}`} aria-controls={`panel-${i}`} aria-selected={i===initial} tabindex={i===initial?0:-1} data-step={i}><span class="number">0{i+1}</span>{step.label}<span class="chevron" aria-hidden="true">↗</span></button>)}
+  </div>
+  {steps.map((step,i)=><section class="panel" id={`panel-${i}`} role="tabpanel" aria-labelledby={`step-${i}`} hidden={i!==initial} tabindex="0">
+    <div class="explanation"><span class="eyebrow">{step.tag}</span><h3>{step.title}</h3><p>{step.text}</p><a class="outline" href={`/helia-edge/guide/${step.guide}/`}>{["Prepare your data", "Choose an architecture", "Explore training", "Choose a metric", "Export a model"][i]} <span aria-hidden="true">↗</span></a></div>
+    <div class="code"><div class="code-head"><span>Python / Keras</span><span>heliaEDGE</span></div><Code code={step.code} lang="python" theme="github-dark"/><p class="code-note">{step.note}</p></div>
+  </section>)}
+</edge-workbench>
+<script>
+class EdgeWorkbench extends HTMLElement {
+ connectedCallback() {
+  const tabs=Array.from(this.querySelectorAll<HTMLButtonElement>('[role="tab"]'));
+  const panels=Array.from(this.querySelectorAll<HTMLElement>('[role="tabpanel"]'));
+  const select=(index:number, focus=false)=>{
+   document.querySelectorAll('[data-start]').forEach(item=>item.setAttribute('aria-pressed','false'));
+   tabs.forEach((tab,i)=>{tab.setAttribute('aria-selected',String(i===index));tab.tabIndex=i===index?0:-1;});
+   panels.forEach((panel,i)=>panel.hidden=i!==index);
+   if(focus) tabs[index].focus();
+  };
+  tabs.forEach((tab,i)=>{
+   tab.addEventListener('click',()=>select(i));
+   tab.addEventListener('keydown',event=>{
+    const keys=['ArrowLeft','ArrowRight','ArrowUp','ArrowDown','Home','End'];
+    if(!keys.includes(event.key))return;
+    event.preventDefault();
+    const next=event.key==='Home'?0:event.key==='End'?tabs.length-1:(i+(event.key==='ArrowLeft'||event.key==='ArrowUp'?-1:1)+tabs.length)%tabs.length;
+    select(next,true);
+   });
+  });
+  document.querySelectorAll<HTMLButtonElement>('[data-start]').forEach(button=>button.addEventListener('click',()=>{
+   select(Number(button.dataset.start));
+   document.querySelectorAll('[data-start]').forEach(item=>item.setAttribute('aria-pressed',String(item===button)));
+   this.scrollIntoView({behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'instant':'smooth',block:'center'});
+  }));
+ }
+}
+if(!customElements.get('edge-workbench'))customElements.define('edge-workbench',EdgeWorkbench);
+</script>
+<style>
+.workbench{display:block;border:1px solid var(--line);border-radius:20px;overflow:hidden;background:var(--paper)}
+.tabs{display:flex;border-bottom:1px solid var(--line);padding:10px;gap:5px;background:var(--soft)}
+.tabs button{flex:1;border:0;border-radius:9px;padding:15px 10px;cursor:pointer;background:transparent;color:var(--muted);font:inherit;font-size:14px;font-weight:600;display:flex;gap:10px;align-items:center;justify-content:center}
+.tabs button[aria-selected=true]{background:var(--red);color:white}.number{font-size:11px;opacity:.65}.chevron{display:none}
+.panel{display:grid;grid-template-columns:.85fr 1.15fr;min-width:0}.panel[hidden]{display:none}.explanation{padding:36px}.explanation h3{font-size:27px;line-height:1.2;letter-spacing:-.8px;margin:14px 0}.explanation p{color:var(--muted);font-size:15px;line-height:1.7;margin-bottom:25px}.eyebrow{font-size:10px;letter-spacing:1.5px;font-weight:700;color:var(--red)}
+.outline{display:inline-flex;gap:20px;align-items:center;border:1px solid var(--line);border-radius:100px;text-decoration:none;color:var(--ink);padding:10px 17px;font-size:13px;font-weight:600}
+.code{background:#15191f;color:#e4e5ea;min-width:0;display:flex;flex-direction:column}.code-head{display:flex;justify-content:space-between;padding:16px 22px;border-bottom:1px solid #30343b;font-size:11px;color:#a4aab5}.code :global(pre){margin:0!important;background:transparent!important;padding:24px;font-size:12px;line-height:1.9;overflow:auto;flex:1}.code-note{font-size:11px;line-height:1.6;color:#a4aab5;margin:0;padding:15px 24px;border-top:1px solid #30343b}
+.vertical{display:grid;grid-template-columns:145px 1fr}.vertical .tabs{flex-direction:column;border-bottom:0;border-right:1px solid var(--line)}.vertical .tabs button{justify-content:start;flex:0;padding:17px 10px}.vertical .panel{grid-template-columns:1fr}.vertical .explanation{padding:24px}.vertical .explanation h3{font-size:23px}.vertical .explanation p{margin:12px 0}.vertical .code :global(pre){font-size:11px;padding:20px}.vertical .chevron{display:inline;margin-left:auto}
+@media(max-width:720px){.panel{grid-template-columns:1fr}.tabs{overflow:auto}.tabs button{min-width:95px;font-size:12px}.number{display:none}.explanation{padding:24px}.vertical{grid-template-columns:1fr}.vertical .tabs{flex-direction:row;border-right:0;border-bottom:1px solid var(--line)}.vertical .tabs button{flex:1}.vertical .chevron{display:none}}
+</style>

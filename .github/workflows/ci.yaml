@@ -6,14 +6,6 @@ on:
   pull_request:
 
 jobs:
-  docs:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v5
-      - run: uv sync --python 3.12 --only-group docs --locked
-      - run: uv run --no-sync mkdocs build --strict
-
   typing:
     runs-on: ubuntu-latest
     steps:
@@ -90,6 +82,8 @@ jobs:
       - run: uv pip install '.[${{ matrix.backend }}]' 'keras==3.15.1' pytest
       - if: matrix.backend == 'tensorflow'
         run: uv pip install 'ai-edge-litert==2.2.0'
+      - name: Run documentation examples
+        run: uv run --no-sync pytest -q tests/test_docs_examples.py
       - name: Check backend installation excludes plotting and AWS
         run: uv run --no-sync python -I -c "import importlib.util; assert all(importlib.util.find_spec(n) is None for n in ('matplotlib', 'plotly', 'seaborn', 'sklearn', 'boto3', 'botocore'))"
       - if: matrix.backend == 'tensorflow'

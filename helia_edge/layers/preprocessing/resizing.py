@@ -52,6 +52,24 @@ def _targets(layer, inputs):
 
 @helia_export(path="helia_edge.layers.preprocessing.Resizing1D")
 class Resizing1D(BaseAugmentation1D):
+    """Resize signals with bicubic interpolation during training and inference.
+
+    Selected masks use nearest-neighbor indices and retain their dtype.
+    Selected targets require an explicit interpolation policy.
+
+    Args:
+        duration: Positive output length in samples.
+        target_interpolation: "nearest" preserves discrete target values;
+            "signal" uses the signal interpolation and compute dtype. None
+            rejects resizing selected aligned targets.
+        **kwargs (Any): Base augmentation options, including data_format,
+            aligned_targets and aligned_masks.
+
+    Raises:
+        ValueError: An output dimension is nonpositive, the target policy is
+            invalid, or selected targets have no interpolation policy.
+    """
+
     training_only = False
     joint = True
 
@@ -77,6 +95,26 @@ class Resizing1D(BaseAugmentation1D):
 
 @helia_export(path="helia_edge.layers.preprocessing.Resizing2D")
 class Resizing2D(BaseAugmentation2D):
+    """Resize images and aligned data during training and inference.
+
+    Selected masks use nearest-neighbor indices and retain their dtype.
+    Selected targets require an explicit interpolation policy.
+
+    Args:
+        height: Positive output height in pixels.
+        width: Positive output width in pixels.
+        interpolation: Signal interpolation method accepted by Keras image.resize.
+        target_interpolation: "nearest" preserves discrete target values;
+            "signal" uses the signal interpolation and compute dtype. None
+            rejects resizing selected aligned targets.
+        **kwargs (Any): Base augmentation options, including data_format,
+            aligned_targets and aligned_masks.
+
+    Raises:
+        ValueError: An output dimension is nonpositive, the target policy is
+            invalid, or selected targets have no interpolation policy.
+    """
+
     training_only = False
     joint = True
 

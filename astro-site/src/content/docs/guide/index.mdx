@@ -1,0 +1,57 @@
+---
+title: User guide
+description: Follow the model workflow from architecture and data preparation to training, evaluation and export.
+---
+
+import CardGrid from '@ambiqai/helia-ui/astro/CardGrid';
+import LinkCard from '@ambiqai/helia-ui/astro/LinkCard';
+import Button from '@ambiqai/helia-ui/astro/Button';
+
+Build an Edge AI workflow with the components you need. Choose a task below for practical guidance, then use the API reference for exact parameters and contracts.
+
+## Build the model
+
+<CardGrid>
+  <LinkCard title="Choose an architecture" href="architectures/">Compare model families for signals, images and task-specific workloads.</LinkCard>
+  <LinkCard title="Configure your model" href="typed-architectures/">Define construction parameters and keep configuration separate from trained weights.</LinkCard>
+</CardGrid>
+
+## Prepare the data
+
+<CardGrid>
+  <LinkCard title="Preprocessing and augmentation" href="preprocessing/">Select transforms and keep signals, targets and masks aligned.</LinkCard>
+  <LinkCard title="Build an input pipeline" href="input-pipeline/">Turn Python generators into TensorFlow datasets with explicit sampling policies.</LinkCard>
+</CardGrid>
+
+<div className="edge-actions">
+  <Button variant="secondary" size="sm" href="portable-preprocessing/">Work with structured samples</Button>
+  <Button variant="secondary" size="sm" href="preprocessing-contracts/">Extend preprocessing</Button>
+</div>
+
+## Train and evaluate
+
+<CardGrid>
+  <LinkCard title="Training and callbacks" href="training/">Combine Keras training with progress reporting and specialized objectives.</LinkCard>
+  <LinkCard title="Metrics and evaluation" href="evaluation/">Choose classification or signal metrics and inspect model predictions.</LinkCard>
+</CardGrid>
+
+<div className="edge-actions">
+  <Button variant="secondary" size="sm" href="masked-autoencoders/">Train a masked autoencoder</Button>
+</div>
+
+## Save and deploy
+
+<CardGrid>
+  <LinkCard title="Save and load models" href="serialization/">Preserve weights and configuration, and restore custom Keras components.</LinkCard>
+  <LinkCard title="Export and quantization" href="export/">Convert a TensorFlow-backed model to LiteRT and validate the converted predictions.</LinkCard>
+</CardGrid>
+
+## Reference and support
+
+Find a specific component, check backend boundaries or set up a contribution.
+
+<div className="edge-actions">
+  <Button variant="secondary" size="sm" href="/helia-edge/reference/">Browse Python APIs</Button>
+  <Button variant="secondary" size="sm" href="/helia-edge/getting-started/backends/">Check backend support</Button>
+  <Button variant="secondary" size="sm" href="development/">Development setup</Button>
+</div>

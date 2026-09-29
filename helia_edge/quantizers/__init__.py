@@ -1,6 +1,1 @@
-"""
-# :material-dots-triangle: Quantizers API
-
-This module provides utility functions to quantize model weights.
-
-"""
+"""Reserved quantizer namespace; use converters or quantizer layers for quantization."""

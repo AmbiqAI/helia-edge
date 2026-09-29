@@ -1,0 +1,32 @@
+---
+import ComponentWorkbench from './ComponentWorkbench.astro';
+import Button from '@ambiqai/helia-ui/astro/Button';
+import Icon from '@ambiqai/helia-ui/astro/Icon';
+const routes=[
+{title:'I have data',text:'Prepare inputs, choose a model and build your training workflow.',step:0},
+{title:'I have a model',text:'Evaluate predictions, preserve weights and explore supported export paths.',step:3},
+{title:'I’m building something custom',text:'Compose layers and transforms around your own architecture or objective.',step:1},
+];
+---
+<div class="edge-workspace">
+  <aside class="route-rail" aria-label="Choose your starting point">
+    <p class="eyebrow">START WITH</p>
+    {routes.map(route=><button type="button" class="route" data-start={route.step} aria-pressed="false" aria-controls={`panel-${route.step}`}><span class="route-title">{route.title}<Icon name="chevron-right" size="sm"/></span><span class="route-description">{route.text}</span></button>)}
+    <Button variant="secondary" size="sm" href="/helia-edge/guide/">Explore the user guide</Button>
+  </aside>
+  <ComponentWorkbench/>
+</div>
+<style>
+.edge-workspace { display:grid; grid-template-columns:250px minmax(0,1fr); gap:1.5rem; align-items:start; }
+.route-rail { display:flex; flex-direction:column; gap:.75rem; }
+.eyebrow { font-size:.7rem; font-weight:650; letter-spacing:.1em; color:var(--helia-product-accent); margin:0 0 .25rem; }
+.route { margin:0; padding:1.2rem; text-align:left; cursor:pointer; border:1px solid var(--sl-color-hairline); border-radius:.8rem; background:var(--sl-color-bg); color:var(--sl-color-white); font:inherit; }
+.route:hover,.route[aria-pressed=true] { border-color:var(--helia-product-accent); background:color-mix(in srgb,var(--helia-product-accent) 6%,var(--sl-color-bg)); }
+.route:focus-visible { outline:2px solid var(--helia-product-accent); outline-offset:3px; }
+.route-title { display:flex; gap:.6rem; align-items:center; justify-content:space-between; font-weight:600; font-size:.9rem; line-height:1.5; }
+.route-title :global(.helia-icon) { flex-shrink:0; font-size:.6rem; }
+.route-description { display:block; margin-top:.65rem; color:var(--sl-color-gray-2); font-size:.8rem; line-height:1.7; }
+.route-rail :global(.helia-button) { margin-top:.5rem; }
+@media(max-width:62rem) { .edge-workspace{grid-template-columns:1fr}.route-rail{display:grid;grid-template-columns:repeat(3,minmax(0,1fr))}.eyebrow{grid-column:1/-1}.route-rail :global(.helia-button){display:none} }
+@media(max-width:40rem) { .route-rail{grid-template-columns:1fr}.route{padding:.9rem 1rem}.route-description{display:none} }
+</style>

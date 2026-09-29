@@ -1,0 +1,43 @@
+---
+title: Save and load models
+description: Preserve architecture configuration and trained weights, and register EDGE custom objects when loading.
+---
+
+Save the model instance after training, and keep its architecture and preprocessing configuration alongside it. A parameter JSON file describes construction choices; it does not contain trained weights.
+
+## Save a Keras model
+
+```python
+model.save("model.keras")
+```
+
+Use the EDGE loader in a fresh process after selecting the appropriate backend:
+
+```python
+from helia_edge.models import load_model
+model = load_model("model.keras")
+```
+
+This loader registers supported EDGE custom objects. A bare `import helia_edge` uses lazy imports and does not register every Keras class as a side effect.
+
+## Use the Keras loader directly
+
+```python
+import helia_edge
+helia_edge.register_keras_serializables()
+
+import keras
+model = keras.saving.load_model("model.keras")
+```
+
+Registration initializes the selected backend. It does not turn a TensorFlow-only component into a portable component. See the [backend guide](/helia-edge/getting-started/backends/#loading-saved-custom-objects) for the tested round-trip boundaries.
+
+## Reconstruct from configuration and weights
+
+Construct the same architecture and input signature, then call `model.load_weights(checkpoint_path)`. Check that graph connections, shapes and layer configuration agree with the checkpoint. Do not use skipped mismatches as a substitute for compatibility.
+
+The [typed architecture guide](../typed-architectures/) explains TCN configuration hydration and the handling of historical trained artifacts. Cross-backend loading depends on the model's custom components and naming conventions; preserve the original backend and dependency versions with the checkpoint.
+
+## Include the experiment context
+
+Record the model configuration, preprocessing policy, class or target definitions, package versions and evaluation results. Record seed policy too, but do not assume a seed guarantees identical weights or random sequences across backends.

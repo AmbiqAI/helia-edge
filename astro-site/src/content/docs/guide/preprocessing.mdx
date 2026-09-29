@@ -1,0 +1,43 @@
+---
+title: Preprocessing and augmentation
+description: Prepare signal and image inputs, compose transforms and preserve aligned targets.
+---
+
+import Button from '@ambiqai/helia-ui/astro/Button';
+
+Use preprocessing to define the input the model will see, and augmentation to vary training examples. heliaEDGE provides both through Keras layers, including normalization, filtering, resizing, crops, noise and composed pipelines.
+
+## Choose the transformation
+
+| Goal | Components | Important behavior |
+|---|---|---|
+| Normalize signal values | Normalization1D/2D, LayerNormalization1D/2D | Check the axis, layout and compute dtype. |
+| Filter a signal | FirFilter, CascadedBiquadFilter | Check each filter's coefficient and execution contract. |
+| Resize or crop | Resizing1D/2D, RandomCrop1D/2D | Keep selected targets and masks aligned with the signal. |
+| Add training variation | RandomGaussianNoise1D, AmplitudeWarp, RandomCutout1D/2D, SpecAugment2D | Pass the training flag explicitly; transforms differ in what they preserve. |
+| Compose transforms | AugmentationPipeline, RandomChoice, random augmentation pipelines | Branches must produce compatible structures, dtypes and shapes. |
+
+<div className="edge-actions">
+  <Button variant="secondary" size="sm" href="/helia-edge/reference/api/helia_edge/layers/preprocessing/">Preprocessing API</Button>
+  <Button variant="secondary" size="sm" href="/helia-edge/reference/">Search all components</Button>
+</div>
+
+## Represent a sample
+
+`Sample` groups tensors into `signals`, `targets` and `masks`. Pass `sample.tensor_tree()` to a Keras layer. Keep record IDs and other metadata outside that tree. Conversion creates fresh dictionaries but references the existing tensors; it does not copy tensor storage.
+
+<div className="edge-actions">
+  <Button variant="secondary" size="sm" href="../portable-preprocessing/">Structured-sample walkthrough</Button>
+</div>
+
+## Preserve the training/inference contract
+
+Training-only transforms use `training=True` to apply augmentation. Deterministic transforms can also run at inference. A random crop may shorten training inputs while leaving inference inputs unchanged, so choose a separate deterministic inference window when your model requires a fixed shape.
+
+For geometric transforms, select which target and mask keys share the signal transformation. Resizing aligned targets requires an explicit interpolation policy: categorical labels need nearest selection; signal-valued targets need the signal policy. Masks retain their label dtype.
+
+When writing a custom transform, follow the hook, RNG, alignment and shape contracts.
+
+<div className="edge-actions">
+  <Button variant="secondary" size="sm" href="../preprocessing-contracts/">Preprocessing contracts</Button>
+</div>

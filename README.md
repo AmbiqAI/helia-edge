@@ -64,3 +64,7 @@ heliaEDGE is a strong fit when you need to:
 ### Next step
 
 Visit the docs at **https://ambiqai.github.io/helia-edge/** and start with the **Getting Started** guide.
+
+## Documentation development
+
+The product site uses Astro and Starlight in `astro-site/`. See [site development](astro-site/README.md) for local preview, API generation and verification commands. The documentation workflow validates pull requests and publishes the site from `main`. Notebook sources remain in `docs/guides/`.

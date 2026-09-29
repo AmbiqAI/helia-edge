@@ -62,6 +62,25 @@ def _config(layer):
 
 @helia_export(path="helia_edge.layers.preprocessing.RandomCutout1D")
 class RandomCutout1D(BaseAugmentation1D):
+    """Replace random temporal intervals in each example during training.
+
+    Regions share their positions across channels. Targets and masks remain
+    unchanged; only signal values are occluded. Overlapping regions are allowed.
+
+    Args:
+        factor (float | tuple[float, float]): Fractional size bounds in [0, 1] for each spatial axis. A scalar
+            sets the upper bound with a zero lower bound; a pair sets both bounds.
+        cutouts (int): Nonnegative number of regions sampled per example.
+        fill_mode (str): "constant" for a fixed value or "normal" for Gaussian noise.
+        fill_value (float): Constant fill value, or the nonnegative standard deviation
+            of zero-mean Gaussian noise when fill_mode is "normal".
+        **kwargs (Any): Base augmentation options, including seed and data_format.
+
+    Raises:
+        ValueError: Size bounds, region count, fill mode or noise deviation
+            violate these constraints.
+    """
+
     def __init__(self, factor=0.1, cutouts=1, fill_mode="constant", fill_value=0.0, **kwargs):
         super().__init__(**kwargs)
         _initialize(self, factor, cutouts, fill_mode, fill_value)
@@ -81,6 +100,25 @@ class RandomCutout1D(BaseAugmentation1D):
 
 @helia_export(path="helia_edge.layers.preprocessing.RandomCutout2D")
 class RandomCutout2D(BaseAugmentation2D):
+    """Replace random rectangular regions in each example during training.
+
+    Regions share their positions across channels. Targets and masks remain
+    unchanged; only signal values are occluded. Overlapping regions are allowed.
+
+    Args:
+        factor (float | tuple[float, float]): Fractional size bounds in [0, 1] for each spatial axis. A scalar
+            sets the upper bound with a zero lower bound; a pair sets both bounds.
+        cutouts (int): Nonnegative number of regions sampled per example.
+        fill_mode (str): "constant" for a fixed value or "normal" for Gaussian noise.
+        fill_value (float): Constant fill value, or the nonnegative standard deviation
+            of zero-mean Gaussian noise when fill_mode is "normal".
+        **kwargs (Any): Base augmentation options, including seed and data_format.
+
+    Raises:
+        ValueError: Size bounds, region count, fill mode or noise deviation
+            violate these constraints.
+    """
+
     def __init__(self, factor=0.1, cutouts=1, fill_mode="constant", fill_value=0.0, **kwargs):
         super().__init__(**kwargs)
         _initialize(self, factor, cutouts, fill_mode, fill_value)

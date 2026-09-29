@@ -13,6 +13,18 @@ from ..utils import helia_export
 
 @helia_export(path="helia_edge.metrics.ConfusionMatrix")
 class ConfusionMatrix(keras.metrics.Metric):
+    """Accumulate class counts and return a row-normalized confusion matrix.
+
+    Rows represent true classes and columns represent predicted classes.
+    Rows with no observations return zeros. State accumulates across batches
+    until reset_state() is called.
+
+    Args:
+        num_classes: Number of classes, defining both matrix dimensions.
+        name (str): Keras metric name.
+        **kwargs (Any): Additional Keras Metric arguments, including state dtype.
+    """
+
     def __init__(self, num_classes: int, name="confusion_matrix", **kwargs):
         super().__init__(name=name, **kwargs)
         self.num_classes = int(num_classes)
@@ -25,9 +37,17 @@ class ConfusionMatrix(keras.metrics.Metric):
         )
 
     def update_state(self, y_true, y_pred, sample_weight=None):
-        """
-        y_pred: shape (batch, ..., num_classes) or integer class labels
-        y_true: shape (batch, ...) with integer class labels
+        """Add a batch of labels and predictions to the accumulated counts.
+
+        Args:
+            y_true (Tensor): Integer class labels, flattened before accumulation.
+            y_pred (Tensor): Class scores with shape (batch, ..., num_classes), reduced
+                with argmax over the last axis, or matching integer labels.
+            sample_weight (Tensor | None): Optional weights, flattened to one value per label.
+
+        Raises:
+            ValueError: A true or predicted label is outside the class range
+                in eager execution. TensorFlow graph execution uses an assertion.
         """
         y_true = keras.ops.convert_to_tensor(y_true)
         y_pred = keras.ops.convert_to_tensor(y_pred)
