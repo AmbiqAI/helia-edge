@@ -1,0 +1,62 @@
+---
+title: heliaEDGE
+description: Reusable Keras architectures, data transforms and training components for Edge AI.
+tableOfContents: false
+helia:
+  pageTitle: false
+prev: false
+next: false
+---
+
+import Landing from '@ambiqai/helia-ui/astro/Landing';
+import Button from '@ambiqai/helia-ui/astro/Button';
+import CardGrid from '@ambiqai/helia-ui/astro/CardGrid';
+import LinkCard from '@ambiqai/helia-ui/astro/LinkCard';
+import GuidedWorkbench from '../../components/GuidedWorkbench.astro';
+
+<Landing class="edge-home">
+<section className="edge-intro">
+  <p className="edge-eyebrow">HELIAEDGE / THE EDGE AI TOOLKIT</p>
+  <h1>Your workflow.<br /><em>Your building blocks.</em></h1>
+  <div className="edge-intro-copy">
+    <p>Build Edge AI models with reusable Keras architectures, preprocessing, metrics and training components. Choose a starting point, explore the code and make it your own.</p>
+    <div className="edge-actions"><Button href="/helia-edge/getting-started/">Get started</Button><Button href="/helia-edge/reference/" variant="secondary">Browse the API</Button></div>
+    <p className="edge-backend-caption">TensorFlow and PyTorch through Keras. Support varies by component.</p>
+  </div>
+</section>
+
+<section className="edge-home-section">
+  <p className="edge-eyebrow">A WORKSPACE FOR YOUR NEXT STEP</p>
+  <h2>Find your way into the code.</h2>
+  <p className="edge-section-lead">Start with your task or explore a stage. Each example connects to a practical guide.</p>
+  <GuidedWorkbench />
+</section>
+
+<section className="edge-home-section">
+  <p className="edge-eyebrow">BUILT TO WORK TOGETHER</p>
+  <h2>One toolkit. No fixed recipe.</h2>
+  <p className="edge-section-lead">Use a single component or connect a workflow. Your application owns the data and training recipe.</p>
+  <CardGrid columns={4} equalize>
+    <LinkCard title="Architectures" href="/helia-edge/guide/architectures/">Configurable model families for signals, images, audio and physiology.</LinkCard>
+    <LinkCard title="Data transforms" href="/helia-edge/guide/preprocessing/">Preprocessing and augmentation with explicit training and alignment contracts.</LinkCard>
+    <LinkCard title="Training components" href="/helia-edge/guide/training/">Progress callbacks and specialized objectives alongside Keras training.</LinkCard>
+    <LinkCard title="Task metrics" href="/helia-edge/guide/evaluation/">Classification and signal-quality metrics, with plotting helpers for inspection.</LinkCard>
+  </CardGrid>
+</section>
+
+<section className="edge-home-section edge-backends edge-backend-layout">
+  <div><p className="edge-eyebrow">CHOOSE YOUR ENVIRONMENT</p><h2>TensorFlow and PyTorch.<br />Through Keras.</h2></div>
+  <div><p>Choose the backend before importing Keras. Portable components and selected training paths span both backends. TensorFlow provides the LiteRT conversion and dataset utilities.</p><div className="edge-actions"><Button variant="secondary" size="sm" href="/helia-edge/getting-started/backends/">Backend support</Button><Button variant="secondary" size="sm" href="/helia-edge/guide/export/">Export a model</Button></div></div>
+</section>
+
+<section className="edge-home-section">
+  <p className="edge-eyebrow">FROM READING TO BUILDING</p>
+  <h2>Make your first connection.</h2>
+  <CardGrid columns={3} equalize>
+    <LinkCard eyebrow="BUILD" title="A small temporal model" href="/helia-edge/getting-started/first-model/">Configure a TCN and save its architecture.</LinkCard>
+    <LinkCard eyebrow="TRAIN" title="A complete training workflow" href="/helia-edge/examples/train-cifar-model/">Follow the CIFAR-10 notebook from data preparation to training.</LinkCard>
+    <LinkCard eyebrow="EXTEND" title="An architecture of your own" href="/helia-edge/examples/custom-model-architecture/">Compose a model from reusable Keras layers.</LinkCard>
+  </CardGrid>
+  <div className="edge-actions"><Button variant="secondary" href="/helia-edge/examples/">Explore all examples</Button></div>
+</section>
+</Landing>

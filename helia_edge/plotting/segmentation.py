@@ -1,9 +1,4 @@
-"""
-# Segmentation Plotting API
-
-This module provides utility functions to plot 1D/2D data with segmentation masks.
-
-"""
+"""Reserved segmentation plotting module; no public plotting implementation."""
 # def plot_segmentations(
 #     data: npt.NDArray,
 #     seg_mask: npt.NDArray | None = None,

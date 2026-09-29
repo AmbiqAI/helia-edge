@@ -1,0 +1,12 @@
+node_modules/
+dist/
+.astro/
+.cache/
+src/content/docs/reference/api/
+src/data/api-*.json
+public/reference/
+playwright-report/
+test-results/
+public/notebooks/
+src/content/docs/examples/custom-model-architecture.md
+src/content/docs/examples/train-cifar-model.md

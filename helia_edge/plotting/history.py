@@ -59,6 +59,7 @@ def plot_history_metrics(
         include_val=True,
         stack=False,
     )
+    ```
 
     """
     num_axes = len(metrics) if stack else 1

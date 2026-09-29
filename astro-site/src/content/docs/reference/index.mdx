@@ -1,0 +1,15 @@
+---
+title: Python API
+description: Search heliaEDGE architectures, augmentation, preprocessing, metrics, callbacks and training APIs.
+---
+
+import ReferenceBrowser from '@ambiqai/helia-ui/astro/ReferenceBrowser';
+import catalog from '../../../data/api-index.json';
+
+Find a class or function by name, description or module. Filter by category to explore a part of the toolkit. Signatures and parameter documentation are generated from the source tree at build time.
+
+Use **Import surface** to distinguish package exports (such as `helia_edge.metrics.ConfusionMatrix`) from APIs defined in individual modules. Public import paths are searchable. Class pages link inherited methods to their defining class.
+
+Backend support varies by component. Read the [backend support guide](/helia-edge/getting-started/backends/) before choosing a TensorFlow or PyTorch workflow.
+
+<ReferenceBrowser rows={catalog.rows} filters={catalog.filters} label="Search Python API" placeholder="Try TcnModel, normalization or SNR" itemsLabel="APIs" pageSize={20} />

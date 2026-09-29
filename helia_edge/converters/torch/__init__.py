@@ -1,6 +1,1 @@
-"""
-# Torch Converter
-
-This module handles converting models to PyTorch formats such as ExecuTorch.
-
-"""
+"""Reserved PyTorch converter namespace; no public conversion implementation."""

@@ -15,6 +15,19 @@ from ..utils import helia_export
 
 @helia_export(path="helia_edge.trainers.Distiller")
 class Distiller(keras.Model):
+    """Train a student using target labels and a teacher's softened predictions.
+
+    call() returns the student's output. The distillation objective evaluates
+    the teacher with training=False and applies temperature-scaled softmax
+    along axis 1, so predictions must have their class dimension on that axis.
+    Configure the optimizer, two loss functions and mixing weight with compile().
+    The objective does not apply sample_weight.
+
+    Args:
+        student: Keras model whose predictions are returned and scored.
+        teacher: Keras model providing the reference predictions.
+    """
+
     teacher: keras.models.Model
     student: keras.models.Model
 

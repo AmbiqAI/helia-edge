@@ -15,11 +15,26 @@ if TYPE_CHECKING:
 
 
 class Reconstruction(NamedTuple):
+    """Masked target patches and their corresponding predicted patches.
+
+    Attributes:
+        targets: Input patches gathered at the selected mask indices.
+        predictions: Reconstructed patches gathered at the same indices.
+    """
+
     targets: Tensor
     predictions: Tensor
 
 
 class ReconstructionLoss(NamedTuple):
+    """Reconstruction objective together with the patches used to compute it.
+
+    Attributes:
+        loss: Loss tensor computed by the configured reconstruction objective.
+        targets: Masked input patches.
+        predictions: Corresponding reconstructed patches.
+    """
+
     loss: Tensor
     targets: Tensor
     predictions: Tensor

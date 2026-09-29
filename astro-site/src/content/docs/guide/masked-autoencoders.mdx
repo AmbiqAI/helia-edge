@@ -1,0 +1,45 @@
+---
+title: Masked-autoencoder training
+description: Train patch reconstruction models on the supported TensorFlow and PyTorch paths.
+---
+
+
+`MaskedAutoencoder` and its patch layers use public `keras.ops` and `keras.random`
+for the forward path, with separate TensorFlow and Torch gradient application.
+Use normal Keras `compile(loss='mse', optimizer='adam', jit_compile=False)` and
+`fit(x)`; targets are generated from masked input patches. Explicit `y` and
+`sample_weight` are rejected rather than silently ignored. Native loops can apply
+their own objective and weighting:
+
+```python
+targets, predictions = model.reconstruction_targets(x, training=True)
+# Apply your native TF/Torch objective and optimizer to these tensors.
+```
+
+`call()` returns the same `Reconstruction(targets, predictions)` named tuple.
+`calculate_loss(x, test=False)` returns `ReconstructionLoss(loss, targets, predictions)`
+using the compiled objective. Both retain tuple unpacking. Keras layers receive the training flag; plain
+single-argument callables retain their original calling convention and must own
+their state behavior. Use serializable Keras layers to save complete models.
+
+`MaskedPatchEncoder2D(seed=...)` tracks a Keras seed generator. Inference disables
+Dropout/BatchNorm training behavior but still samples masks. Same-seed random
+streams are tested within each backend; cross-backend numerical checks use fixed
+masks, inputs and weights. Whole RNG/sampler resume and identical stochastic
+training trajectories are not promised. Save/reload tests cover full-model
+weights, controlled-mask predictions and optimizer slots/iteration on each backend.
+
+Build the model before constructing a native Torch optimizer so every parameter
+is present. The regression fixtures in `tests/trainers/` exercise native TF/Torch
+optimization. Run their forward/gradient/update comparison with:
+
+```sh
+python tests/trainers/compare_mae_backends.py \
+  --tensorflow-python /path/to/tf-env/bin/python \
+  --torch-python /path/to/torch-env/bin/python
+```
+
+CI compares evidence produced in the separate backend jobs at `rtol=1e-5`,
+`atol=1e-6`. This is a small float32 CPU fixture, not certification of mixed
+precision, Torch compilation, distribution or MAE export. SleepKit currently has
+no MAE consumer; this component is not counted as a two-KIT shared-API proof.

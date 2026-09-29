@@ -1,0 +1,55 @@
+[data-helia-accent='helia-edge'] {
+  --helia-product-accent-source: #e52446;
+  --helia-product-accent: #ff526c;
+}
+[data-theme='light'][data-helia-accent='helia-edge'] {
+  --helia-product-accent: #c91d3b;
+}
+.edge-hero {
+  padding-block: clamp(1rem, 3vw, 2.5rem);
+}
+.edge-hero .helia-hero__headline {
+  font-size: clamp(2rem, 4vw, 3rem);
+  max-width: 26ch;
+}
+.edge-hero .helia-hero__summary {
+  max-width: 46rem;
+}
+.edge-sections { margin-block: 2.5rem; }
+.helia-reference-browser td { vertical-align: top; }
+
+.edge-goals { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 2rem; margin-top: 2rem; }
+.edge-goals article { margin-block: 0; border-top: 1px solid var(--sl-color-hairline); padding-top: 1rem; }
+.edge-goals h3 { margin-top: 0; font-size: 1.2rem; }
+.edge-goals p { color: var(--sl-color-gray-2); }
+.edge-backends { border: 1px solid var(--sl-color-hairline); border-radius: 1rem; padding: clamp(1.25rem, 3vw, 2rem); }
+.edge-backends h2 { margin-top: 0; }
+@media (max-width: 48rem) { .edge-goals { grid-template-columns: 1fr; gap: 1rem; } }
+
+.edge-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin-block: 1.25rem;
+}
+.sl-markdown-content .edge-actions > a {
+  margin: 0;
+  white-space: normal;
+  text-align: center;
+}
+
+.edge-intro { display:grid; grid-template-columns:1.15fr 1fr; gap:1rem 3rem; padding-block:2.5rem; }
+.edge-home .edge-eyebrow { font-size:.7rem; font-weight:650; letter-spacing:.12em; color:var(--helia-product-accent); margin:0 0 1rem; }
+.edge-intro > .edge-eyebrow { grid-column:1/-1; }
+.edge-home .edge-intro h1 { margin:0; font-size:clamp(2.2rem,4.4vw,3.5rem); line-height:1.08; letter-spacing:-.04em; }
+.edge-intro em { font-style:normal; color:var(--helia-product-accent); }
+.edge-intro-copy { margin:0!important; }
+.edge-intro-copy > p { margin-top:0; color:var(--sl-color-gray-2); }
+.edge-home .edge-backend-caption { font-size:.75rem; }
+.edge-home-section { margin-block:4rem; }
+.edge-home .edge-home-section h2 { margin:0 0 1.5rem; font-size:clamp(1.65rem,3vw,2rem); letter-spacing:-.025em; }
+.edge-home .edge-section-lead { color:var(--sl-color-gray-2); margin:-.5rem 0 1.75rem; }
+.edge-backend-layout { display:grid; grid-template-columns:1fr 1.2fr; gap:2.5rem; }
+.edge-backend-layout > div { margin:0; }
+.edge-backend-layout p { margin-top:0; }
+@media(max-width:48rem) { .edge-intro,.edge-backend-layout{grid-template-columns:1fr;gap:1rem}.edge-intro{padding-block:1.5rem}.edge-home-section{margin-block:2.75rem}.edge-home .edge-intro h1{margin-bottom:.5rem} }

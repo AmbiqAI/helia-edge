@@ -1,6 +1,1 @@
-"""
-# Training Utility API
-
-This module provides utility functions for training models.
-
-"""
+"""Reserved training utility module; no public utility implementation."""

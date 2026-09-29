@@ -7,6 +7,27 @@ from ...utils import helia_export
 
 @helia_export(path="helia_edge.layers.preprocessing.RandomAugmentation1DPipeline")
 class RandomAugmentation1DPipeline(RandomChoice):
+    """Apply repeated random layer choices to an entire batch.
+
+    Each round samples one layer for the batch, with replacement, and applies
+    it with probability rate. Inference is unchanged unless force_training is
+    enabled. Candidate layers must produce compatible shapes and structures.
+
+    Args:
+        layers: Nonempty list of candidate augmentation layers.
+        augmentations_per_sample: Number of batchwise selection rounds. Zero
+            leaves the input unchanged.
+        rate: Probability of applying each round, between zero and one.
+        batchwise: Must be True; per-example layer selection is unsupported.
+        force_training (bool): Apply augmentation even when training is False or None.
+        **kwargs (Any): Base augmentation options, including seed and data_format.
+
+    Raises:
+        ValueError: The layer list is empty, the round count is not a nonnegative
+            integer, rate is outside [0, 1], or explicit transformations are used.
+        NotImplementedError: batchwise is False.
+    """
+
     def __init__(
         self,
         layers: list[keras.Layer],

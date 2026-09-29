@@ -1,0 +1,99 @@
+---
+title: "FastEnhancer (streaming speech enhancement)"
+description: "FastEnhancerModel builds the inference form of FastEnhancer as a Keras Functional model that processes one STFT frame per call. FastEnhancerParams holds the…"
+---
+
+`FastEnhancerModel` builds the inference form of
+[FastEnhancer](https://github.com/aask1357/fastenhancer) as a Keras Functional
+model that processes one STFT frame per call. `FastEnhancerParams` holds the
+backend-free architecture config; `rnnformer.freq` may not exceed
+`n_fft / 2 / stride`. The `fastenhancer_t` preset matches upstream
+`configs/fastenhancer/t.yaml` at revision `e74cab1`, the revision of the
+`onnx-vd-v1.0.0` release.
+
+```python
+import numpy as np
+from helia_edge.models import FastEnhancerModel, resolve_fastenhancer
+from helia_edge.models.fastenhancer import fastenhancer_t_onnx_weights, load_fastenhancer_weights
+
+record = resolve_fastenhancer("fastenhancer_t")  # serialize record.model_dump_json() with results
+model = FastEnhancerModel.model_from_params(record.params)
+# Hydrate from locally extracted FP32 initializers of the released ONNX file:
+# load_fastenhancer_weights(model, record.params, fastenhancer_t_onnx_weights(initializers))
+
+caches = [np.zeros((1, 16, 20), np.float32) for _ in range(2)]  # zero once per sequence
+for spec_frame in frames:  # each (1, 257, 1, 2): real/imag of one 512-point STFT frame
+    spec_out, *caches = model([spec_frame, *caches])
+```
+
+## Streaming contract
+
+| Name | Shape per example | Role |
+|---|---|---|
+| `spec_in` | `(n_fft/2+1, 1, 2)` | Current spectral frame, real/imag last |
+| `cache_in_i` | `(freq, channels)` | GRU state of RNNFormer block `i` |
+| `spec_out` | `(n_fft/2+1, 1, 2)` | Enhanced frame; the Nyquist bin is always zero |
+| `cache_out_i` | `(freq, channels)` | Next state for block `i` |
+
+State is explicit input and output. Zero every cache at the start of each
+independent sequence, then feed `cache_out_i` back as `cache_in_i` for every
+following frame. Resetting the caches every frame is a different, much worse
+model. STFT framing, iSTFT/overlap-add, startup delay and flushing are the
+caller's responsibility; the upstream reference uses a periodic Hann window
+of 512, hop 256, an unnormalized one-sided STFT and centered reflection padding.
+
+## Folded inference form
+
+The graph matches the released ONNX export. BatchNorm is folded into
+convolution and dense biases, weight normalization is removed, and the
+frequency projections around the RNNFormer are fixed triangular filterbanks.
+It is not the trainable architecture. Every RNNFormer block runs:
+
+- a GRU step per frequency band, sharing weights across bands;
+- a projection and residual;
+- self-attention across bands, then a projection and residual.
+
+The first block also adds a learned positional embedding.
+
+`load_fastenhancer_weights` takes folded tensors in ONNX export layout keyed by
+module path, as listed by `fastenhancer_weight_shapes(params)`. GRU tensors
+must use ONNX gate order z, r, h; PyTorch `nn.GRU` stores r, z, n and must be
+reordered first, because shapes alone cannot detect the difference. Only names
+and shapes are checked, so build the model from the params the tensors came
+from. It rejects
+any missing, unexpected or misshapen tensor before loading anything.
+`fastenhancer_t_onnx_weights` renames the anonymous initializers of the
+`fastenhancer_t.spec.onnx` release. It does not guess names for other exports.
+
+Hydration applies the following layout conversions:
+
+- **Strided input convolution:** the source's reshape-based channel order is
+  converted to a standard strided kernel.
+- **GRU:** gates keep ONNX order z, r, h, and the reset gate is applied after
+  the recurrent matmul.
+- **Attention:** qkv columns are interleaved per head.
+- **Transposed convolution:** runs with valid padding and an explicit crop.
+
+## Terms and weights
+
+The upstream code is MIT licensed. Its notice is retained in
+`helia_edge/models/licenses/fastenhancer-mit.txt`. The upstream release
+publishes pretrained weights without a separate weight license, so helia-edge
+does not bundle or download them. Obtain and verify weights, and confirm their
+terms, yourself.
+
+## Numerical scope
+
+With the released T weights, the model matches the upstream ONNX Runtime
+reference to within about 1.4e-5 absolute (spectral peak about 30) and 4e-6
+on the GRU states. This holds over a 248-frame carried-state sequence on
+TensorFlow and PyTorch CPU backends. PyTorch on GPUs that allow TF32
+convolutions (the default for cuDNN) differs by about 7e-3, so disable TF32
+for FP32 comparisons.
+
+Other options (residuals, sigmoid/tanh masks, post-activations, attention
+bias, other sizes) are tested only against an independent NumPy reference of
+the exported graph; no released weights exercise them.
+
+Enhanced-audio quality, conversion to LiteRT, quantization and target timing
+or memory are not established by this model.

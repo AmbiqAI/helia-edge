@@ -1,0 +1,60 @@
+---
+title: Build your first model
+description: Select a Keras backend, construct a typed architecture and inspect the result.
+---
+
+import CardGrid from '@ambiqai/helia-ui/astro/CardGrid';
+import LinkCard from '@ambiqai/helia-ui/astro/LinkCard';
+
+import Button from '@ambiqai/helia-ui/astro/Button';
+
+Start with a small temporal convolutional network (TCN). This example constructs a model with newly initialized weights; training data and learned weights come from your application.
+
+## Select the backend first
+
+Install the matching extra from [Getting started](/helia-edge/getting-started/). Set the backend before importing Keras or accessing a heliaEDGE Keras component:
+
+```python
+import os
+os.environ["KERAS_BACKEND"] = "tensorflow"  # Use "torch" in a Torch environment.
+
+import keras
+from helia_edge.models import TcnModel, compact_tcn_params
+```
+
+Use a separate process when switching backends. See [Backend support](/helia-edge/getting-started/backends/) for feature-specific limits.
+
+## Configure and construct
+
+```python
+params = compact_tcn_params(filters=8)
+inputs = keras.Input(shape=(240, 14), batch_size=1, dtype="float32")
+model = TcnModel.model_from_params(inputs, params, num_classes=2)
+model.summary()
+```
+
+The input represents 240 time steps and 14 channels per example. Those dimensions and the two output classes are choices for this example, not fixed requirements of the preset. Choose dimensions and an output interpretation that match your task.
+
+With this preset, the output shape is `(1, 240, 2)`: two logits per time step. It is a sequence output, not one classification for the entire window.
+
+The parameter object describes the architecture. The constructed Keras model holds its layers and weights. Keep both when recording an experiment:
+
+```python
+from pathlib import Path
+Path("architecture.json").write_text(params.model_dump_json(indent=2))
+model.save("model.keras")
+```
+
+This saves an initialized, untrained model. Training, data splits, objectives and evaluation remain application decisions.
+
+## Continue with your workflow
+
+<CardGrid>
+  <LinkCard title="Choose a model family" href="/helia-edge/guide/architectures/">Explore architecture options and their configuration.</LinkCard>
+  <LinkCard title="Train your model" href="/helia-edge/guide/training/">Add callbacks and choose the objective for your task.</LinkCard>
+</CardGrid>
+
+<div className="edge-actions">
+  <Button variant="secondary" size="sm" href="/helia-edge/examples/train-cifar-model/">Open the CIFAR-10 notebook</Button>
+  <Button variant="secondary" size="sm" href="/helia-edge/guide/serialization/">Save and load models</Button>
+</div>

@@ -1,4 +1,1 @@
-"""
-# :material-chart-bell-curve: Optimizers API
-
-"""
+"""Reserved optimizer namespace; no public optimizer implementations."""

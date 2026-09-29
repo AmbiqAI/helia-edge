@@ -1,0 +1,44 @@
+---
+title: Model architectures
+description: Choose a model family and understand the boundary between configuration, weights and execution.
+---
+
+import Button from '@ambiqai/helia-ui/astro/Button';
+
+heliaEDGE provides configurable model constructors and reusable layers. Use a family constructor when it fits your task, or combine individual layers in your own Keras model.
+
+## Choose a starting point
+
+| Workload or design | Starting points | Read next |
+|---|---|---|
+| Temporal and sequence modeling | TCN, TsMixer | [Typed architecture configuration](../typed-architectures/) |
+| Image and convolutional models | ResNet, MobileNet, MobileOne, EfficientNet, RegNet, ConvMixer | [Architecture API](/helia-edge/reference/api/helia_edge/models/) |
+| Encoder/decoder models | UNet, UNext | [Architecture API](/helia-edge/reference/api/helia_edge/models/) |
+| Audio classification | MiniResNet | [MiniResNet example](/helia-edge/examples/miniresnet/) |
+| Streaming speech enhancement | FastEnhancer | [Streaming model guide](/helia-edge/examples/fastenhancer/) |
+| Heart-rate regression | CorNET, TimePPG | [CorNET](/helia-edge/examples/cornet/) · [TimePPG](/helia-edge/examples/timeppg/) |
+| Fixed Tiny task architectures | MLPerf Tiny constructors | [MLPerf Tiny](/helia-edge/examples/mlperf-tiny/) |
+
+Input rank, output shape and configuration differ between families. The individual API pages are the source for each constructor's contract. A family being listed does not establish support for every backend or export format.
+
+## Keep configuration separate from execution
+
+1. Choose the Keras backend before importing model components.
+2. Define architecture parameters and input tensors.
+3. Construct the model, then initialize or load its weights.
+4. Train, evaluate and convert it in the application workflow.
+
+Factories do not select your backend, reset global seeds or export models. Typed parameter objects make architecture choices explicit; they do not include the trained weights or data-processing policy.
+
+For TCN JSON configuration, use `TcnParams.from_config()` to reject unknown nested fields. Other families have their own validation rules; do not assume all parameter classes are equally strict. The [typed architecture guide](../typed-architectures/) covers the exact boundaries and serialization behavior.
+
+## Build something custom
+
+Compose your own model with reusable convolution, activation, normalization, patching and quantizer layers.
+
+<div className="edge-actions">
+  <Button variant="secondary" size="sm" href="/helia-edge/examples/custom-model-architecture/">Custom architecture notebook</Button>
+  <Button variant="secondary" size="sm" href="/helia-edge/reference/api/helia_edge/layers/">Browse layers</Button>
+</div>
+
+Model topology, trained weights and task accuracy are different artifacts. Keep the provenance and evaluation of your weights alongside the model you deploy.

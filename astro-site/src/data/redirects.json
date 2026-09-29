@@ -1,0 +1,17 @@
+{
+  "/usage": "/getting-started",
+  "/backends": "/getting-started/backends",
+  "/input-pipeline": "/guide/input-pipeline",
+  "/portable-preprocessing": "/guide/portable-preprocessing",
+  "/preprocessing-migration": "/guide/preprocessing-contracts",
+  "/development": "/guide/development",
+  "/typed-architectures": "/guide/typed-architectures",
+  "/guides": "/examples",
+  "/mlperf-tiny": "/examples/mlperf-tiny",
+  "/fastenhancer": "/examples/fastenhancer",
+  "/cornet": "/examples/cornet",
+  "/timeppg": "/examples/timeppg",
+  "/miniresnet": "/examples/miniresnet",
+  "/guides/custom-model-architecture": "/examples/custom-model-architecture",
+  "/guides/train-cifar-model": "/examples/train-cifar-model"
+}

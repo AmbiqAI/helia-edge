@@ -1,0 +1,26 @@
+---
+title: Examples
+description: Training notebooks and model architecture guides for heliaEDGE.
+---
+
+import CardGrid from '@ambiqai/helia-ui/astro/CardGrid';
+import LinkCard from '@ambiqai/helia-ui/astro/LinkCard';
+
+## Follow a notebook
+
+<CardGrid>
+  <LinkCard title="Create a custom architecture" href="custom-model-architecture/">Define a configurable model and integrate it with heliaEDGE.</LinkCard>
+  <LinkCard title="Train a CIFAR-10 model" href="train-cifar-model/">Follow the data, model and training steps in a complete notebook.</LinkCard>
+</CardGrid>
+
+## Explore a model family
+
+<CardGrid>
+  <LinkCard title="MLPerf Tiny" href="mlperf-tiny/">Reference constructors for the Tiny tasks.</LinkCard>
+  <LinkCard title="MiniResNet" href="miniresnet/">Configure a compact audio classifier.</LinkCard>
+  <LinkCard title="FastEnhancer" href="fastenhancer/">Build a streaming speech-enhancement model.</LinkCard>
+  <LinkCard title="CorNET" href="cornet/">Explore a heart-rate regression architecture.</LinkCard>
+  <LinkCard title="TimePPG" href="timeppg/">Configure a model for heart-rate estimation.</LinkCard>
+</CardGrid>
+
+These guides describe constructors and their configuration. Follow each guide's backend, input and provenance notes when using a model.

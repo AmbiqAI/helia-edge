@@ -1,0 +1,48 @@
+---
+title: Metrics and evaluation
+description: Select classification and signal metrics, inspect predictions and visualize training results.
+---
+
+import Button from '@ambiqai/helia-ui/astro/Button';
+
+Choose metrics according to the task and the meaning of the model outputs. Accuracy, signal reconstruction error and model compute describe different properties; none substitutes for the others.
+
+## Select a metric
+
+| Task | API | Interpretation |
+|---|---|---|
+| Classification with extra spatial or temporal axes | [MultiF1Score](/helia-edge/reference/api/helia_edge/metrics/fscore/) | Collapses leading dimensions and treats the last dimension as classes. |
+| Classification error analysis | [ConfusionMatrix](/helia-edge/reference/api/helia_edge/metrics/confusion_matrix/) | Inspect errors between classes, alongside aggregate scores. |
+| Signal reconstruction | [Snr](/helia-edge/reference/api/helia_edge/metrics/snr/) | Signal-to-noise ratio in dB, with the reference signal as `y_true`. |
+| Reconstruction distortion | [PRD and TruePRD](/helia-edge/reference/api/helia_edge/metrics/prd/) | Check the denominator and normalization definition before comparing values. |
+| Confidence filtering | [Threshold helpers](/helia-edge/reference/api/helia_edge/metrics/threshold/) | Select predictions according to their probability threshold. |
+| Static compute analysis | [get_flops](/helia-edge/reference/api/helia_edge/metrics/flops/) | TensorFlow-based operation counting; it does not measure device latency. |
+
+For a reconstruction task, the standalone SNR metric can be updated from held-out reference and predicted signals:
+
+```python
+from helia_edge.metrics import Snr
+
+metric = Snr()
+metric.update_state(reference_signals, predicted_signals)
+print(metric.result())
+metric.reset_state()
+```
+
+The arrays must represent aligned samples with the same signal interpretation. Consult each metric's API for weighting and reduction behavior.
+
+## Plot the result
+
+Install `helia-edge[plotting]` to visualize training progress and classification results.
+
+<div className="edge-actions">
+  <Button variant="secondary" size="sm" href="/helia-edge/reference/api/helia_edge/plotting/history/">Training history</Button>
+  <Button variant="secondary" size="sm" href="/helia-edge/reference/api/helia_edge/plotting/cm/">Confusion matrices</Button>
+  <Button variant="secondary" size="sm" href="/helia-edge/reference/api/helia_edge/plotting/roc/">ROC curves</Button>
+</div>
+
+Keep task metrics from held-out data separate from conversion checks. After export, compare converted predictions with the source model, then evaluate the converted model on your task's validation data.
+
+<div className="edge-actions">
+  <Button variant="secondary" size="sm" href="../export/">Export and quantization</Button>
+</div>

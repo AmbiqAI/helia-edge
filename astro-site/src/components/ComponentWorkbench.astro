@@ -1,0 +1,74 @@
+---
+import Button from '@ambiqai/helia-ui/astro/Button';
+import Icon from '@ambiqai/helia-ui/astro/Icon';
+import { Code } from 'astro:components';
+interface Props { layout?: 'horizontal' | 'vertical'; initial?: number; }
+const {layout='horizontal', initial=1}=Astro.props;
+import steps from '../data/workbench.json';
+---
+<edge-component-workbench class:list={['workbench',layout]}>
+  <div class="tabs" role="tablist" aria-label="Explore the model workflow" aria-orientation={layout==='vertical'?'vertical':'horizontal'}>
+    {steps.map((step,i)=><button type="button" role="tab" id={`step-${i}`} aria-controls={`panel-${i}`} aria-selected={i===initial} tabindex={i===initial?0:-1} data-step={i}><span class="number">0{i+1}</span>{step.label}</button>)}
+  </div>
+  {steps.map((step,i)=><section class="panel" id={`panel-${i}`} role="tabpanel" aria-labelledby={`step-${i}`} hidden={i!==initial} tabindex="0">
+    <div class="explanation"><span class="eyebrow">{step.tag}</span><h3>{step.title}</h3><p>{step.text}</p><Button variant="secondary" size="sm" href={`/helia-edge/guide/${step.guide}/`}>{["Prepare your data", "Choose an architecture", "Explore training", "Choose a metric", "Export a model"][i]} <Icon name="chevron-right" size="sm" /></Button></div>
+    <div class="code"><div class="code-head"><span>Python / Keras</span><span>heliaEDGE</span></div><Code code={step.code} lang="python" theme="github-dark"/><p class="code-note">{step.note}</p></div>
+  </section>)}
+</edge-component-workbench>
+<script>
+class EdgeComponentWorkbench extends HTMLElement {
+ connectedCallback() {
+  const tabs=Array.from(this.querySelectorAll<HTMLButtonElement>('[role="tab"]'));
+  const panels=Array.from(this.querySelectorAll<HTMLElement>('[role="tabpanel"]'));
+  const select=(index:number, focus=false)=>{
+   (this.closest('.edge-workspace') ?? this).querySelectorAll('[data-start]').forEach(item=>item.setAttribute('aria-pressed','false'));
+   tabs.forEach((tab,i)=>{tab.setAttribute('aria-selected',String(i===index));tab.tabIndex=i===index?0:-1;});
+   panels.forEach((panel,i)=>panel.hidden=i!==index);
+   if(focus) tabs[index].focus({preventScroll:true});
+   const strip=this.querySelector<HTMLElement>('.tabs')!;
+   const selected=tabs[index].getBoundingClientRect();
+   const bounds=strip.getBoundingClientRect();
+   if(selected.left<bounds.left) strip.scrollLeft+=Math.floor(selected.left-bounds.left);
+   else if(selected.right>bounds.right) strip.scrollLeft+=Math.ceil(selected.right-bounds.right);
+  };
+  tabs.forEach((tab,i)=>{
+   tab.addEventListener('click',()=>select(i));
+   tab.addEventListener('keydown',event=>{
+    const vertical=this.querySelector('[role=tablist]')?.getAttribute('aria-orientation')==='vertical';
+    const keys=vertical?['ArrowUp','ArrowDown','Home','End']:['ArrowLeft','ArrowRight','Home','End'];
+    if(!keys.includes(event.key))return;
+    event.preventDefault();
+    const next=event.key==='Home'?0:event.key==='End'?tabs.length-1:(i+(event.key==='ArrowLeft'||event.key==='ArrowUp'?-1:1)+tabs.length)%tabs.length;
+    select(next,true);
+   });
+  });
+  (this.closest('.edge-workspace') ?? this).querySelectorAll<HTMLButtonElement>('[data-start]').forEach(button=>button.addEventListener('click',()=>{
+   select(Number(button.dataset.start));
+   (this.closest('.edge-workspace') ?? this).querySelectorAll('[data-start]').forEach(item=>item.setAttribute('aria-pressed',String(item===button)));
+   this.scrollIntoView({behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'instant':'smooth',block:'nearest'});
+  }));
+ }
+}
+if(!customElements.get('edge-component-workbench'))customElements.define('edge-component-workbench',EdgeComponentWorkbench);
+</script>
+<style>
+.workbench { display:block; min-width:0; border:1px solid var(--sl-color-hairline); border-radius:1rem; overflow:hidden; background:var(--sl-color-bg); }
+.tabs { display:flex; gap:.25rem; padding:.65rem; background:var(--sl-color-gray-6); border-bottom:1px solid var(--sl-color-hairline); }
+.tabs button { flex:1; margin:0; padding:.8rem .55rem; border:0; border-radius:.5rem; background:transparent; color:var(--sl-color-gray-2); font:inherit; font-size:.85rem; font-weight:600; cursor:pointer; display:flex; justify-content:center; align-items:center; gap:.6rem; }
+.tabs button[aria-selected=true] { background:var(--helia-product-accent); color:var(--sl-color-black); }
+:global([data-theme='light']) .tabs button[aria-selected=true] { color:white; }
+.tabs button:focus-visible { outline:2px solid var(--helia-product-accent); outline-offset:2px; }
+.number { font-size:.65rem; opacity:.75; }
+.workbench > .panel { margin:0!important; scroll-margin-top:6rem; }
+.panel[hidden] { display:none; }
+.explanation { padding:1.75rem; display:grid; grid-template-columns:1fr 1fr; gap:.65rem 1.75rem; align-items:start; }
+.eyebrow { grid-column:1/-1; color:var(--helia-product-accent); font-size:.7rem; font-weight:700; letter-spacing:.1em; }
+.explanation h3 { font-size:1.5rem; line-height:1.25; letter-spacing:-.03em; margin:0; }
+.explanation p { font-size:.9rem; line-height:1.7; margin:0; color:var(--sl-color-gray-2); }
+.explanation :global(.helia-button) { justify-self:start; margin:.5rem 0 0; }
+.code { background:#15191f; color:#e4e5ea; min-width:0; margin:0; }
+.code-head { display:flex; justify-content:space-between; padding:.9rem 1.75rem; border-bottom:1px solid #30343b; font-size:.7rem; color:#b8bec9; }
+.code :global(pre) { margin:0!important; background:transparent!important; padding:1.5rem 1.75rem; font-size:.8rem; line-height:1.85; overflow:auto; border:0; border-radius:0; }
+.code-note { font-size:.75rem; line-height:1.6; color:#b8bec9; margin:0; padding:1rem 1.75rem; border-top:1px solid #30343b; }
+@media(max-width:48rem) { .tabs{overflow:auto}.tabs button{min-width:85px;font-size:.8rem}.number{display:none}.explanation{grid-template-columns:1fr;padding:1.25rem}.code :global(pre){padding:1.25rem;font-size:.75rem}.code-head,.code-note{padding:1rem 1.25rem} }
+</style>

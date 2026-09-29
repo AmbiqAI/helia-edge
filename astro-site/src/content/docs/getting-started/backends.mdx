@@ -1,0 +1,88 @@
+---
+title: "Backend installation and support"
+description: "Install the capability you use:"
+---
+
+Install the capability you use:
+
+```sh
+pip install 'helia-edge[tensorflow]'
+# or, in a separate environment:
+pip install 'helia-edge[torch]'
+```
+
+Set `KERAS_BACKEND=tensorflow` or `KERAS_BACKEND=torch` before importing Keras or
+accessing a Keras feature. Base `helia-edge` installs no training framework;
+file/factory/logger helpers work independently. Plotting and S3 access are separate
+capabilities: install `helia-edge[plotting]` or `helia-edge[aws]`, or combine them
+with a backend, for example `helia-edge[tensorflow,plotting,aws]`. Existing public attribute paths
+remain available and load their dependencies when accessed. The plotting extra
+also supplies `PatchLayer2D.show_patched_image`; patch extraction itself does not
+require plotting. S3 model URLs and S3 download helpers both require the AWS extra.
+
+This changes installation behavior: existing plotting/S3 users must select those
+extras. Base installations no longer supply plotting, AWS or h5py; code that uses
+those libraries directly should declare them itself. Backend extras retain h5py
+for Keras serialization. Existing TensorFlow users must select the
+`tensorflow` extra. `litert` includes TensorFlow conversion plus the LiteRT runtime.
+`metal` is opt-in and must be combined with `tensorflow`; Metal compatibility has
+not been validated for this baseline.
+
+The tested baseline is Linux CPU, Python 3.12.5, Keras 3.15.1, TensorFlow 2.21.0 or
+Torch 2.14.0+cpu, and LiteRT 2.2.0 for conversion. The CI matrix covers Python 3.12–3.13
+for TensorFlow and 3.12–3.14 for Torch in separate environments. TensorFlow 2.21
+has no Python 3.14 wheel. On Python 3.14, dependency markers omit TensorFlow even
+when its extra is selected; the `tensorflow` and `litert` capabilities require
+Python 3.12–3.13. Use base or Torch on Python 3.14. Other platforms, GPU builds
+and newer dependency resolutions need their own validation. To reproduce the CPU
+Torch environment, install `torch==2.14.0` from
+`https://download.pytorch.org/whl/cpu` before installing the Torch extra.
+
+Portable metrics, TCN construction, EMA quantization and masked-autoencoder
+training have isolated Torch checks. Normalization1D, FirFilter and
+RandomGaussianNoise1D also support Torch without TensorFlow; see
+[portable preprocessing](/helia-edge/guide/portable-preprocessing/). The unified preprocessing inventory is described in the
+[next-major migration guide](/helia-edge/guide/preprocessing-contracts/).
+Generator-to-tf.data utilities, contrastive training, TFLite/LiteRT conversion and FLOP profiling remain
+TensorFlow-specific at this milestone. Backend availability does not certify every
+model, trainer, precision, compiled/distributed configuration or export format.
+
+## Loading saved custom objects
+
+Lazy imports no longer register all custom Keras classes as a side effect of
+`import helia_edge`. The EDGE model loader registers supported objects explicitly:
+
+```python
+from helia_edge.models import load_model
+model = load_model('model.keras')
+```
+
+For direct Keras loading, import the custom classes used by the model, or register
+supported EDGE classes before loading:
+
+```python
+import helia_edge
+helia_edge.register_keras_serializables()
+import keras
+model = keras.saving.load_model('model.keras')
+```
+
+Registration initializes the selected backend. It does not enable unsafe loading
+or make TensorFlow-only custom layers usable on Torch. Fresh-process round trips
+cover an EDGE EMA quantizer on both backends and legacy normalization on TF.
+
+## Validation
+
+CI includes a base-only lane and separate backend environments. Import checks
+assert the opposite framework is absent. TF runs its applicable suite, including float
+and int8 conversion; Torch runs the portable subset and custom-object reloads.
+Separate backend-free environments exercise AWS and plotting, followed by
+combined backend checks for S3 model loading and patch visualization.
+CPU tests set `CUDA_VISIBLE_DEVICES=-1` so installed GPU drivers cannot affect the
+CPU export path. Preprocessing uses the public Keras augmentation hierarchy with
+CPU TensorFlow and Torch coverage; see the [migration guide](/helia-edge/guide/preprocessing-contracts/)
+for training, dtype, shape and compilation limits.
+
+## Masked-autoencoder training
+
+See [Masked-autoencoder training](/helia-edge/guide/masked-autoencoders/) for the reconstruction contract, native optimization loops and backend parity boundaries.
