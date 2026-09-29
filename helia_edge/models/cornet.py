@@ -50,6 +50,12 @@ class CorNetModel:
             raise ValueError("input window is too short for the convolution stages")
         for index in range(params.lstm_layers):
             last = index == params.lstm_layers - 1
-            x = keras.layers.LSTM(params.lstm_units, return_sequences=not last, unroll=unroll, name=f"lstm{index}")(x)
+            x = keras.layers.LSTM(
+                params.lstm_units,
+                recurrent_activation=params.recurrent_activation,
+                return_sequences=not last,
+                unroll=unroll,
+                name=f"lstm{index}",
+            )(x)
         outputs = keras.layers.Dense(1, name="hr")(x)
         return keras.Model(inputs=inputs, outputs=outputs, name=params.name)

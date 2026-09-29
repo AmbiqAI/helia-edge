@@ -25,13 +25,18 @@ preprocessing is the caller's responsibility.
 - A single linear output, `hr`.
 
 Trainable parameters match Table III: 1,312 and 40,992 for the convolutions,
-82,432 and 131,584 for the LSTMs, and 129 for the HR head.
+and 82,432 and 131,584 for the LSTMs. Table III's dense row is the two-class
+identification head (258); the one-neuron HR head has 129.
 
 Some details are not stated in the paper and are reconstructed here:
 - Stride and padding are inferred from Table III's MAC counts.
 - Fig. 6 places BatchNorm before ReLU, while the text places it after. The
   constructor follows Fig. 6.
 - The dropout position is not stated.
+- The LSTM gate activation is not stated. The paper used Keras 2.0.4, whose
+  LSTM default was `hard_sigmoid`. The constructor defaults to `sigmoid`, which
+  current Keras uses and fused LSTM kernels require;
+  `recurrent_activation="hard_sigmoid"` reproduces the older default.
 
 The model processes one window per call. It is not a streaming model, and the
 LSTM state starts at zero for every window.
@@ -42,7 +47,7 @@ LSTM state starts at zero for every window.
 
 | Form | How to build it | LiteRT lowering | Notes |
 |---|---|---|---|
-| Rolled | `unroll=False` (default) | `WHILE` loop | Loop state is not quantizable, and some engines do not parse `WHILE`. |
+| Rolled | `unroll=False` (default) | `WHILE` loop | Float only. With TensorFlow 2.21, INT8 or 16x8 conversion of the loop aborts the converter process. Some engines do not parse `WHILE`. |
 | Unrolled | `unroll=True` | Per-timestep `FULLY_CONNECTED`, `LOGISTIC`, `TANH`, `MUL` and `ADD` operations | These can be quantized to INT8 and 16x8. |
 
 Keras 3 does not emit the fused `UNIDIRECTIONAL_SEQUENCE_LSTM` operator. A

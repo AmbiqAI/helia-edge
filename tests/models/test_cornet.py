@@ -30,6 +30,16 @@ def test_default_matches_paper_table_iii():
     assert model.output_shape == (None, 1)
 
 
+def test_stage_layer_order_follows_figure_6():
+    model = build()
+    names = [layer.name for layer in model.layers[1:]]
+    stage = ["conv", "bn", "relu", "pool", "dropout"]
+    assert names == [f"conv{i}_{part}" for i in range(2) for part in stage] + ["lstm0", "lstm1", "hr"]
+    assert all(model.get_layer(name).recurrent_activation.__name__ == "sigmoid" for name in ("lstm0", "lstm1"))
+    legacy = build(params=CorNetParams(recurrent_activation="hard_sigmoid"))
+    assert legacy.get_layer("lstm0").recurrent_activation.__name__ == "hard_sigmoid"
+
+
 def test_unrolled_equals_rolled():
     keras.utils.set_random_seed(3)
     rolled = build()

@@ -2,7 +2,7 @@
 
 import json
 from collections.abc import Mapping
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -27,6 +27,7 @@ class CorNetParams(BaseModel):
     dropout: float = Field(default=0.1, ge=0, lt=1, allow_inf_nan=False)
     lstm_layers: int = Field(default=2, ge=1)
     lstm_units: int = Field(default=128, gt=0)
+    recurrent_activation: Literal["sigmoid", "hard_sigmoid"] = "sigmoid"
     name: str = Field(default="cornet", min_length=1, pattern=r"^[A-Za-z0-9_.-]+$")
 
     def get_config(self) -> dict[str, Any]:
