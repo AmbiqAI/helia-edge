@@ -14,7 +14,7 @@
     "dev": "astro dev",
     "prebuild": "npm run prepare:docs",
     "build": "astro build",
-    "postbuild": "node scripts/publish-landing.mjs",
+    "postbuild": "node scripts/publish-landing.mjs && node scripts/publish-reference.mjs",
     "precheck": "npm run prepare:docs",
     "check": "astro check",
     "check:output": "node --test scripts/api-enrichment.test.mjs && node scripts/check-output.mjs",

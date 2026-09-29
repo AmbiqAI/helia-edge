@@ -43,3 +43,16 @@ assert(exported.publicPaths.includes('helia_edge.metrics.ConfusionMatrix'), 'Can
 assert(readFileSync("dist/index.md","utf8").includes("metric.update_state"), "Landing workbench missing from Markdown export");
 
 assert(!existsSync("dist/mockups"), "Design mockups must not ship in production");
+
+const cutout = readFileSync('dist/reference/api/helia_edge/layers/preprocessing/random_cutout/index.md', 'utf8');
+const full = readFileSync('dist/llms-full.txt', 'utf8');
+for (const contract of ['RandomCutout1D(factor=', '| cutouts | int | 1 | Nonnegative number of regions']) {
+  assert(cutout.includes(contract), `API Markdown contract missing: ${contract}`);
+  assert(full.includes(contract), `LLM contract missing: ${contract}`);
+}
+for (const contract of ['LiteRTKerasConverter(model: keras.Model)', 'convert(', '**Parameters**']) {
+  assert(litert.includes(contract), `Converter Markdown contract missing: ${contract}`);
+  assert(full.includes(contract), `LLM converter contract missing: ${contract}`);
+}
+
+assert(readFileSync('dist/reference/api/helia_edge/converters/tflite/converter/index.md', 'utf8').includes('**Returns**'), 'Return contracts missing from defining converter module');

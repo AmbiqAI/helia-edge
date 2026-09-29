@@ -11,3 +11,22 @@ test('guided landing connects starting points to accessible examples',async({pag
  await page.getByRole('tabpanel').getByRole('link',{name:'Choose an architecture'}).click();
  await expect(page).toHaveURL(/guide\/architectures\/$/);
 });
+
+test('horizontal tabs preserve vertical keys and reveal mobile selections', async ({page}) => {
+ await page.setViewportSize({width:390,height:900});
+ await page.goto('');
+ await page.getByRole('button',{name:/I have a model/}).click();
+ const selected=page.getByRole('tab',{name:/Evaluate/});
+ await expect(selected).toHaveAttribute('aria-selected','true');
+ const visible=await selected.evaluate(tab=>{
+  const bounds=tab.parentElement!.getBoundingClientRect();
+  const box=tab.getBoundingClientRect();
+  return box.left>=bounds.left && box.right<=bounds.right;
+ });
+ expect(visible).toBe(true);
+ const consumed=await selected.evaluate(tab=>!tab.dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowDown',bubbles:true,cancelable:true})));
+ expect(consumed).toBe(false);
+ await expect(selected).toHaveAttribute('aria-selected','true');
+ await selected.press('ArrowRight');
+ await expect(page.getByRole('tab',{name:/Export/})).toHaveAttribute('aria-selected','true');
+});

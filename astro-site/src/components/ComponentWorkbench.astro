@@ -24,12 +24,18 @@ class EdgeComponentWorkbench extends HTMLElement {
    (this.closest('.edge-workspace') ?? this).querySelectorAll('[data-start]').forEach(item=>item.setAttribute('aria-pressed','false'));
    tabs.forEach((tab,i)=>{tab.setAttribute('aria-selected',String(i===index));tab.tabIndex=i===index?0:-1;});
    panels.forEach((panel,i)=>panel.hidden=i!==index);
-   if(focus) tabs[index].focus();
+   if(focus) tabs[index].focus({preventScroll:true});
+   const strip=this.querySelector<HTMLElement>('.tabs')!;
+   const selected=tabs[index].getBoundingClientRect();
+   const bounds=strip.getBoundingClientRect();
+   if(selected.left<bounds.left) strip.scrollLeft+=Math.floor(selected.left-bounds.left);
+   else if(selected.right>bounds.right) strip.scrollLeft+=Math.ceil(selected.right-bounds.right);
   };
   tabs.forEach((tab,i)=>{
    tab.addEventListener('click',()=>select(i));
    tab.addEventListener('keydown',event=>{
-    const keys=['ArrowLeft','ArrowRight','ArrowUp','ArrowDown','Home','End'];
+    const vertical=this.querySelector('[role=tablist]')?.getAttribute('aria-orientation')==='vertical';
+    const keys=vertical?['ArrowUp','ArrowDown','Home','End']:['ArrowLeft','ArrowRight','Home','End'];
     if(!keys.includes(event.key))return;
     event.preventDefault();
     const next=event.key==='Home'?0:event.key==='End'?tabs.length-1:(i+(event.key==='ArrowLeft'||event.key==='ArrowUp'?-1:1)+tabs.length)%tabs.length;
