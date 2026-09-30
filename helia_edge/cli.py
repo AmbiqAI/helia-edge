@@ -36,15 +36,24 @@ def export_run(
 
 @export_app.command("verify")
 def export_verify(
-    manifest: Annotated[Path, typer.Argument(help="manifest.json written by `export run`.", exists=True)],
+    manifest: Annotated[Path, typer.Argument(help="manifest.json written by `export run`.")],
     allow_env_mismatch: Annotated[
         bool, typer.Option(help="Regenerate even if the environment differs; differences are listed.")
     ] = False,
 ) -> None:
-    """Regenerate a manifest's exports and compare sha256. Exit 0 ok, 1 drift, 2 environment mismatch."""
+    """Regenerate a manifest's exports and compare them.
+
+    Exit 0 ok, 1 drift, 2 environment mismatch, 3 missing or invalid manifest.
+    """
+    import pydantic
+
     from .export.run import verify_manifest
 
-    report = verify_manifest(manifest, allow_env_mismatch=allow_env_mismatch)
+    try:
+        report = verify_manifest(manifest, allow_env_mismatch=allow_env_mismatch)
+    except (FileNotFoundError, pydantic.ValidationError, ValueError) as exc:
+        typer.echo(f"invalid manifest {manifest}: {exc}", err=True)
+        raise typer.Exit(3) from exc
     for line in report.environment_differences:
         typer.echo(f"environment: {line}")
     for line in report.differences:

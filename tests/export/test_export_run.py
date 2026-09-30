@@ -348,3 +348,105 @@ def test_only_import_selects_the_imported_model(workdir):
         },
     )
     assert [e.name for e in run_recipe(workdir / "i.yaml", workdir / "i", only=["import"]).entries] == ["import"]
+
+
+def test_calibration_uses_the_first_rows_in_stored_order(workdir):
+    rng = np.random.default_rng(5)
+    first = rng.standard_normal((4, 640)).astype(np.float32)
+    np.save(workdir / "first.npy", first)
+    np.save(workdir / "mixed.npy", np.concatenate([first, 50 * rng.standard_normal((4, 640)).astype(np.float32)]))
+    exports = [{"name": "a8w8", "precision": "a8w8", "io_dtype": "int8", "mode": "concrete"}]
+    model = {"kind": "params_seed", "architecture": "mlperf_tiny", "params": {"architecture": "ad"}, "seed": 3}
+
+    def run(name, source, samples):
+        calibration = {"source": array_source(workdir / source)} | ({"samples": samples} if samples else {})
+        recipe = {"schema": "helia-edge/export@1", "model": model, "calibration": calibration, "exports": exports}
+        return run_recipe(write(workdir / f"{name}.yaml", recipe), workdir / name).entries[0].model.sha256
+
+    assert run("head", "mixed.npy", 4) == run("only", "first.npy", None) != run("all", "mixed.npy", None)
+    with pytest.raises(SourceError, match="has 4 rows"):
+        run("over", "first.npy", 5)
+
+
+def test_params_weights_and_keras_file_verify(workdir):
+    keras.backend.clear_session()
+    keras.utils.set_random_seed(9)
+    inputs = keras.Input((32, 4))  # batch None: the recipe rebuilds it with batch size 1
+    from helia_edge.models import TcnModel, TcnParams
+
+    model = TcnModel.model_from_params(inputs, TcnParams.from_config(TCN), num_classes=2)
+    model.save(workdir / "free.keras")
+    model.save_weights(workdir / "free.weights.h5")
+    exports = [{"name": "fp32", "precision": "fp32", "io_dtype": "float32", "mode": "keras"}]
+    params = {"kind": "params_weights", "architecture": "tcn", "params": TCN, "input_shape": [32, 4], "num_classes": 2}
+    recipes = {
+        "k": {"model": {"kind": "keras_file", "file": path_source(workdir / "free.keras")}},
+        "w": {"model": {**params, "weights": path_source(workdir / "free.weights.h5")}},
+    }
+    for name, recipe in recipes.items():
+        write(workdir / f"{name}.yaml", {"schema": "helia-edge/export@1", "exports": exports, **recipe})
+        manifest = run_recipe(workdir / f"{name}.yaml", workdir / name)
+        assert manifest.entries[0].inputs[0].shape == (1, 32, 4)
+        assert verify_manifest(workdir / name / "manifest.json").status == "ok"
+
+
+def test_verify_compares_regenerated_reference_outputs(workdir, monkeypatch):
+    run_recipe(ad_recipe(workdir), workdir / "out")
+    from helia_edge.export.runner import LiteRTRunner
+
+    run = LiteRTRunner.run
+    monkeypatch.setattr(LiteRTRunner, "run", lambda self, x: run(self, x) + 1)
+    report = verify_manifest(workdir / "out" / "manifest.json")
+    assert report.status == "drift" and any("reference outputs sha256" in d for d in report.differences)
+
+
+def test_url_sources_are_downloaded_once_and_cached(workdir):
+    import functools
+    import threading
+    from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
+
+    (workdir / "served").mkdir()
+    (workdir / "served" / "ad.npy").write_bytes((workdir / "ad.npy").read_bytes())
+    handler = functools.partial(SimpleHTTPRequestHandler, directory=str(workdir / "served"))
+    server = ThreadingHTTPServer(("127.0.0.1", 0), handler)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    url = {"kind": "url", "url": f"http://127.0.0.1:{server.server_port}/ad.npy", "sha256": sha(workdir / "ad.npy")}
+    recipe = ad_recipe(workdir, reference={"source": {"kind": "array", "file": url}, "samples": 2})
+    try:
+        first = run_recipe(recipe, workdir / "a")
+    finally:
+        server.shutdown()
+    assert (workdir / "cache" / "sources" / url["sha256"]).is_file()
+    second = run_recipe(recipe, workdir / "b")  # server is down: the cached file is used
+    assert [e.model.sha256 for e in first.entries] == [e.model.sha256 for e in second.entries]
+
+
+def test_manifest_records_the_environment(workdir):
+    import platform
+
+    import tensorflow as tf
+
+    environment = run_recipe(ad_recipe(workdir), workdir / "out").environment
+    assert environment.python == platform.python_version()
+    assert environment.platform == f"{platform.system()}-{platform.machine()}"
+    assert environment.packages["tensorflow"] == tf.__version__ and environment.packages["keras"] == keras.__version__
+    assert set(environment.packages) == {"numpy", "keras", "tensorflow", "ai-edge-litert"}
+
+
+def test_cli_verify_exit_codes_for_invalid_manifests_and_combined_drift(workdir):
+    runner = CliRunner()
+    missing = runner.invoke(app, ["export", "verify", str(workdir / "missing.json")])
+    assert missing.exit_code == 3 and "invalid manifest" in missing.output
+    (workdir / "bad.json").write_text("{}")
+    assert runner.invoke(app, ["export", "verify", str(workdir / "bad.json")]).exit_code == 3
+    run_recipe(ad_recipe(workdir), workdir / "out")
+    manifest = workdir / "out" / "manifest.json"
+    data = json.loads(manifest.read_text())
+    data["environment"]["python"] = "0.0.0"
+    manifest.write_text(json.dumps(data))
+    model = workdir / "out" / "fp32" / "model.tflite"
+    model.write_bytes(model.read_bytes() + b"\0")
+    both = runner.invoke(app, ["export", "verify", str(manifest)])
+    assert (
+        both.exit_code == 1 and "environment: python: 0.0.0" in both.output and "drift: fp32: model file" in both.output
+    )

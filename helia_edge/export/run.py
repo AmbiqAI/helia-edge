@@ -90,6 +90,8 @@ def load_array(source: ArraySource, base_dir: Path, samples: int | None = None) 
         if source.key is not None:
             raise SourceError(f"{location} is not an .npz archive; omit key")
         array = np.load(path, allow_pickle=False)
+    if samples is not None and samples > len(array):
+        raise SourceError(f"{location} has {len(array)} rows; the recipe asks for {samples}")
     return array if samples is None else array[:samples]
 
 
@@ -254,11 +256,12 @@ def _files(entry: ManifestEntry) -> list[tuple[str, FileRecord]]:
 
 
 def verify_manifest(manifest_path: Path, allow_env_mismatch: bool = False) -> VerifyReport:
-    """Check files on disk, then regenerate every entry and compare sha256.
+    """Check the recipe and files on disk, then the environment, then regenerate and compare.
 
-    A different environment (helia-edge, Python or dependency versions) is reported as
-    ``env_mismatch`` without regenerating, unless ``allow_env_mismatch``; the differences are
-    then listed alongside the comparison.
+    A changed recipe or file is ``drift`` whatever the environment; environment differences are
+    still listed. Otherwise a different environment (helia-edge, Python, platform or dependency
+    versions) is ``env_mismatch`` without regenerating, unless ``allow_env_mismatch``. Regenerated
+    entries must match the recorded sha256 and size of every file, the spec and the tensor records.
     """
     manifest_path = Path(manifest_path).resolve()
     root = manifest_path.parent
@@ -274,10 +277,9 @@ def verify_manifest(manifest_path: Path, allow_env_mismatch: bool = False) -> Ve
             path = root / record.path
             if not path.is_file() or sha256_file(path) != record.sha256:
                 differences.append(f"{entry.name}: {label} file {record.path} is missing or changed")
-    if differences:
-        return VerifyReport("drift", differences)
-
     environment = _environment_differences(manifest.environment, EnvironmentEntry.from_record(environment_record()))
+    if differences:
+        return VerifyReport("drift", differences, environment)
     if environment and not allow_env_mismatch:
         return VerifyReport("env_mismatch", [], environment)
 
@@ -293,7 +295,7 @@ def verify_manifest(manifest_path: Path, allow_env_mismatch: bool = False) -> Ve
             differences.append(f"{entry.name}: not produced by the recipe")
             continue
         for (label, record), (_, new) in zip(_files(entry), _files(again), strict=False):
-            if record.sha256 != new.sha256:
+            if (record.sha256, record.bytes) != (new.sha256, new.bytes):
                 differences.append(f"{entry.name}: {label} sha256 {record.sha256[:12]} -> {new.sha256[:12]}")
         for field_name in ("spec", "inputs", "outputs"):
             if getattr(entry, field_name) != getattr(again, field_name):
