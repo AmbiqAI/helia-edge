@@ -38,7 +38,7 @@ jobs:
           PY
       - if: matrix.python == '3.12'
         run: uv run --no-sync prek run --all-files --hook-stage pre-commit
-      - run: uv run --no-sync pytest -q tests/test_import_isolation.py tests/test_optional_dependencies.py tests/utils/test_rng.py tests/export/test_export_spec.py
+      - run: uv run --no-sync pytest -q tests/test_import_isolation.py tests/test_optional_dependencies.py tests/utils/test_rng.py tests/export/test_export_spec.py tests/export/test_export_recipe.py
 
       - name: Test AWS without plotting or a backend
         env:
@@ -102,7 +102,7 @@ jobs:
           tests/layers/test_portable_preprocessing.py tests/layers/test_unified_augmentation.py
           tests/layers/test_augmentation_inventory.py tests/layers/test_portable_grain.py
           tests/layers/test_preprocessing_integration.py
-          tests/export/test_export_spec.py tests/export/test_export_backend.py
+          tests/export/test_export_spec.py tests/export/test_export_backend.py tests/export/test_export_recipe.py
       - run: >-
           uv run --no-sync python tests/trainers/mae_parity_fixture.py
           --output '${{ runner.temp }}/mae-evidence.npz'

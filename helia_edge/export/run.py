@@ -1,0 +1,306 @@
+"""Run an export recipe into a directory with a manifest, and verify a manifest by regenerating it."""
+
+import hashlib
+import os
+import tempfile
+from collections.abc import Collection
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Literal
+
+import numpy as np
+
+from .manifest import (
+    MANIFEST_SCHEMA,
+    EnvironmentEntry,
+    ExportManifest,
+    FileRecord,
+    ManifestEntry,
+    ReferenceRecord,
+    TensorEntry,
+)
+from .recipe import (
+    ArraySource,
+    KerasFile,
+    ParamsSeed,
+    ParamsWeights,
+    PathSource,
+    TfliteImport,
+    UrlSource,
+    load_recipe,
+)
+from .result import environment_record
+from .spec import CALIBRATED, ExportSpec
+
+
+class SourceError(ValueError):
+    """A recipe source is missing or does not match its sha256."""
+
+
+def sha256_file(path: Path) -> str:
+    """Return the hex sha256 of a file, read in chunks."""
+    digest = hashlib.sha256()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(1 << 20), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _cache_dir() -> Path:
+    return Path(os.environ.get("HELIA_EDGE_CACHE", Path.home() / ".cache" / "helia-edge")) / "sources"
+
+
+def fetch(source: UrlSource | PathSource, base_dir: Path) -> Path:
+    """Return a local path to the source file after checking its sha256.
+
+    Path sources are relative to ``base_dir`` unless absolute. URL sources are downloaded once
+    into ``$HELIA_EDGE_CACHE/sources`` (default ``~/.cache/helia-edge/sources``), named by sha256.
+    """
+    if isinstance(source, PathSource):
+        path = Path(source.path)
+        path = path if path.is_absolute() else base_dir / path
+        if not path.is_file():
+            raise SourceError(f"Source file not found: {path}")
+    else:
+        path = _cache_dir() / source.sha256
+        if not path.is_file() or sha256_file(path) != source.sha256:
+            from ..utils.file import download_file
+
+            path.parent.mkdir(parents=True, exist_ok=True)
+            partial = path.with_suffix(".partial")
+            download_file(source.url, partial, progress=False)
+            partial.replace(path)
+    digest = sha256_file(path)
+    if digest != source.sha256:
+        raise SourceError(f"{path} has sha256 {digest}, expected {source.sha256}")
+    return path
+
+
+def load_array(source: ArraySource, base_dir: Path, samples: int | None = None) -> np.ndarray:
+    """Load a ``.npy`` array, or key ``source.key`` of a ``.npz``; keep the first ``samples`` rows."""
+    path = fetch(source.file, base_dir)
+    location = source.file.path if isinstance(source.file, PathSource) else source.file.url
+    with open(path, "rb") as f:
+        archive = f.read(4) == b"PK\x03\x04"  # .npz files are zip archives; .npy files start with \x93NUMPY
+    if archive:
+        if source.key is None:
+            raise SourceError(f"{location} is an .npz archive; set key")
+        with np.load(path, allow_pickle=False) as arrays:
+            array = arrays[source.key]
+    else:
+        if source.key is not None:
+            raise SourceError(f"{location} is not an .npz archive; omit key")
+        array = np.load(path, allow_pickle=False)
+    if samples is not None and samples > len(array):
+        raise SourceError(f"{location} has {len(array)} rows; the recipe asks for {samples}")
+    return array if samples is None else array[:samples]
+
+
+def _batch1(model):
+    """Rebuild a single-input functional model whose batch dimension is not fixed to 1."""
+    import keras
+
+    if len(model.inputs) != 1:
+        raise ValueError(f"Recipes support single-input models; this model has {len(model.inputs)} inputs")
+    if model.input_shape[0] == 1:
+        return model
+    inputs = keras.Input(model.input_shape[1:], batch_size=1)
+    return keras.Model(inputs, model(inputs), name=model.name)
+
+
+def build_model(source: ParamsSeed | ParamsWeights | KerasFile, base_dir: Path):
+    """Build or load the recipe's Keras model with batch size 1, in a fresh Keras session.
+
+    Auto-generated layer names become tensor names in the exported bytes and come from
+    process-wide counters, so ``keras.backend.clear_session()`` runs first. This discards models
+    built earlier in the process.
+    """
+    import keras
+
+    from .architectures import resolve_architecture
+
+    keras.backend.clear_session()
+
+    if isinstance(source, ParamsSeed):
+        keras.utils.set_random_seed(source.seed)
+        model = resolve_architecture(source.architecture)(source.params, source.input_shape, source.num_classes)
+    elif isinstance(source, ParamsWeights):
+        model = resolve_architecture(source.architecture)(source.params, source.input_shape, source.num_classes)
+        model.load_weights(fetch(source.weights, base_dir))
+    else:
+        from .. import register_keras_serializables
+
+        register_keras_serializables()
+        model = keras.models.load_model(fetch(source.file, base_dir), compile=False)
+    return _batch1(model)
+
+
+def _write(path: Path, data: bytes, root: Path) -> FileRecord:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(data)
+    return FileRecord(path=path.relative_to(root).as_posix(), sha256=hashlib.sha256(data).hexdigest(), bytes=len(data))
+
+
+def _npy(array: np.ndarray) -> bytes:
+    import io
+
+    buffer = io.BytesIO()
+    np.save(buffer, np.ascontiguousarray(array), allow_pickle=False)
+    return buffer.getvalue()
+
+
+def _entry(name: str, spec: ExportSpec | None, content: bytes, reference: np.ndarray | None, out: Path):
+    from .litert import tensor_records
+
+    model = _write(out / name / "model.tflite", content, out)
+    inputs, outputs = tensor_records(content)
+    reference_record = None
+    if reference is not None:
+        from .runner import LiteRTRunner
+
+        runner = LiteRTRunner(content, reference_kernels=True)
+        encoded = runner.encode(reference)
+        reference_record = ReferenceRecord(
+            inputs=_write(out / name / "reference" / "inputs.npy", _npy(encoded), out),
+            outputs=_write(out / name / "reference" / "outputs.npy", _npy(runner.run(encoded)), out),
+        )
+    return ManifestEntry(
+        name=name,
+        spec=spec,
+        model=model,
+        inputs=tuple(TensorEntry.from_record(r) for r in inputs),
+        outputs=tuple(TensorEntry.from_record(r) for r in outputs),
+        reference=reference_record,
+    )
+
+
+def run_recipe(recipe_path: Path, out_dir: Path, only: Collection[str] | None = None) -> ExportManifest:
+    """Regenerate a recipe's exports into ``out_dir`` and write ``out_dir/manifest.json``.
+
+    The model is built in a fresh Keras session (see ``build_model``).
+
+    Args:
+        recipe_path: Recipe file (YAML or JSON). Path sources resolve relative to its directory.
+        out_dir: Output directory; each export is written to ``<name>/model.tflite``.
+        only: Export names to run; all when None.
+
+    Returns:
+        ExportManifest: The written manifest.
+    """
+    from .api import export_model
+
+    recipe_path, out_dir = Path(recipe_path).resolve(), Path(out_dir).resolve()
+    recipe = load_recipe(recipe_path)
+    base = recipe_path.parent
+    names = ["import"] if isinstance(recipe.model, TfliteImport) else [e.name for e in recipe.exports]
+    if only is not None and set(only) - set(names):
+        raise ValueError(f"Unknown export names: {sorted(set(only) - set(names))}; the recipe has {names}")
+    selected = [e for e in recipe.exports if only is None or e.name in only]
+    out_dir.mkdir(parents=True, exist_ok=True)
+    reference = None
+    if recipe.reference is not None:
+        reference = load_array(recipe.reference.source, base, recipe.reference.samples)
+
+    if isinstance(recipe.model, TfliteImport):
+        entries = [_entry("import", None, fetch(recipe.model.file, base).read_bytes(), reference, out_dir)]
+    else:
+        model = build_model(recipe.model, base)
+        calibration = None
+        if recipe.calibration is not None:
+            calibration = load_array(recipe.calibration.source, base, recipe.calibration.samples)
+        entries = []
+        for entry in selected:
+            spec = ExportSpec(**entry.model_dump(exclude={"name"}))
+            result = export_model(model, spec, calibration if spec.precision in CALIBRATED else None)
+            entries.append(_entry(entry.name, spec, result.content, reference, out_dir))
+
+    manifest = ExportManifest(
+        schema=MANIFEST_SCHEMA,
+        recipe=FileRecord(
+            path=Path(os.path.relpath(recipe_path, out_dir)).as_posix(),
+            sha256=sha256_file(recipe_path),
+            bytes=recipe_path.stat().st_size,
+        ),
+        environment=EnvironmentEntry.from_record(environment_record()),
+        entries=tuple(entries),
+    )
+    manifest.write(out_dir / "manifest.json")
+    return manifest
+
+
+@dataclass
+class VerifyReport:
+    """Outcome of ``verify_manifest``. ``status`` is ``ok``, ``drift`` or ``env_mismatch``."""
+
+    status: Literal["ok", "drift", "env_mismatch"]
+    differences: list[str] = field(default_factory=list)
+    environment_differences: list[str] = field(default_factory=list)
+
+
+def _environment_differences(recorded: EnvironmentEntry, current: EnvironmentEntry) -> list[str]:
+    differences = [
+        f"{key}: {getattr(recorded, key)} -> {getattr(current, key)}"
+        for key in ("helia_edge", "helia_edge_commit", "python", "platform")
+        if getattr(recorded, key) != getattr(current, key)
+    ]
+    for package in sorted(set(recorded.packages) | set(current.packages)):
+        if recorded.packages.get(package) != current.packages.get(package):
+            differences.append(f"{package}: {recorded.packages.get(package)} -> {current.packages.get(package)}")
+    return differences
+
+
+def _files(entry: ManifestEntry) -> list[tuple[str, FileRecord]]:
+    files = [("model", entry.model)]
+    if entry.reference is not None:
+        files += [("reference inputs", entry.reference.inputs), ("reference outputs", entry.reference.outputs)]
+    return files
+
+
+def verify_manifest(manifest_path: Path, allow_env_mismatch: bool = False) -> VerifyReport:
+    """Check the recipe and files on disk, then the environment, then regenerate and compare.
+
+    A changed recipe or file is ``drift`` whatever the environment; environment differences are
+    still listed. Otherwise a different environment (helia-edge, Python, platform or dependency
+    versions) is ``env_mismatch`` without regenerating, unless ``allow_env_mismatch``. Regenerated
+    entries must match the recorded sha256 and size of every file, the spec and the tensor records.
+    """
+    manifest_path = Path(manifest_path).resolve()
+    root = manifest_path.parent
+    manifest = ExportManifest.read(manifest_path)
+    differences = []
+    recipe_path = (root / manifest.recipe.path).resolve()
+    if not recipe_path.is_file():
+        differences.append(f"recipe {manifest.recipe.path} is missing")
+    elif sha256_file(recipe_path) != manifest.recipe.sha256:
+        differences.append(f"recipe {manifest.recipe.path} changed")
+    for entry in manifest.entries:
+        for label, record in _files(entry):
+            path = root / record.path
+            if not path.is_file() or sha256_file(path) != record.sha256:
+                differences.append(f"{entry.name}: {label} file {record.path} is missing or changed")
+    environment = _environment_differences(manifest.environment, EnvironmentEntry.from_record(environment_record()))
+    if differences:
+        return VerifyReport("drift", differences, environment)
+    if environment and not allow_env_mismatch:
+        return VerifyReport("env_mismatch", [], environment)
+
+    with tempfile.TemporaryDirectory() as directory:
+        try:
+            fresh = run_recipe(recipe_path, Path(directory), only=[entry.name for entry in manifest.entries])
+        except SourceError as exc:
+            return VerifyReport("drift", [f"source: {exc}"], environment)
+    regenerated = {entry.name: entry for entry in fresh.entries}
+    for entry in manifest.entries:
+        again = regenerated.get(entry.name)
+        if again is None:
+            differences.append(f"{entry.name}: not produced by the recipe")
+            continue
+        for (label, record), (_, new) in zip(_files(entry), _files(again), strict=False):
+            if (record.sha256, record.bytes) != (new.sha256, new.bytes):
+                differences.append(f"{entry.name}: {label} sha256 {record.sha256[:12]} -> {new.sha256[:12]}")
+        for field_name in ("spec", "inputs", "outputs"):
+            if getattr(entry, field_name) != getattr(again, field_name):
+                differences.append(f"{entry.name}: recorded {field_name} differs from the regenerated one")
+        if (entry.reference is None) != (again.reference is None):
+            differences.append(f"{entry.name}: reference presence changed")
+    return VerifyReport("drift" if differences else "ok", differences, environment)

@@ -142,6 +142,18 @@ def tensor_records(content: bytes) -> tuple[tuple[TensorRecord, ...], tuple[Tens
     return tuple(record(int(i)) for i in subgraph.inputs), tuple(record(int(i)) for i in subgraph.outputs)
 
 
+def operator_names(content: bytes) -> list[str]:
+    """Builtin operator names of every subgraph's operators, in execution order."""
+    names = {v: k for k, v in vars(schema.BuiltinOperator).items() if isinstance(v, int)}
+    model = schema.ModelT.InitFromObj(schema.Model.GetRootAsModel(bytearray(content), 0))
+    result = []
+    for subgraph in model.subgraphs:
+        for op in subgraph.operators:
+            code = model.operatorCodes[op.opcodeIndex]
+            result.append(names.get(max(code.builtinCode, code.deprecatedBuiltinCode), "CUSTOM"))
+    return result
+
+
 def export_litert(model: keras.Model, spec: ExportSpec, calibration: npt.NDArray | None) -> ExportResult:
     """Export with an already validated spec and calibration array."""
     with tempfile.TemporaryDirectory() as workdir:

@@ -85,6 +85,43 @@ predictions = LiteRTRunner(result.content).predict(representative_x)
 - The legacy converters produce the same bytes for the same settings. `ExportSpec` values match helia-benchmark's precision names; `QuantizationType` values map through `LEGACY_PRECISION`.
 - `LiteRTRunner` runs model bytes with ai-edge-litert, rounding and saturating integer inputs. It runs native float16 graphs where the runtime has float16 kernels for every operator.
 
+## Export recipes and the command line
+
+An export recipe (`schema: helia-edge/export@1`) states the model source, calibration and reference data, and every export. Every file it names carries a sha256:
+
+```yaml
+schema: helia-edge/export@1
+model: {kind: params_seed, architecture: mlperf_tiny, params: {architecture: ad}, seed: 20260929}
+calibration:
+  source: {kind: array, file: {kind: path, path: calibration.npy, sha256: <sha256>}}
+  samples: 256
+reference:
+  source: {kind: array, file: {kind: url, url: https://example.com/reference.npz, sha256: <sha256>}, key: x}
+exports:
+  - {name: fp32, precision: fp32, io_dtype: float32, mode: concrete}
+  - {name: a8w8, precision: a8w8, io_dtype: int8, mode: concrete}
+```
+
+```sh
+KERAS_BACKEND=tensorflow helia-edge export run recipe.yaml --out exports
+helia-edge export verify exports/manifest.json
+```
+
+- **Model kinds:**
+  - `params_seed`: an architecture from `BUILTIN_ARCHITECTURES` (`tcn`, `mlperf_tiny`, `miniresnet_v1`, `timeppg`, `cornet`), built from params with a seeded initialization;
+  - `params_weights`: the same architectures, with trained weights loaded;
+  - `keras_file`: a saved `.keras` model;
+  - `tflite_import`: an existing `.tflite` file, taken as is.
+- **Sources:** `path` sources resolve relative to the recipe. `url` sources are downloaded once into `~/.cache/helia-edge/sources` (set `HELIA_EDGE_CACHE` to move it). A source whose sha256 differs is refused.
+- **Calibration and reference data:** calibration uses the first `samples` rows in stored order (more rows than stored is an error). Reference inputs are run with LiteRT's reference kernels; the inputs as fed and the outputs are saved as `.npy` files next to each model.
+- **Batch size and session:** models are exported with batch size 1. Each is built in a fresh Keras session, because auto-generated layer names become tensor names in the exported bytes.
+- **Manifest:** `manifest.json` (`schema: helia-edge/manifest@1`) records the recipe's sha256, the environment (helia-edge version, plus its commit when installed from a git URL; Python; platform; NumPy, Keras, TensorFlow and ai-edge-litert versions), and each file's sha256. `run` writes into `--out` without removing files from earlier runs; only the entries in the manifest are verified. `helia-edge export schema --kind recipe|manifest` prints the JSON Schemas.
+- **`export verify`:** checks in this order:
+  - Exit 1 (drift): a file, a source or the recipe changed. Environment differences are still listed.
+  - Exit 2 (environment mismatch): the environment differs from the recorded one; nothing is regenerated. `--allow-env-mismatch` regenerates anyway and lists the differences.
+  - Otherwise it regenerates every entry and exits 1 if any file's sha256 or size, spec or tensor record differs, and 0 when all match.
+  - Exit 3: the manifest is missing or invalid.
+
 ## Hand off to an Ambiq deployment
 
 The exported model is one part of the deployment. Select the inference runtime and check its operator and precision support before integrating it into firmware. Training backend support does not imply that every model can run on every target.

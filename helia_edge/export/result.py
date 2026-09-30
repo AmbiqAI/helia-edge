@@ -38,6 +38,7 @@ class EnvironmentRecord:
     helia_edge: str
     helia_edge_commit: str | None
     python: str
+    platform: str
     packages: tuple[tuple[str, str | None], ...]
 
 
@@ -70,7 +71,11 @@ def _installed_helia_edge() -> tuple[str, str | None]:
     direct_url = json.loads(distribution.read_text("direct_url.json") or "{}")
     url = direct_url.get("url", "")
     editable = direct_url.get("dir_info", {}).get("editable", False) and url.startswith("file://")
-    installed = Path(url.removeprefix("file://")) / "helia_edge" if editable else distribution.locate_file("helia_edge")
+    installed = (
+        Path(url.removeprefix("file://")) / "helia_edge"
+        if editable
+        else Path(str(distribution.locate_file("helia_edge")))
+    )
     if Path(installed).resolve() != imported:
         return "unknown", None
     return distribution.version, direct_url.get("vcs_info", {}).get("commit_id")
@@ -83,5 +88,6 @@ def environment_record() -> EnvironmentRecord:
         helia_edge=version,
         helia_edge_commit=commit,
         python=platform.python_version(),
+        platform=f"{platform.system()}-{platform.machine()}",
         packages=tuple((name, _version(name)) for name in _VERSIONED),
     )

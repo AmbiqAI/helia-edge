@@ -1,6 +1,7 @@
 """Run exported LiteRT model bytes with ai-edge-litert."""
 
 import importlib
+from typing import cast
 
 import numpy as np
 import numpy.typing as npt
@@ -61,7 +62,7 @@ class LiteRTRunner:
         if dtype.kind == "f":
             return x.astype(dtype)
         scale, zero_point = self.input["quantization"]
-        info = np.iinfo(dtype)
+        info = np.iinfo(cast(type[np.integer], dtype.type))
         return np.clip(np.rint(x / scale + zero_point), info.min, info.max).astype(dtype)
 
     def decode(self, y: npt.NDArray) -> npt.NDArray:
