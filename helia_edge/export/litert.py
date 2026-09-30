@@ -133,7 +133,7 @@ def tensor_records(content: bytes) -> tuple[tuple[TensorRecord, ...], tuple[Tens
         return TensorRecord(
             name=name,
             role=TensorRole.SIGNAL,
-            shape=tuple(int(d) for d in tensor.shape),
+            shape=tuple(int(d) for d in (tensor.shapeSignature if tensor.shapeSignature is not None else tensor.shape)),
             dtype=_IO_TYPES[tensor.type],
             scale=float(scales[0]) if len(scales) else None,
             zero_point=int(zero_points[0]) if len(scales) else None,

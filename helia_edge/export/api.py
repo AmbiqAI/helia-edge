@@ -13,11 +13,12 @@ def check_calibration(spec: ExportSpec, calibration: npt.NDArray | None, input_s
     Args:
         spec: Export specification.
         calibration: Calibration samples along axis 0, or None.
-        input_shape: Model input shape including the batch dimension.
+        input_shape: Model input shape including the batch dimension; None dimensions accept any size.
 
     Raises:
         ValueError: If calibration is missing for a calibrated precision, given for another
-            precision, empty, not float32, not finite, or shaped differently from the model input.
+            precision, empty, not float32 (whatever the model input dtype), not finite, or shaped
+            differently from the model input's fixed dimensions.
     """
     if spec.precision not in CALIBRATED:
         if calibration is not None:
@@ -29,7 +30,8 @@ def check_calibration(spec: ExportSpec, calibration: npt.NDArray | None, input_s
         raise ValueError("Calibration data must be a float32 numpy array")
     if calibration.shape[0] == 0:
         raise ValueError("Calibration data is empty")
-    if calibration.ndim != len(input_shape) or tuple(calibration.shape[1:]) != tuple(input_shape[1:]):
+    fixed = all(d is None or d == c for c, d in zip(calibration.shape[1:], input_shape[1:], strict=False))
+    if calibration.ndim != len(input_shape) or not fixed:
         raise ValueError(f"Calibration shape {calibration.shape} does not match model input {tuple(input_shape)}")
     if not np.isfinite(calibration).all():
         raise ValueError("Calibration data contains NaN or infinity")
@@ -54,7 +56,10 @@ def export_model(model, spec: ExportSpec, calibration: npt.NDArray | None = None
         ValueError: If the format is unknown, the model has more than one input, or the calibration
             data is invalid.
     """
-    import keras
+    try:
+        import keras
+    except ModuleNotFoundError as exc:
+        raise ImportError("export_model requires Keras with TensorFlow. Install helia-edge[litert].") from exc
 
     if spec.format != "litert":
         raise ValueError(f"Unknown export format {spec.format!r}; available: 'litert'")

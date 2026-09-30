@@ -2,7 +2,7 @@
 
 from enum import StrEnum
 
-from pydantic import BaseModel, ConfigDict, model_validator
+from pydantic import BaseModel, ConfigDict, StrictBool, model_validator
 
 
 class Precision(StrEnum):
@@ -77,15 +77,16 @@ CALIBRATED: frozenset[Precision] = frozenset({Precision.A8W8, Precision.A16W8})
 
 
 class ExportSpec(BaseModel):
-    """What to export. Every setting that changes the exported bytes is explicit.
+    """What to export. ``precision``, ``io_dtype`` and ``mode`` have no defaults.
 
     Attributes:
-        format: Export format; ``litert`` (a ``.tflite`` flatbuffer) is the only one available.
+        format: Export format. ``litert`` (a ``.tflite`` flatbuffer), the default, is the only one
+            available; ``export_model`` refuses others.
         precision: Numeric format of the graph.
         io_dtype: Input and output element type; must be valid for ``precision`` (``VALID_IO``).
         mode: How the model is traced for conversion.
         strict: For calibrated precisions, refuse operators without an integer kernel instead of
-            falling back to float operators.
+            falling back to float operators. Defaults to True; it does not affect float precisions.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -94,7 +95,7 @@ class ExportSpec(BaseModel):
     precision: Precision
     io_dtype: IODType
     mode: ConversionMode
-    strict: bool = True
+    strict: StrictBool = True
 
     @model_validator(mode="after")
     def _io_dtype_matches_precision(self) -> "ExportSpec":

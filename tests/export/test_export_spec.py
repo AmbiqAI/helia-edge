@@ -68,6 +68,22 @@ def test_byte_changing_settings_have_no_defaults():
         ExportSpec(precision="fp32", mode="concrete")  # io_dtype missing
 
 
+def test_strict_is_a_real_boolean():
+    with pytest.raises(pydantic.ValidationError):
+        ExportSpec(precision="a8w8", io_dtype="int8", mode="concrete", strict="no")
+
+
+def test_export_model_without_keras_says_what_to_install():
+    import importlib.util
+
+    if importlib.util.find_spec("keras") is not None:
+        pytest.skip("Checks the base environment")
+    from helia_edge.export import export_model
+
+    with pytest.raises(ImportError, match=r"helia-edge\[litert\]"):
+        export_model(object(), ExportSpec(precision="fp32", io_dtype="float32", mode="concrete"))
+
+
 def test_spec_is_frozen_strict_and_round_trips():
     spec = ExportSpec(precision="a8w8", io_dtype="int8", mode="concrete")
     assert spec.format == "litert" and spec.strict is True

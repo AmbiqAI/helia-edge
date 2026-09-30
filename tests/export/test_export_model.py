@@ -80,6 +80,24 @@ def test_records_describe_float_io(model):
     assert float_io.inputs[0].dtype == IODType.FLOAT32
 
 
+def test_dynamic_dimensions_calibrate_and_are_recorded():
+    keras.utils.set_random_seed(2)
+    inputs = keras.Input((None, 3), batch_size=1)
+    model = keras.Model(inputs, keras.layers.Conv1D(4, 3, padding="same")(inputs))
+    calibration = np.random.default_rng(3).standard_normal((4, 10, 3)).astype(np.float32)
+    result = export_model(model, ExportSpec(precision="a8w8", io_dtype="int8", mode="keras"), calibration)
+    assert result.inputs[0].shape == (1, -1, 3)
+
+
+def test_environment_is_unknown_for_an_uninstalled_tree(monkeypatch, tmp_path):
+    import helia_edge
+    from helia_edge.export.result import environment_record
+
+    monkeypatch.setattr(helia_edge, "__file__", str(tmp_path / "helia_edge" / "__init__.py"))
+    env = environment_record()
+    assert (env.helia_edge, env.helia_edge_commit) == ("unknown", None)
+
+
 def test_environment_is_recorded(model):
     env = export_model(model, ExportSpec(precision="fp32", io_dtype="float32", mode="concrete")).environment
     packages = dict(env.packages)
