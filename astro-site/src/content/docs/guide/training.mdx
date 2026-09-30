@@ -11,6 +11,20 @@ Use normal Keras `compile()` and `fit()` for supervised models. heliaEDGE adds c
 
 Choose a loss that matches the model's outputs and your target encoding. Use the same deterministic preprocessing for validation and deployment, and enable random augmentation only where intended.
 
+For the sequence model in the first-model walkthrough, targets contain one integer class ID per time step. Compile it with a loss that consumes logits:
+
+```python
+import keras
+
+model.compile(
+    optimizer="adam",
+    loss=keras.losses.SparseCategoricalCrossentropy(from_logits=True),
+    metrics=[keras.metrics.SparseCategoricalAccuracy()],
+)
+```
+
+This assumes the walkthrough's `(batch, 240, 2)` output and integer targets shaped `(batch, 240)`. Use a different objective for window classification, regression or one-hot targets.
+
 For generator-based data, the input-pipeline helpers create TensorFlow datasets. They do not provide a Torch data-loader abstraction.
 
 <div className="edge-actions">
@@ -36,6 +50,23 @@ history = model.fit(
 ```
 
 `model` and the arrays come from your task. Keras's own callbacks provide checkpointing, early stopping and learning-rate scheduling. Add EDGE's progress callback alongside the Keras callbacks your workflow needs.
+
+<details>
+<summary>Add checkpointing and early stopping</summary>
+
+Replace the `callbacks` list above with:
+
+```python
+callbacks = [
+    TQDMProgressBar(),
+    keras.callbacks.ModelCheckpoint("best.keras", monitor="val_loss", save_best_only=True),
+    keras.callbacks.EarlyStopping(monitor="val_loss", patience=5, restore_best_weights=True),
+]
+```
+
+These callbacks require validation data to produce `val_loss`. Preserve preprocessing and architecture settings alongside the saved model.
+
+</details>
 
 ## Choose a specialized objective
 

@@ -1,6 +1,6 @@
 ---
 title: heliaEDGE
-description: Reusable Keras architectures, data transforms and training components for Edge AI.
+description: Build Edge AI models for deployment on Ambiq silicon with reusable Keras architectures, data transforms and training components.
 tableOfContents: false
 helia:
   pageTitle: false
@@ -12,15 +12,16 @@ import Landing from '@ambiqai/helia-ui/astro/Landing';
 import Button from '@ambiqai/helia-ui/astro/Button';
 import CardGrid from '@ambiqai/helia-ui/astro/CardGrid';
 import LinkCard from '@ambiqai/helia-ui/astro/LinkCard';
+import release from '../../../../.release-please-manifest.json';
 import GuidedWorkbench from '../../components/GuidedWorkbench.astro';
 
 <Landing class="edge-home">
 <section className="edge-intro">
-  <p className="edge-eyebrow">HELIAEDGE / THE EDGE AI TOOLKIT</p>
-  <h1>Your workflow.<br /><em>Your building blocks.</em></h1>
+  <div className="edge-hero-meta"><span className="edge-hero-name"><span aria-hidden="true">•</span> helia<strong>EDGE</strong></span><span className="edge-hero-version">PyPI v{release["."]}</span></div>
+  <h1>Build for the edge.<br /><em>Make it your own.</em></h1>
   <div className="edge-intro-copy">
-    <p>Build Edge AI models with reusable Keras architectures, preprocessing, metrics and training components. Choose a starting point, explore the code and make it your own.</p>
-    <div className="edge-actions"><Button href="/helia-edge/getting-started/">Get started</Button><Button href="/helia-edge/reference/" variant="secondary">Browse the API</Button></div>
+    <p>Build Edge AI models for deployment on Ambiq silicon. Combine reusable Keras architectures, preprocessing, metrics and training components in your own workflow, from preparing data to exporting your model.</p>
+    <div className="edge-actions"><Button href="/helia-edge/getting-started/" variant="secondary">Get started</Button><Button href="/helia-edge/reference/" variant="secondary">Browse the API</Button></div>
     <p className="edge-backend-caption">TensorFlow and PyTorch through Keras. Support varies by component.</p>
   </div>
 </section>

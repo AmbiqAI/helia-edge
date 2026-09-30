@@ -7,6 +7,41 @@ import Button from '@ambiqai/helia-ui/astro/Button';
 
 Use preprocessing to define the input the model will see, and augmentation to vary training examples. heliaEDGE provides both through Keras layers, including normalization, filtering, resizing, crops, noise and composed pipelines.
 
+## Start with one transform
+
+After choosing a Keras backend, normalize a batch of signals. This example keeps the `(batch, time, channels)` shape:
+
+```python
+import keras
+from helia_edge.layers.preprocessing import Normalization1D
+
+signals = keras.ops.ones((2, 128, 1), dtype="float32")
+normalize = Normalization1D(mean=0.0, variance=4.0)
+normalized = normalize(signals)
+```
+
+Every value becomes `0.5`. The mean and variance belong to your data policy; this example supplies them explicitly.
+
+<details>
+<summary>Add training-only noise in a pipeline</summary>
+
+Reuse `signals` and `normalize` from above:
+
+```python
+from helia_edge.layers.preprocessing import AugmentationPipeline, RandomGaussianNoise1D
+
+pipeline = AugmentationPipeline([
+    normalize,
+    RandomGaussianNoise1D(factor=0.05, seed=7),
+])
+training_inputs = pipeline(signals, training=True)
+inference_inputs = pipeline(signals, training=False)
+```
+
+The training call adds noise after normalization. The inference call only normalizes. Keep `force_training` disabled for a pipeline that will also run at inference.
+
+</details>
+
 ## Choose the transformation
 
 | Goal | Components | Important behavior |
@@ -30,7 +65,8 @@ Use preprocessing to define the input the model will see, and augmentation to va
   <Button variant="secondary" size="sm" href="../portable-preprocessing/">Structured-sample walkthrough</Button>
 </div>
 
-## Preserve the training/inference contract
+<details>
+<summary>Advanced: alignment, shapes and custom transforms</summary>
 
 Training-only transforms use `training=True` to apply augmentation. Deterministic transforms can also run at inference. A random crop may shorten training inputs while leaving inference inputs unchanged, so choose a separate deterministic inference window when your model requires a fixed shape.
 
@@ -41,3 +77,5 @@ When writing a custom transform, follow the hook, RNG, alignment and shape contr
 <div className="edge-actions">
   <Button variant="secondary" size="sm" href="../preprocessing-contracts/">Preprocessing contracts</Button>
 </div>
+
+</details>

@@ -7,8 +7,10 @@ heliaEDGE's LiteRT/TFLite converters prepare model artifacts for inference. Conv
 
 ## Install the conversion capability
 
+From the source checkout used by the installation guide:
+
 ```sh
-pip install 'helia-edge[litert]'
+uv sync --python 3.12 --extra litert
 ```
 
 Use a TensorFlow-backed Keras model. See [Backend support](/helia-edge/getting-started/backends/) for the supported Python environment. The Torch converter namespace is a placeholder and does not provide a working export path in this source version.
@@ -31,7 +33,8 @@ converter.export("model.tflite")
 
 Choose representative inputs from the distribution the model will encounter. INT8 and INT16X8 conversion require representative data. Compare converted predictions against the original model and evaluate task quality on held-out data before deployment.
 
-## Choose a precision
+<details>
+<summary>Compare precision options and target requirements</summary>
 
 | Format | Use |
 |---|---|
@@ -42,8 +45,28 @@ Choose representative inputs from the distribution the model will encounter. INT
 
 A converter accepting a precision option does not establish that every operator, runtime or hardware target supports it. Inspect the exported artifact and validate it with the intended runtime.
 
-## Save bytes or a C header
+</details>
+
+<details>
+<summary>Save bytes or a C header</summary>
 
 `export()` writes the converted content. `export_header()` emits a C byte array when your firmware integration needs one. These methods are inherited from [TfLiteKerasConverter](/helia-edge/reference/api/helia_edge/converters/tflite/converter/); [LiteRTKerasConverter](/helia-edge/reference/api/helia_edge/converters/litert/converter/) supplies LiteRT runtime prediction.
 
 Keep the original trained model, calibration selection, conversion settings and validation results with the exported file. Firmware integration and on-device measurements are separate steps from host conversion.
+
+</details>
+
+## Hand off to an Ambiq deployment
+
+The exported model is one part of the deployment. Select the inference runtime and check its operator and precision support before integrating it into firmware. Training backend support does not imply that every model can run on every target.
+
+| Keep with the model | Why the deployment needs it |
+|---|---|
+| Input shape, layout and dtype | Defines how firmware supplies each inference window. |
+| Preprocessing parameters | Keeps scaling, filtering and feature extraction consistent with training. |
+| Output names and interpretation | Defines class order, thresholds or reconstruction units. |
+| Calibration and quantization settings | Explains how the converted artifact was produced. |
+| Representative inputs and expected outputs | Enables comparison between host inference and the deployed runtime. |
+| Model and source revisions | Identifies the exact artifact being evaluated. |
+
+Validate task quality after conversion, then measure latency and memory with the model on your intended Ambiq board. Host conversion and operation counts do not establish device performance. For streaming models, include the state shapes, initialization and update order described in the model's guide.

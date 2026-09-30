@@ -1,6 +1,6 @@
 ---
 title: "Portable 1D preprocessing"
-description: "Normalization1D, FirFilter and RandomGaussianNoise1D use public Keras operations with either the TensorFlow or PyTorch backend. Importing these layers with…"
+description: Apply normalization, FIR filtering and noise to structured signals with TensorFlow or PyTorch.
 ---
 
 `Normalization1D`, `FirFilter` and `RandomGaussianNoise1D` use public Keras
@@ -21,6 +21,8 @@ metadata = {"record_id": "example"}  # retained separately by the caller
 output = Normalization1D(mean=0., variance=4.)(sample.tensor_tree())
 ```
 
+## Shapes and aligned data
+
 `Sample[T]` and `TensorPayload[T]` describe two-level dictionaries of tensor
 leaves. `tensor_tree()` creates new containers referencing the original tensors;
 it does not deep-copy data, transfer devices or validate with Pydantic. The frozen
@@ -35,6 +37,8 @@ affects signals only, leaving clean denoising targets unchanged. No geometric
 augmentation or automatic target interpolation is implied. Noise samples are
 independent across separate named signals. Caller dictionaries are not mutated.
 
+## Compatibility with tensor and dictionary calls
+
 Legacy tensor calls and `{"data": x, "labels": y, ...}` dictionaries still work;
 `targets`, `masks` and tensor-only extra fields pass through. Do not mix `data`
 and `signals`. Legacy constructor options `seed`, `auto_vectorize`,
@@ -43,6 +47,8 @@ transforms do not need per-example vectorization; `auto_vectorize` is retained
 for compatibility. The default device scope remains CPU. All preprocessing now uses the unified BaseAugmentation hierarchy; see the
 [next-major hook and behavior migration](/helia-edge/guide/preprocessing-contracts/). This is a
 breaking migration for custom hooks, RNG behavior and several corrected layouts.
+
+## Filtering and random noise
 
 FIR coefficients accept arrays or lists and are included in layer config.
 Filtering retains the existing same-padded cross-correlation convention (it is

@@ -1,9 +1,94 @@
 ---
 title: "Generator sampling"
-description: "createinterleaveddatasetfromgenerator now defaults to streammode=\"global\": one caller-owned ID/sample schedule, including repeated or weighted schedules.…"
+description: Build TensorFlow datasets from Python readers and choose explicit global or finite sampling schedules.
 ---
 
-`create_interleaved_dataset_from_generator` now defaults to `stream_mode="global"`:
+import Button from '@ambiqai/helia-ui/astro/Button';
+
+Adapt a Python reader to a TensorFlow dataset while keeping control of which records are read and how often. These helpers require the TensorFlow backend; they do not construct Torch data loaders.
+
+## Build a finite dataset
+
+The ID generator chooses records. The data generator reads them. `spec` describes one unbatched sample, including its shape and dtype. This small example uses synthetic records so you can run it without a dataset:
+
+```python
+import numpy as np
+import tensorflow as tf
+from helia_edge.utils import create_interleaved_dataset_from_generator
+
+records = {index: np.full((8, 1), index, dtype=np.float32) for index in range(3)}
+
+def read_records(record_ids):
+    for record_id in record_ids:
+        yield records[record_id]
+
+dataset = create_interleaved_dataset_from_generator(
+    data_generator=read_records,
+    id_generator=iter,
+    ids=list(records),
+    spec=tf.TensorSpec(shape=(8, 1), dtype=tf.float32),
+    stream_mode="global",
+)
+batches = list(dataset.batch(2).as_numpy_iterator())
+print([batch.shape for batch in batches])
+```
+
+The shapes are `[(2, 8, 1), (1, 8, 1)]`. Replace `read_records` with your reader and describe its actual output in `spec`. For supervised training, yield `(inputs, targets)` and supply a matching pair of tensor specifications. Batching, shuffling and prefetching remain explicit dataset operations.
+
+## Choose the sampling mode
+
+| Mode | Choose it when | Ordering |
+|---|---|---|
+| `global` | You own a single finite, repeated or weighted schedule. | Preserves that schedule; `num_workers` does not partition it. |
+| `finite` | Each reader terminates and partitioning IDs does not change what it yields. | Deterministic mode concatenates partitions; otherwise they can interleave. |
+
+## Go further
+
+<details>
+<summary>Read independent finite partitions</summary>
+
+Reuse the reader and tensor specification above. Choose `finite` only when every reader terminates and splitting IDs does not affect the samples it yields:
+
+```python
+partitioned = create_interleaved_dataset_from_generator(
+    read_records, iter, list(records),
+    tf.TensorSpec(shape=(8, 1), dtype=tf.float32),
+    stream_mode="finite", num_workers=2, deterministic=True,
+)
+```
+
+Deterministic mode concatenates contiguous partitions in order. `num_workers` counts generators in the same process, not worker processes. Set `deterministic=False` only when interleaving is acceptable.
+
+</details>
+
+<details>
+<summary>Use a weighted, repeating schedule</summary>
+
+Keep repeating schedules in `global` mode. Take a bounded sample while inspecting the reader, and set an explicit epoch length when training:
+
+```python
+from functools import partial
+from helia_edge.utils import random_id_generator
+
+weighted = create_interleaved_dataset_from_generator(
+    read_records,
+    partial(random_id_generator, weights=[1, 1, 2]),
+    list(records), tf.TensorSpec(shape=(8, 1), dtype=tf.float32),
+    stream_mode="global",
+)
+preview = list(weighted.take(6).as_numpy_iterator())
+```
+
+Sampling is with replacement. Weights are relative, not exact per-epoch quotas; their count must match the IDs and their finite total must be positive. Use `.batch(...)` and `steps_per_epoch` for an unbounded training stream.
+
+</details>
+
+<details>
+<summary>Scheduling contracts and compatibility with earlier experiments</summary>
+
+
+
+`create_interleaved_dataset_from_generator` defaults to `stream_mode="global"`:
 one caller-owned ID/sample schedule, including repeated or weighted schedules.
 `num_workers` does not partition this mode. This intentionally changes the old
 implicit partitioning, which dropped remainder IDs and could oversample subjects
@@ -30,3 +115,9 @@ mutate the caller's schedule.
 nonnegative relative weights; omitted weights preserve uniform sampling. Weights
 must match the IDs and have a finite positive total. Earlier versions ignored
 supplied weights, so adopting this fix changes those weighted experiments.
+
+</details>
+
+## Continue with a complete workflow
+
+<div className="edge-actions"><Button variant="secondary" href="/helia-edge/reference/api/helia_edge/utils/preprocessing/">Dataset helper API</Button><Button variant="secondary" href="../preprocessing/">Choose transforms</Button><Button variant="secondary" href="/helia-edge/examples/train-cifar-model/">CIFAR-10 training notebook</Button></div>

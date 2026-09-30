@@ -1,51 +1,83 @@
 ---
 title: "Backend installation and support"
-description: "Install the capability you use:"
+description: Choose installation extras and understand TensorFlow, PyTorch, serialization and conversion support.
 ---
 
-Install the capability you use:
+import { Tabs, TabItem } from '@astrojs/starlight/components';
+import CardGrid from '@ambiqai/helia-ui/astro/CardGrid';
+import LinkCard from '@ambiqai/helia-ui/astro/LinkCard';
 
-```sh
-pip install 'helia-edge[tensorflow]'
-# or, in a separate environment:
-pip install 'helia-edge[torch]'
+This page describes the source API on `main`. Use the source-checkout tab in the installation guide for these extras and portable workflows.
+
+Choose a backend for the components you plan to use. Select it before importing Keras, and use separate processes when switching.
+
+## Start with your backend
+
+<Tabs syncKey="edge-backend">
+<TabItem label="TensorFlow">
+
+Use the `tensorflow` extra for Keras models and TensorFlow-specific data and training paths; use `litert` when you also need conversion.
+
+```python
+import os
+os.environ["KERAS_BACKEND"] = "tensorflow"
+import keras
 ```
 
-Set `KERAS_BACKEND=tensorflow` or `KERAS_BACKEND=torch` before importing Keras or
-accessing a Keras feature. Base `helia-edge` installs no training framework;
-file/factory/logger helpers work independently. Plotting and S3 access are separate
-capabilities: install `helia-edge[plotting]` or `helia-edge[aws]`, or combine them
-with a backend, for example `helia-edge[tensorflow,plotting,aws]`. Existing public attribute paths
-remain available and load their dependencies when accessed. The plotting extra
-also supplies `PatchLayer2D.show_patched_image`; patch extraction itself does not
-require plotting. S3 model URLs and S3 download helpers both require the AWS extra.
+Python 3.12–3.13 is covered by the CI matrix.
 
-This changes installation behavior: existing plotting/S3 users must select those
-extras. Base installations no longer supply plotting, AWS or h5py; code that uses
-those libraries directly should declare them itself. Backend extras retain h5py
-for Keras serialization. Existing TensorFlow users must select the
-`tensorflow` extra. `litert` includes TensorFlow conversion plus the LiteRT runtime.
-`metal` is opt-in and must be combined with `tensorflow`; Metal compatibility has
-not been validated for this baseline.
+</TabItem>
+<TabItem label="PyTorch">
 
-The tested baseline is Linux CPU, Python 3.12.5, Keras 3.15.1, TensorFlow 2.21.0 or
-Torch 2.14.0+cpu, and LiteRT 2.2.0 for conversion. The CI matrix covers Python 3.12–3.13
-for TensorFlow and 3.12–3.14 for Torch in separate environments. TensorFlow 2.21
-has no Python 3.14 wheel. On Python 3.14, dependency markers omit TensorFlow even
-when its extra is selected; the `tensorflow` and `litert` capabilities require
-Python 3.12–3.13. Use base or Torch on Python 3.14. Other platforms, GPU builds
-and newer dependency resolutions need their own validation. To reproduce the CPU
-Torch environment, install `torch==2.14.0` from
-`https://download.pytorch.org/whl/cpu` before installing the Torch extra.
+Use the `torch` extra for the portable components below. TensorFlow is not required for those paths.
 
-Portable metrics, TCN construction, EMA quantization and masked-autoencoder
-training have isolated Torch checks. Normalization1D, FirFilter and
-RandomGaussianNoise1D also support Torch without TensorFlow; see
-[portable preprocessing](/helia-edge/guide/portable-preprocessing/). The unified preprocessing inventory is described in the
-[next-major migration guide](/helia-edge/guide/preprocessing-contracts/).
-Generator-to-tf.data utilities, contrastive training, TFLite/LiteRT conversion and FLOP profiling remain
-TensorFlow-specific at this milestone. Backend availability does not certify every
-model, trainer, precision, compiled/distributed configuration or export format.
+```python
+import os
+os.environ["KERAS_BACKEND"] = "torch"
+import keras
+```
+
+Python 3.12–3.14 is covered by the CI matrix. There is no implemented Torch conversion path in the `converters.torch` namespace.
+
+</TabItem>
+</Tabs>
+
+## Match the capability to your workflow
+
+| Capability | TensorFlow | PyTorch | Start here |
+|---|---|---|---|
+| TCN construction | Tested | Tested | [First model](/helia-edge/getting-started/first-model/) |
+| Portable metrics, EMA quantization | Tested | Tested subset | [Metrics](/helia-edge/guide/evaluation/) |
+| Normalization1D, FirFilter, RandomGaussianNoise1D | Tested | Tested | [Signal preprocessing](/helia-edge/guide/portable-preprocessing/) |
+| Masked-autoencoder training | Tested | Tested | [Reconstruction guide](/helia-edge/guide/masked-autoencoders/) |
+| Generator-to-dataset helpers | `tf.data` | No Torch adapter | [Input pipelines](/helia-edge/guide/input-pipeline/) |
+| Contrastive training | TensorFlow path | Not supported | [Training guide](/helia-edge/guide/training/) |
+| LiteRT conversion and FLOP counting | TensorFlow path | Not supported | [Export guide](/helia-edge/guide/export/) |
+
+Support is component-specific. This table does not certify every architecture, precision, compiled/distributed configuration or export format. The preprocessing contracts describe additional shape, dtype and compilation boundaries.
+
+<CardGrid>
+  <LinkCard title="Install your environment" href="/helia-edge/getting-started/">Choose source or release installation and optional extras.</LinkCard>
+  <LinkCard title="Explore preprocessing contracts" href="/helia-edge/guide/preprocessing-contracts/">Check alignment, random state and transform-specific behavior.</LinkCard>
+</CardGrid>
+
+<details>
+<summary>Optional dependencies and compatibility with older installs</summary>
+
+Base installations provide file, factory and logging helpers without Keras. Plotting and S3 require `plotting` and `aws` respectively; S3 model URLs also need `aws`. Patch extraction does not need plotting, but `PatchLayer2D.show_patched_image` does.
+
+Backend extras retain h5py for Keras serialization. Applications importing plotting, AWS or h5py directly should declare those dependencies themselves. `litert` includes TensorFlow conversion and the LiteRT runtime. `metal` must be combined with `tensorflow`; compatibility has not been validated for the recorded baseline.
+
+</details>
+
+<details>
+<summary>Recorded environment and reproducibility limits</summary>
+
+The recorded baseline is Linux CPU, Python 3.12.5, Keras 3.15.1, TensorFlow 2.21.0 or Torch 2.14.0+cpu, and LiteRT 2.2.0. To reproduce the CPU Torch environment, install `torch==2.14.0` from `https://download.pytorch.org/whl/cpu` before installing the Torch extra.
+
+The TensorFlow dependency marker excludes Python 3.14 even when its extra is selected. Use Python 3.12–3.13 for TensorFlow or LiteRT. Other platforms, GPU builds and different dependency resolutions need their own validation.
+
+</details>
 
 ## Loading saved custom objects
 
@@ -56,6 +88,9 @@ Lazy imports no longer register all custom Keras classes as a side effect of
 from helia_edge.models import load_model
 model = load_model('model.keras')
 ```
+
+<details>
+<summary>Use Keras directly or check serialization limits</summary>
 
 For direct Keras loading, import the custom classes used by the model, or register
 supported EDGE classes before loading:
@@ -71,7 +106,12 @@ Registration initializes the selected backend. It does not enable unsafe loading
 or make TensorFlow-only custom layers usable on Torch. Fresh-process round trips
 cover an EDGE EMA quantizer on both backends and legacy normalization on TF.
 
+</details>
+
 ## Validation
+
+<details>
+<summary>What the automated checks cover</summary>
 
 CI includes a base-only lane and separate backend environments. Import checks
 assert the opposite framework is absent. TF runs its applicable suite, including float
@@ -82,6 +122,8 @@ CPU tests set `CUDA_VISIBLE_DEVICES=-1` so installed GPU drivers cannot affect t
 CPU export path. Preprocessing uses the public Keras augmentation hierarchy with
 CPU TensorFlow and Torch coverage; see the [migration guide](/helia-edge/guide/preprocessing-contracts/)
 for training, dtype, shape and compilation limits.
+
+</details>
 
 ## Masked-autoencoder training
 

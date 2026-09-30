@@ -30,7 +30,7 @@ export default defineConfig({
           page('Development','guide/development')
         ] },
         { label: 'Examples', href: `${base}/examples/`, sidebar: [page('Overview','examples'), ...['custom-model-architecture','train-cifar-model','mlperf-tiny','miniresnet','fastenhancer','cornet','timeppg'].map((slug,i)=>page(['Custom architecture','Train CIFAR-10','MLPerf Tiny','MiniResNet','FastEnhancer','CorNET','TimePPG'][i],`examples/${slug}`))] },
-        { label: 'Reference', href: `${base}/reference/`, sidebar: [page('Find an API','reference'), ...apiSidebar] },
+        { label: 'Reference', href: `${base}/reference/`, sidebar: [page('API catalog','reference'), ...apiSidebar] },
       ],
       discoverability: { ogImage:true, jsonLd:true, markdown:true, llms:true },
       footer: { logo:'ambiq', tagline:'Part of the Ambiq HELIA AI platform', links:[{label:'GitHub',href:'https://github.com/AmbiqAI/helia-edge'},{label:'Backend support',href:`${base}/getting-started/backends/`}] },

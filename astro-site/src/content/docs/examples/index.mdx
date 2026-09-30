@@ -6,12 +6,16 @@ description: Training notebooks and model architecture guides for heliaEDGE.
 import CardGrid from '@ambiqai/helia-ui/astro/CardGrid';
 import LinkCard from '@ambiqai/helia-ui/astro/LinkCard';
 
+Choose a notebook for an end-to-end workflow or a model-family guide for input shapes, configuration and architecture-specific constraints. Model constructors initialize weights unless the guide explicitly loads a checkpoint.
+
 ## Follow a notebook
 
 <CardGrid>
   <LinkCard title="Create a custom architecture" href="custom-model-architecture/">Define a configurable model and integrate it with heliaEDGE.</LinkCard>
   <LinkCard title="Train a CIFAR-10 model" href="train-cifar-model/">Follow the data, model and training steps in a complete notebook.</LinkCard>
 </CardGrid>
+
+Notebook pages include saved outputs from their source files. These are reading examples, not fresh test results; use the download link to run them in your own environment.
 
 ## Explore a model family
 
