@@ -124,3 +124,25 @@ def test_shared_constant_buffer_is_converted_once():
     )
     data = bytes(native.buffers[weights[0].buffer].data)
     assert data == original.astype(np.float16).tobytes()
+
+
+def test_float32_constants_are_converted_to_float16_values():
+    fp32 = convert(build_model(), QuantizationType.FP32)
+    expected = sorted(
+        np.frombuffer(raw, np.float32).astype(np.float16).tobytes() if dtype == "FLOAT32" else raw
+        for dtype, raw in graph(fp32)[3]
+    )
+    native = to_native_fp16(fp32)
+    assert "FLOAT32" not in graph(native)[1]
+    assert sorted(raw for _, raw in graph(native)[3]) == expected
+
+
+def test_predict_rejects_native_float16():
+    pytest.importorskip("ai_edge_litert.interpreter")
+    converter = LiteRTKerasConverter(build_model())
+    try:
+        converter.convert(quantization=QuantizationType.FP16_NATIVE, mode=ConversionType.CONCRETE)
+        with pytest.raises(ValueError, match="float16 kernels"):
+            converter.predict(np.zeros((1, 16, 16, 3), np.float32))
+    finally:
+        converter.cleanup()

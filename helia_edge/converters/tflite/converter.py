@@ -27,6 +27,11 @@ from .fp16 import to_native_fp16
 from ...models import load_model
 
 
+def _reject_native_fp16(interpreter) -> None:
+    if any(detail["dtype"] == np.float16 for detail in interpreter.get_input_details()):
+        raise ValueError("Native float16 models need an engine with float16 kernels; the interpreter cannot run them.")
+
+
 class QuantizationType(StrEnum):
     """Supported quantization formats
 
@@ -132,7 +137,9 @@ class TfLiteKerasConverter:
         Args:
             test_x (npt.NDArray | None, optional): Test dataset. Defaults to None.
             quantization (QuantizationType, optional): Quantization type. Defaults to QuantizationType.FP32.
-            io_type (str | None, optional): Input/Output type. Defaults to None.
+                FP16_NATIVE produces a float16 graph for engines with float16 kernels; the TFLite and LiteRT
+                interpreters cannot run its convolution or fully connected operators, so predict() rejects it.
+            io_type (str | None, optional): Input/Output type. Defaults to None; FP16_NATIVE is always float16.
             mode (ConversionType, optional): Conversion mode. Defaults to ConversionType.KERAS.
             strict (bool, optional): Strict mode. Defaults to True.
             verbose (int, optional): Verbosity level (0,1,2). Defaults to 2.
@@ -257,6 +264,7 @@ class TfLiteKerasConverter:
         inputs = inputs.astype(np.float32)
 
         interpreter = tf.lite.Interpreter(model_content=self._tflite_content)
+        _reject_native_fp16(interpreter)
         interpreter.allocate_tensors()
 
         # No signature

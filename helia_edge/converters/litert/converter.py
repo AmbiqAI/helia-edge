@@ -14,6 +14,7 @@ import numpy as np
 import numpy.typing as npt
 
 from ..tflite import ConversionType, QuantizationType, TfLiteKerasConverter
+from ..tflite.converter import _reject_native_fp16
 
 
 def _load_litert_interpreter():
@@ -68,6 +69,7 @@ class LiteRTKerasConverter(TfLiteKerasConverter):
 
         inputs = x.copy().astype(np.float32)
         interpreter = interpreter_cls(model_content=self._tflite_content)
+        _reject_native_fp16(interpreter)
         interpreter.allocate_tensors()
 
         if len(interpreter.get_signature_list()) == 0:
