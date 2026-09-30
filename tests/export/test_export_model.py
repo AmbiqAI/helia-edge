@@ -184,9 +184,14 @@ def test_environment_is_unknown_for_an_uninstalled_tree(monkeypatch, tmp_path):
 
 def test_environment_is_recorded(model):
     env = export_model(model, ExportSpec(precision="fp32", io_dtype="float32", mode="concrete")).environment
+    import platform
+
+    import tensorflow as tf
+
+    assert [name for name, _ in env.packages] == ["numpy", "keras", "tensorflow", "ai-edge-litert"]
     packages = dict(env.packages)
-    assert env.helia_edge and env.python
-    assert packages["tensorflow"] and packages["keras"] and packages["numpy"]
+    assert (packages["tensorflow"], packages["keras"]) == (tf.__version__, keras.__version__)
+    assert env.python == platform.python_version()
 
 
 @pytest.mark.parametrize("precision", ["a8w8", "a16w8"])

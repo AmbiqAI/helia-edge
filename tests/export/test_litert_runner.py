@@ -62,7 +62,9 @@ def test_int16_export_runs(model, x):
 def test_reference_kernels_agree_with_optimized_kernels_on_int8(model, x):
     content = export_model(model, ExportSpec(precision="a8w8", io_dtype="int8", mode="concrete"), x).content
     reference, optimized = LiteRTRunner(content, reference_kernels=True), LiteRTRunner(content)
-    np.testing.assert_array_equal(reference.run(reference.encode(x)), optimized.run(optimized.encode(x)))
+    raw = [runner.run(runner.encode(x)).astype(np.int32) for runner in (reference, optimized)]
+    # Kernel implementations may round requantization differently; they agree to one step.
+    assert np.abs(raw[0] - raw[1]).max() <= 1
 
 
 def test_native_float16_runs_where_the_runtime_has_kernels(model, x):
@@ -70,6 +72,26 @@ def test_native_float16_runs_where_the_runtime_has_kernels(model, x):
     runner = LiteRTRunner(content)
     assert runner.encode(x).dtype == np.float16
     np.testing.assert_allclose(runner.predict(x), model.predict(x, verbose=0), atol=2e-2)
+
+
+def test_dynamic_dimensions_run_at_each_sample_size():
+    keras.utils.set_random_seed(4)
+    inputs = keras.Input((None, 3), batch_size=1)
+    model = keras.Model(inputs, keras.layers.Conv1D(2, 3, padding="same")(inputs))
+    runner = LiteRTRunner(export_model(model, ExportSpec(precision="fp32", io_dtype="float32", mode="keras")).content)
+    for length in (5, 9):
+        x = np.random.default_rng(length).standard_normal((2, length, 3)).astype(np.float32)
+        np.testing.assert_allclose(runner.predict(x), model.predict(x, verbose=0), atol=1e-5)
+
+
+def test_fixed_dimensions_are_not_resized():
+    # Convolution plus global pooling would run at another size if fixed dimensions were resized.
+    inputs = keras.Input((8, 8, 2), batch_size=1)
+    pooled = keras.layers.GlobalAveragePooling2D()(keras.layers.Conv2D(2, 3, padding="same")(inputs))
+    spec = ExportSpec(precision="fp32", io_dtype="float32", mode="keras")
+    runner = LiteRTRunner(export_model(keras.Model(inputs, pooled), spec).content)
+    with pytest.raises((ValueError, RuntimeError)):
+        runner.run(np.zeros((1, 6, 8, 2), np.float32))
 
 
 def test_run_refuses_the_wrong_input_dtype(model, x):
