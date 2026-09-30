@@ -28,6 +28,8 @@ def check_calibration(spec: ExportSpec, calibration: npt.NDArray | None, input_s
         raise ValueError(f"{spec.precision.value!r} requires calibration data")
     if not isinstance(calibration, np.ndarray) or calibration.dtype != np.float32:
         raise ValueError("Calibration data must be a float32 numpy array")
+    if calibration.ndim != len(input_shape):
+        raise ValueError(f"Calibration shape {calibration.shape} does not match model input {tuple(input_shape)}")
     if calibration.shape[0] == 0:
         raise ValueError("Calibration data is empty")
     fixed = all(d is None or d == c for c, d in zip(calibration.shape[1:], input_shape[1:], strict=False))
