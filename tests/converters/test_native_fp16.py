@@ -4,10 +4,12 @@ import flatbuffers
 import keras
 import numpy as np
 import pytest
+import tensorflow as tf
 from tensorflow.lite.python import schema_py_generated as schema
 
-from helia_edge.converters.litert import ConversionType, LiteRTKerasConverter, QuantizationType
-from helia_edge.converters.tflite import to_native_fp16
+from helia_edge.converters.litert import LiteRTKerasConverter
+from helia_edge.converters.tflite import ConversionType, QuantizationType, TfLiteKerasConverter, to_native_fp16
+from helia_edge.converters.tflite.converter import _reject_native_fp16
 
 OPS = {v: k for k, v in vars(schema.BuiltinOperator).items() if isinstance(v, int)}
 TYPES = {v: k for k, v in vars(schema.TensorType).items() if isinstance(v, int)}
@@ -23,12 +25,64 @@ def build_model():
     return keras.Model(inputs, outputs)
 
 
-def convert(model, quantization, **kwargs):
-    converter = LiteRTKerasConverter(model)
+def convert(model, quantization, mode=ConversionType.CONCRETE, **kwargs):
+    converter = TfLiteKerasConverter(model)
     try:
-        return converter.convert(quantization=quantization, mode=ConversionType.CONCRETE, **kwargs)
+        return converter.convert(quantization=quantization, mode=mode, **kwargs)
     finally:
         converter.cleanup()
+
+
+def unpack(content):
+    return schema.ModelT.InitFromObj(schema.Model.GetRootAsModel(bytearray(content), 0))
+
+
+def indices(values):
+    return [] if values is None or isinstance(values, int) else [int(i) for i in values]
+
+
+def unreferenced_tensors(content):
+    """(subgraph, tensor name) of tensors no operator, subgraph input or output references."""
+    model = unpack(content)
+    unreferenced = []
+    for index, sub in enumerate(model.subgraphs):
+        used = set(indices(sub.inputs)) | set(indices(sub.outputs))
+        for op in sub.operators:
+            used |= set(indices(op.inputs)) | set(indices(op.outputs)) | set(indices(op.intermediates))
+        unreferenced += [(index, sub.tensors[i].name) for i in range(len(sub.tensors)) if i not in used]
+    return unreferenced
+
+
+def unused_opcodes(content):
+    model = unpack(content)
+    used = {op.opcodeIndex for sub in model.subgraphs for op in sub.operators}
+    return [
+        OPS[max(c.builtinCode, c.deprecatedBuiltinCode)] for i, c in enumerate(model.operatorCodes) if i not in used
+    ]
+
+
+def operator_tensor_names(content):
+    """Per operator: its op name and the names of its input and output tensors, DEQUANTIZE folded away."""
+    model = unpack(content)
+    result = []
+    for sub in model.subgraphs:
+        source = {}
+        for op in sub.operators:
+            code = model.operatorCodes[op.opcodeIndex]
+            if max(code.builtinCode, code.deprecatedBuiltinCode) == schema.BuiltinOperator.DEQUANTIZE:
+                source[int(op.outputs[0])] = int(op.inputs[0])
+
+        def name(i):
+            while i in source:
+                i = source[i]
+            return None if i < 0 else sub.tensors[i].name
+
+        for op in sub.operators:
+            code = model.operatorCodes[op.opcodeIndex]
+            opname = OPS[max(code.builtinCode, code.deprecatedBuiltinCode)]
+            if opname != "DEQUANTIZE":
+                result.append((opname, [name(i) for i in indices(op.inputs)], [name(i) for i in indices(op.outputs)]))
+    return result
 
 
 def graph(content):
@@ -154,3 +208,139 @@ def test_out_of_range_float32_constants_saturate():
     native = to_native_fp16(convert(keras.Model(inputs, outputs), QuantizationType.FP32))
     values = np.concatenate([np.frombuffer(raw, np.float16) for dtype, raw in graph(native)[3] if dtype == "FLOAT16"])
     assert np.isfinite(values).all() and values.max() == np.finfo(np.float16).max
+
+
+def test_native_graph_has_no_orphan_tensors_or_unused_opcodes(exports):
+    weight_only, native = exports
+    assert unreferenced_tensors(weight_only) == []
+    assert unreferenced_tensors(native) == []
+    assert unused_opcodes(weight_only) == []
+    assert unused_opcodes(native) == []
+
+
+def test_native_operators_read_the_same_tensors_as_weight_only_export(exports):
+    weight_only, native = exports
+    assert operator_tensor_names(native) == operator_tensor_names(weight_only)
+
+
+def subgraph_io_names(content):
+    model = unpack(content)
+    return [
+        ([sub.tensors[i].name for i in indices(sub.inputs)], [sub.tensors[i].name for i in indices(sub.outputs)])
+        for sub in model.subgraphs
+    ]
+
+
+def test_subgraph_inputs_and_outputs_keep_their_tensors(exports):
+    weight_only, native = exports
+    assert subgraph_io_names(native) == subgraph_io_names(weight_only)
+
+
+def test_inputs_placed_after_dropped_tensors_are_renumbered(exports):
+    weight_only, _ = exports
+    model = unpack(weight_only)
+    sub = model.subgraphs[0]
+    moved = int(sub.inputs[0])
+    order = [i for i in range(len(sub.tensors)) if i != moved] + [moved]  # input tensor becomes the last index
+    position = {old: new for new, old in enumerate(order)}
+    sub.tensors = [sub.tensors[i] for i in order]
+    for op in sub.operators:
+        op.inputs = [position[i] if i >= 0 else i for i in indices(op.inputs)]
+        op.outputs = [position[i] for i in indices(op.outputs)]
+    sub.inputs = [position[i] for i in indices(sub.inputs)]
+    sub.outputs = [position[i] for i in indices(sub.outputs)]
+    builder = flatbuffers.Builder(0)
+    builder.Finish(model.Pack(builder), file_identifier=b"TFL3")
+    reordered = bytes(builder.Output())
+    native = to_native_fp16(reordered)
+    assert subgraph_io_names(native) == subgraph_io_names(reordered)
+    assert operator_tensor_names(native) == operator_tensor_names(reordered)
+
+
+def test_signature_indices_follow_renumbered_tensors():
+    model = build_model()
+    weight_only = unpack(convert(model, QuantizationType.FP16, mode=ConversionType.KERAS))
+    native = unpack(convert(model, QuantizationType.FP16_NATIVE, mode=ConversionType.KERAS))
+    assert weight_only.signatureDefs and len(native.signatureDefs) == len(weight_only.signatureDefs)
+    for before, after in zip(weight_only.signatureDefs, native.signatureDefs, strict=True):
+        tensors_before = weight_only.subgraphs[before.subgraphIndex].tensors
+        sub_after = native.subgraphs[after.subgraphIndex]
+        for io in ("inputs", "outputs"):
+            pairs = zip(getattr(before, io), getattr(after, io), strict=True)
+            for a, b in pairs:
+                assert a.name == b.name
+                assert sub_after.tensors[b.tensorIndex].name == tensors_before[a.tensorIndex].name
+            assert sorted(t.tensorIndex for t in getattr(after, io)) == sorted(indices(getattr(sub_after, io)))
+
+
+def test_control_flow_subgraphs_are_pruned_consistently():
+    keras.utils.set_random_seed(3)
+    inputs = keras.Input((6, 3), batch_size=1)
+    outputs = keras.layers.Dense(2)(keras.layers.LSTM(4)(inputs))
+    weight_only = convert(keras.Model(inputs, outputs), QuantizationType.FP16)
+    native = to_native_fp16(weight_only)
+    assert len(unpack(native).subgraphs) == len(unpack(weight_only).subgraphs) > 1
+    # The converter leaves one unreferenced tensor of its own here; the rewrite must add none.
+    assert unreferenced_tensors(native) == unreferenced_tensors(weight_only)
+    assert unused_opcodes(native) == []
+    assert operator_tensor_names(native) == operator_tensor_names(weight_only)
+    assert subgraph_io_names(native) == subgraph_io_names(weight_only)
+
+
+def as_float32(content):
+    """Retype a native float16 graph to float32 so the TFLite interpreter can run it."""
+    model = unpack(content)
+    done = set()
+    for sub in model.subgraphs:
+        for tensor in sub.tensors:
+            if tensor.type != schema.TensorType.FLOAT16:
+                continue
+            tensor.type = schema.TensorType.FLOAT32
+            buffer = model.buffers[tensor.buffer]
+            if tensor.buffer in done or buffer.data is None or not len(buffer.data):
+                continue
+            done.add(tensor.buffer)
+            buffer.data = np.frombuffer(bytes(buffer.data), np.float16).astype(np.float32).view(np.uint8)
+    builder = flatbuffers.Builder(0)
+    builder.Finish(model.Pack(builder), file_identifier=b"TFL3")
+    return bytes(builder.Output())
+
+
+def run(content, x):
+    interpreter = tf.lite.Interpreter(model_content=content)
+    interpreter.allocate_tensors()
+    interpreter.set_tensor(interpreter.get_input_details()[0]["index"], x)
+    interpreter.invoke()
+    return interpreter.get_tensor(interpreter.get_output_details()[0]["index"])
+
+
+@pytest.mark.parametrize("name", ["conv", "lstm"])
+def test_pruned_graph_computes_the_weight_only_outputs(name):
+    if name == "conv":
+        model, shape = build_model(), (1, 16, 16, 3)
+    else:
+        keras.utils.set_random_seed(3)
+        inputs = keras.Input((6, 3), batch_size=1)
+        model, shape = keras.Model(inputs, keras.layers.Dense(2)(keras.layers.LSTM(4)(inputs))), (1, 6, 3)
+    weight_only = convert(model, QuantizationType.FP16)
+    native = to_native_fp16(weight_only)
+    assert len(unpack(native).subgraphs[0].tensors) < len(unpack(weight_only).subgraphs[0].tensors)
+    x = np.random.default_rng(0).standard_normal(shape).astype(np.float16).astype(np.float32)
+    np.testing.assert_allclose(run(as_float32(native), x), run(weight_only, x), rtol=0, atol=1e-6)
+
+
+def test_tflite_predict_rejects_native_float16():
+    converter = TfLiteKerasConverter(build_model())
+    try:
+        converter.convert(quantization=QuantizationType.FP16_NATIVE, mode=ConversionType.CONCRETE)
+        with pytest.raises(ValueError, match="float16 kernels"):
+            converter.predict(np.zeros((1, 16, 16, 3), np.float32))
+    finally:
+        converter.cleanup()
+
+
+def test_reject_native_fp16_guard(exports):
+    weight_only, native = exports
+    with pytest.raises(ValueError, match="float16 kernels"):
+        _reject_native_fp16(tf.lite.Interpreter(model_content=native))
+    _reject_native_fp16(tf.lite.Interpreter(model_content=weight_only))

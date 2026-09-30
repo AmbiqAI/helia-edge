@@ -18,8 +18,10 @@ def to_native_fp16(model_content: bytes) -> bytes:
     FLOAT16 -> FLOAT32 ``DEQUANTIZE``, rewires its consumers to the FLOAT16
     source, and converts every remaining FLOAT32 tensor and constant buffer to
     FLOAT16. Constants outside the float16 range saturate to +/-65504, as in
-    TFLite's float16 optimization. Non-float tensors are unchanged. Signature
-    tensor indices are not remapped.
+    TFLite's float16 optimization. Non-float tensors are unchanged. The dropped
+    ``DEQUANTIZE`` outputs and operator codes no operator uses are removed, and
+    operator, subgraph and signature tensor indices are renumbered to match.
+    Buffers of removed tensors stay in the model; they are empty.
 
     Args:
         model_content (bytes): Weight-only float16 TFLite flatbuffer.
@@ -29,6 +31,7 @@ def to_native_fp16(model_content: bytes) -> bytes:
     """
     model = schema.ModelT.InitFromObj(schema.Model.GetRootAsModel(bytearray(model_content), 0))
     converted: set[int] = set()
+    signature_index: list[dict[int, int]] = []
     for subgraph in model.subgraphs:
         remap: dict[int, int] = {}
         kept = []
@@ -51,6 +54,9 @@ def to_native_fp16(model_content: bytes) -> bytes:
             op.outputs = [resolve(i) for i in op.outputs]
         subgraph.inputs = [resolve(i) for i in subgraph.inputs]
         subgraph.outputs = [resolve(i) for i in subgraph.outputs]
+        count = len(subgraph.tensors)
+        kept_index = _drop_tensors(subgraph, set(remap))
+        signature_index.append({old: kept_index[resolve(old)] for old in range(count)})
 
         for tensor in subgraph.tensors:
             if tensor.type != _FLOAT32:
@@ -65,6 +71,44 @@ def to_native_fp16(model_content: bytes) -> bytes:
                 values = np.clip(values, -_FLOAT16_MAX, _FLOAT16_MAX).astype(np.float16)
                 buffer.data = values.view(np.uint8)
 
+    for signature in model.signatureDefs or []:
+        for entry in [*(signature.inputs or []), *(signature.outputs or [])]:
+            entry.tensorIndex = signature_index[signature.subgraphIndex][entry.tensorIndex]
+    _drop_unused_opcodes(model)
+
     builder = flatbuffers.Builder(len(model_content))
     builder.Finish(model.Pack(builder), file_identifier=b"TFL3")
     return bytes(builder.Output())
+
+
+def _drop_tensors(subgraph, candidates: set[int]) -> dict[int, int]:
+    """Remove candidate tensors nothing references; return the old -> new index of kept tensors."""
+    used = set(subgraph.inputs) | set(subgraph.outputs)
+    for op in subgraph.operators:
+        used.update(op.inputs, op.outputs, [] if op.intermediates is None else op.intermediates)
+    dropped = candidates - used
+    kept = [i for i in range(len(subgraph.tensors)) if i not in dropped]
+    index = {old: new for new, old in enumerate(kept)}
+
+    def renumber(values):
+        return [index[i] if i >= 0 else i for i in values]  # -1 marks an omitted optional input
+
+    subgraph.tensors = [subgraph.tensors[i] for i in kept]
+    for op in subgraph.operators:
+        op.inputs = renumber(op.inputs)
+        op.outputs = renumber(op.outputs)
+        if op.intermediates is not None:
+            op.intermediates = renumber(op.intermediates)
+    subgraph.inputs = renumber(subgraph.inputs)
+    subgraph.outputs = renumber(subgraph.outputs)
+    return index
+
+
+def _drop_unused_opcodes(model) -> None:
+    """Remove operator codes no operator uses and renumber each operator's opcode index."""
+    used = sorted({op.opcodeIndex for subgraph in model.subgraphs for op in subgraph.operators})
+    index = {old: new for new, old in enumerate(used)}
+    model.operatorCodes = [model.operatorCodes[i] for i in used]
+    for subgraph in model.subgraphs:
+        for op in subgraph.operators:
+            op.opcodeIndex = index[op.opcodeIndex]
