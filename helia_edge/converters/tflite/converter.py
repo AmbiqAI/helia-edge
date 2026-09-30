@@ -23,7 +23,14 @@ import pandas as pd
 import tensorflow as tf
 
 from ..cpp import xxd_c_dump
+from .fp16 import to_native_fp16
 from ...models import load_model
+
+
+def _reject_native_fp16(interpreter) -> None:
+    details = interpreter.get_input_details() + interpreter.get_output_details()
+    if any(detail["dtype"] == np.float16 for detail in details):
+        raise ValueError("Native float16 models need an engine with float16 kernels; the interpreter cannot run them.")
 
 
 class QuantizationType(StrEnum):
@@ -31,7 +38,8 @@ class QuantizationType(StrEnum):
 
     Attributes:
         FP32: FP32 quantization
-        FP16: FP16 quantization
+        FP16: float16 weight storage; weights are dequantized and compute stays FP32
+        FP16_NATIVE: native float16 graph; inputs, weights, activations and outputs are float16
         INT8: INT8 quantization
         INT16X8: INT16X8 quantization
 
@@ -39,6 +47,7 @@ class QuantizationType(StrEnum):
 
     FP32 = "FP32"
     FP16 = "FP16"
+    FP16_NATIVE = "FP16_NATIVE"
     INT8 = "INT8"
     INT16X8 = "INT16X8"
 
@@ -129,7 +138,9 @@ class TfLiteKerasConverter:
         Args:
             test_x (npt.NDArray | None, optional): Test dataset. Defaults to None.
             quantization (QuantizationType, optional): Quantization type. Defaults to QuantizationType.FP32.
-            io_type (str | None, optional): Input/Output type. Defaults to None.
+                FP16_NATIVE produces a float16 graph for engines with float16 kernels; the TFLite and LiteRT
+                interpreters cannot run its convolution or fully connected operators, so predict() rejects it.
+            io_type (str | None, optional): Input/Output type. Defaults to None; FP16_NATIVE is always float16.
             mode (ConversionType, optional): Conversion mode. Defaults to ConversionType.KERAS.
             strict (bool, optional): Strict mode. Defaults to True.
             verbose (int, optional): Verbosity level (0,1,2). Defaults to 2.
@@ -138,6 +149,8 @@ class TfLiteKerasConverter:
             str: TFLite content
         """
         quantization = QuantizationType(quantization)
+        if quantization == QuantizationType.FP16_NATIVE and io_type not in (None, "float16"):
+            raise ValueError("FP16_NATIVE models always use float16 inputs and outputs")
         feat_shape = self.model.input_shape[1:]
         input_shape = (1,) + feat_shape  # Add 1 for batch dimension
         input_spec = tf.TensorSpec(shape=input_shape, dtype=self.model.input_dtype)
@@ -172,8 +185,8 @@ class TfLiteKerasConverter:
             # float32 weights, bias, activation
             case QuantizationType.FP32:
                 pass
-            # float16 weights, bias, activation
-            case QuantizationType.FP16:
+            # float16 weights; FP16_NATIVE is rewritten to float16 activations and IO after conversion
+            case QuantizationType.FP16 | QuantizationType.FP16_NATIVE:
                 converter.optimizations = [tf.lite.Optimize.DEFAULT]
                 converter.target_spec.supported_types = [tf.float16]
             # int8 weights, bias, activation
@@ -208,6 +221,8 @@ class TfLiteKerasConverter:
         self._converter = converter
 
         self._tflite_content = converter.convert()
+        if quantization == QuantizationType.FP16_NATIVE:
+            self._tflite_content = to_native_fp16(self._tflite_content)
 
         return self._tflite_content
 
@@ -250,6 +265,7 @@ class TfLiteKerasConverter:
         inputs = inputs.astype(np.float32)
 
         interpreter = tf.lite.Interpreter(model_content=self._tflite_content)
+        _reject_native_fp16(interpreter)
         interpreter.allocate_tensors()
 
         # No signature
