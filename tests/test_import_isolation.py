@@ -24,6 +24,9 @@ assert callable(helia.utils.ItemFactory)
 assert callable(helia.utils.create_factory)
 assert list(helia.utils.uniform_id_generator([1, 2], repeat=False, shuffle=False)) == [1, 2]
 assert helia.utils.parse_factor((None, 0.5)) == (0.5, 0.5)
+spec = helia.export.ExportSpec(precision='a8w8', io_dtype='int8', mode='concrete')
+assert spec.precision is helia.export.Precision.A8W8
+assert callable(helia.export.export_model)
 assert not {'keras', 'tensorflow', 'torch'} & sys.modules.keys()
 """)
 

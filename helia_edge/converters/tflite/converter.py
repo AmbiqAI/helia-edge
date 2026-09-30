@@ -21,9 +21,10 @@ import numpy.typing as npt
 import pandas as pd
 import tensorflow as tf
 
+from ...export.litert import convert_litert
+from ...export.spec import LEGACY_MODE, LEGACY_PRECISION
 from ...models import load_model
 from ..cpp import xxd_c_dump
-from .fp16 import to_native_fp16
 
 
 def _reject_native_fp16(interpreter) -> None:
@@ -108,7 +109,7 @@ class TfLiteKerasConverter:
         self.model = model
         self.representative_dataset = None
         self._converter: tf.lite.TFLiteConverter | None = None
-        self._tflite_content: str | None = None
+        self._tflite_content: bytes | None = None
         self.tf_model_path = tempfile.TemporaryDirectory()
 
     @classmethod
@@ -131,11 +132,12 @@ class TfLiteKerasConverter:
         mode: ConversionType = ConversionType.KERAS,
         strict: bool = True,
         verbose: int = 2,
-    ) -> str:
+    ) -> bytes:
         """Convert TF model into TFLite model content
 
         Args:
-            test_x (npt.NDArray | None, optional): Test dataset. Defaults to None.
+            test_x (npt.NDArray | None, optional): Representative samples, required for INT8 and INT16X8.
+                Defaults to None.
             quantization (QuantizationType, optional): Quantization type. Defaults to QuantizationType.FP32.
                 FP16_NATIVE produces a float16 graph for engines with float16 kernels. The TensorFlow Lite
                 interpreter cannot run its convolution or fully connected operators, and predict() rejects it.
@@ -145,84 +147,25 @@ class TfLiteKerasConverter:
             verbose (int, optional): Verbosity level (0,1,2). Defaults to 2.
 
         Returns:
-            str: TFLite content
+            bytes: TFLite content
         """
         quantization = QuantizationType(quantization)
         if quantization == QuantizationType.FP16_NATIVE and io_type not in (None, "float16"):
             raise ValueError("FP16_NATIVE models always use float16 inputs and outputs")
-        feat_shape = self.model.input_shape[1:]
-        input_shape = (1,) + feat_shape  # Add 1 for batch dimension
-        input_spec = tf.TensorSpec(shape=input_shape, dtype=self.model.input_dtype)
-
-        match mode:
-            case ConversionType.KERAS:
-                converter = tf.lite.TFLiteConverter.from_keras_model(model=self.model)
-            case ConversionType.SAVED_MODEL:
-                self.model.export(self.tf_model_path.name, format="tf_saved_model")
-                converter = tf.lite.TFLiteConverter.from_saved_model(self.tf_model_path.name)
-            # Following case is a workaround for bug (https://github.com/tensorflow/tflite-micro/issues/2319)
-            # Default TFLiteConverter generates equivalent graph w/ SpaceToBatchND operations but losses dilation_rate factor.
-            case ConversionType.CONCRETE:
-                model_func = tf.function(func=self.model)
-                model_cf = model_func.get_concrete_function(input_spec)
-                converter = tf.lite.TFLiteConverter.from_concrete_functions([model_cf])
-            case _:
-                raise ValueError(f"Invalid conversion mode: {mode}")
-        # END MATCH
-
-        if test_x is None:
-            test_x = np.random.rand(1000, *feat_shape)
-
-        def rep_dataset():
-            """Helper function to generate representative dataset"""
-            for i in range(test_x.shape[0]):
-                yield [test_x[i : i + 1]]
-
-        self.representative_dataset = rep_dataset
-
-        match quantization:
-            # float32 weights, bias, activation
-            case QuantizationType.FP32:
-                pass
-            # float16 weights; FP16_NATIVE is rewritten to float16 activations and IO after conversion
-            case QuantizationType.FP16 | QuantizationType.FP16_NATIVE:
-                converter.optimizations = [tf.lite.Optimize.DEFAULT]
-                converter.target_spec.supported_types = [tf.float16]
-            # int8 weights, bias, activation
-            case QuantizationType.INT8:
-                converter.optimizations = [tf.lite.Optimize.DEFAULT]
-                converter.target_spec.supported_ops = [tf.lite.OpsSet.TFLITE_BUILTINS_INT8]
-                io_dtype = tf.dtypes.as_dtype(io_type) if io_type else tf.int8
-                converter.inference_input_type = io_dtype
-                converter.inference_output_type = io_dtype
-                converter.representative_dataset = self.representative_dataset
-            # int8 weights, int64 bias, int16 activation
-            case QuantizationType.INT16X8:
-                converter.optimizations = [tf.lite.Optimize.DEFAULT]
-                converter.target_spec.supported_ops = [
-                    tf.lite.OpsSet.EXPERIMENTAL_TFLITE_BUILTINS_ACTIVATIONS_INT16_WEIGHTS_INT8
-                ]
-                io_dtype = tf.dtypes.as_dtype(io_type) if io_type else tf.float32
-                converter.inference_input_type = io_dtype
-                converter.inference_output_type = io_dtype
-                converter.representative_dataset = self.representative_dataset
-        # END MATCH
-
-        # For fallback append tf.lite.OpsSet.TFLITE_BUILTINS for INT8 and INT16X8
-        if not strict and quantization in [
-            QuantizationType.INT8,
-            QuantizationType.INT16X8,
-        ]:
-            converter.target_spec.supported_ops.append(tf.lite.OpsSet.TFLITE_BUILTINS)
-        # END IF
-
-        # Convert model
-        self._converter = converter
-
-        self._tflite_content = converter.convert()
-        if quantization == QuantizationType.FP16_NATIVE:
-            self._tflite_content = to_native_fp16(self._tflite_content)
-
+        if quantization in (QuantizationType.INT8, QuantizationType.INT16X8) and test_x is None:
+            raise ValueError(f"{quantization.value} conversion requires representative data passed via test_x.")
+        conversion = convert_litert(
+            self.model,
+            precision=LEGACY_PRECISION[quantization],
+            io_type=io_type,
+            mode=LEGACY_MODE[ConversionType(mode)],
+            strict=strict,
+            calibration=test_x,
+            workdir=self.tf_model_path.name,
+        )
+        self._converter = conversion.converter
+        self.representative_dataset = conversion.representative_dataset
+        self._tflite_content = conversion.content
         return self._tflite_content
 
     def debug_quantization(self) -> pd.DataFrame:
