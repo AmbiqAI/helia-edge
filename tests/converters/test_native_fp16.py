@@ -287,6 +287,48 @@ def test_control_flow_subgraphs_are_pruned_consistently():
     assert subgraph_io_names(native) == subgraph_io_names(weight_only)
 
 
+def as_float32(content):
+    """Retype a native float16 graph to float32 so the TFLite interpreter can run it."""
+    model = unpack(content)
+    done = set()
+    for sub in model.subgraphs:
+        for tensor in sub.tensors:
+            if tensor.type != schema.TensorType.FLOAT16:
+                continue
+            tensor.type = schema.TensorType.FLOAT32
+            buffer = model.buffers[tensor.buffer]
+            if tensor.buffer in done or buffer.data is None or not len(buffer.data):
+                continue
+            done.add(tensor.buffer)
+            buffer.data = np.frombuffer(bytes(buffer.data), np.float16).astype(np.float32).view(np.uint8)
+    builder = flatbuffers.Builder(0)
+    builder.Finish(model.Pack(builder), file_identifier=b"TFL3")
+    return bytes(builder.Output())
+
+
+def run(content, x):
+    interpreter = tf.lite.Interpreter(model_content=content)
+    interpreter.allocate_tensors()
+    interpreter.set_tensor(interpreter.get_input_details()[0]["index"], x)
+    interpreter.invoke()
+    return interpreter.get_tensor(interpreter.get_output_details()[0]["index"])
+
+
+@pytest.mark.parametrize("name", ["conv", "lstm"])
+def test_pruned_graph_computes_the_weight_only_outputs(name):
+    if name == "conv":
+        model, shape = build_model(), (1, 16, 16, 3)
+    else:
+        keras.utils.set_random_seed(3)
+        inputs = keras.Input((6, 3), batch_size=1)
+        model, shape = keras.Model(inputs, keras.layers.Dense(2)(keras.layers.LSTM(4)(inputs))), (1, 6, 3)
+    weight_only = convert(model, QuantizationType.FP16)
+    native = to_native_fp16(weight_only)
+    assert len(unpack(native).subgraphs[0].tensors) < len(unpack(weight_only).subgraphs[0].tensors)
+    x = np.random.default_rng(0).standard_normal(shape).astype(np.float16).astype(np.float32)
+    np.testing.assert_allclose(run(as_float32(native), x), run(weight_only, x), rtol=0, atol=1e-6)
+
+
 def test_reject_native_fp16_guard(exports):
     weight_only, native = exports
     with pytest.raises(ValueError, match="float16 kernels"):
