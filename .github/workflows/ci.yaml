@@ -13,8 +13,8 @@ jobs:
       - uses: astral-sh/setup-uv@v5
       - run: uv venv --python 3.12
       - run: uv pip install 'torch==2.14.0' --index-url https://download.pytorch.org/whl/cpu
-      - run: uv pip install '.[tensorflow,torch,litert,plotting,aws]' --group typing
-      - run: uv run --no-sync ty check --error-on-warning
+      - run: uv pip install '.[tensorflow,torch,litert,plotting,aws]' --group ci
+      - run: uv run --no-sync prek run --all-files --hook-stage pre-push
 
   base:
     runs-on: ubuntu-latest
@@ -36,7 +36,7 @@ jobs:
           assert all(importlib.util.find_spec(name) is None for name in absent)
           assert not set(absent) & sys.modules.keys()
           PY
-      - run: uv run --no-sync ruff check
+      - run: uv run --no-sync prek run --all-files --hook-stage pre-commit
       - run: uv run --no-sync pytest -q tests/test_import_isolation.py tests/test_optional_dependencies.py tests/utils/test_rng.py
 
       - name: Test AWS without plotting or a backend
