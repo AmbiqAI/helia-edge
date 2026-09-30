@@ -40,7 +40,7 @@ Choose representative inputs from the distribution the model will encounter. INT
 |---|---|
 | FP32 | Establish a floating-point conversion baseline. |
 | FP16 | Store weights as float16; they are dequantized at runtime and compute stays FP32. |
-| FP16_NATIVE | Emit a float16 graph: inputs, weights, activations and outputs are float16. Needs an engine with float16 kernels; the TFLite and LiteRT interpreters cannot run it, so `predict()` rejects it. |
+| FP16_NATIVE | Emit a float16 graph: inputs, weights, activations and outputs are float16. Needs a runtime with float16 kernels for every operator; `tf.lite.Interpreter` cannot run it, and `predict()` rejects it. |
 | INT8 | Quantize with representative data and validate the resulting input/output types. |
 | INT16X8 | Request the converter's 16-bit activation / 8-bit weight path where supported by the model and target. |
 
