@@ -14,6 +14,7 @@ from helia_edge.utils.aws import (
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _fake_s3_listing(prefix: str, files: list[str]) -> list[dict]:
     """Build a list of S3 object metadata dicts."""
     items = []
@@ -32,6 +33,7 @@ def _mock_client_for(items: list[dict]) -> MagicMock:
     client.list_objects_v2.return_value = {
         "Contents": items,
     }
+
     # download_file just touches the destination
     def fake_download(Bucket, Key, Filename):
         Path(Filename).parent.mkdir(parents=True, exist_ok=True)
@@ -45,13 +47,13 @@ def _mock_client_for(items: list[dict]) -> MagicMock:
 # download_s3_objects (deprecated) — verify behaviour preserved
 # ---------------------------------------------------------------------------
 
+
 def test_download_s3_objects_emits_deprecation_warning(tmp_path):
     """Old function must emit a DeprecationWarning."""
     items = _fake_s3_listing("myprefix", ["a.txt"])
     client = _mock_client_for(items)
 
-    with warnings.catch_warnings(record=True) as w, \
-         patch("helia_edge.utils.aws._get_s3_client", return_value=client):
+    with warnings.catch_warnings(record=True) as w, patch("helia_edge.utils.aws._get_s3_client", return_value=client):
         warnings.simplefilter("always")
         download_s3_objects(
             bucket="b",
@@ -69,8 +71,7 @@ def test_download_s3_objects_preserves_full_key(tmp_path):
     items = _fake_s3_listing("data", ["f1.h5", "f2.h5"])
     client = _mock_client_for(items)
 
-    with warnings.catch_warnings(record=True), \
-         patch("helia_edge.utils.aws._get_s3_client", return_value=client):
+    with warnings.catch_warnings(record=True), patch("helia_edge.utils.aws._get_s3_client", return_value=client):
         warnings.simplefilter("always")
         download_s3_objects(
             bucket="b",
@@ -86,6 +87,7 @@ def test_download_s3_objects_preserves_full_key(tmp_path):
 # ---------------------------------------------------------------------------
 # download_s3_prefix — new correct function
 # ---------------------------------------------------------------------------
+
 
 def test_download_s3_prefix_strips_prefix(tmp_path):
     """Files should land directly under dst, not nested under the prefix."""
@@ -190,6 +192,7 @@ def test_download_s3_prefix_empty_listing(tmp_path):
 # ---------------------------------------------------------------------------
 # _list_s3_objects pagination
 # ---------------------------------------------------------------------------
+
 
 def test_list_s3_objects_paginates():
     """Should follow NextContinuationToken until exhausted."""

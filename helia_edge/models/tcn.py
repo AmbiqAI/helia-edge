@@ -127,7 +127,6 @@ class TcnParams(BaseModel):
     output_activation: str | None = Field(default=None, description="Output activation")
     name: str = Field(default="TCN", description="Model name")
 
-
     def get_config(self) -> dict[str, Any]:
         """Return a JSON-shaped architecture config, excluding inputs and weights."""
         return self.model_dump(mode="json")
@@ -177,13 +176,29 @@ def compact_tcn_params(*, filters: int = 8) -> TcnParams:
     if type(filters) is not int or filters < 8:
         raise ValueError("compact TCN filters must be an integer >= 8")
     return TcnParams(
-        input_kernel=None, input_norm="batch", block_type="sm",
-        blocks=[TcnBlockParams(filters=filters, kernel=(1, 3), dilation=(1, dilation),
-                               depth=1, branch=1, ex_ratio=1, se_ratio=4,
-                               dropout=None, norm="batch", activation="relu6")
-                for dilation in (1, 2, 4, 8)],
-        output_kernel=(1, 1), include_top=True, use_logits=True,
-        output_activation=None, name="compact_tcn",
+        input_kernel=None,
+        input_norm="batch",
+        block_type="sm",
+        blocks=[
+            TcnBlockParams(
+                filters=filters,
+                kernel=(1, 3),
+                dilation=(1, dilation),
+                depth=1,
+                branch=1,
+                ex_ratio=1,
+                se_ratio=4,
+                dropout=None,
+                norm="batch",
+                activation="relu6",
+            )
+            for dilation in (1, 2, 4, 8)
+        ],
+        output_kernel=(1, 1),
+        include_top=True,
+        use_logits=True,
+        output_activation=None,
+        name="compact_tcn",
     )
 
 
@@ -561,16 +576,18 @@ class TcnModel:
     """Helper class to generate model from parameters"""
 
     @staticmethod
-    def layer_from_params(inputs: keras.KerasTensor, params: TcnParams | dict[str, Any],
-                          num_classes: int | None = None) -> keras.KerasTensor:
+    def layer_from_params(
+        inputs: keras.KerasTensor, params: TcnParams | dict[str, Any], num_classes: int | None = None
+    ) -> keras.KerasTensor:
         """Create layer from parameters"""
         if isinstance(params, dict):
             params = TcnParams(**params)
         return tcn_layer(x=inputs, params=params, num_classes=num_classes)
 
     @staticmethod
-    def model_from_params(inputs: keras.KerasTensor, params: TcnParams | dict[str, Any],
-                          num_classes: int | None = None) -> keras.Model:
+    def model_from_params(
+        inputs: keras.KerasTensor, params: TcnParams | dict[str, Any], num_classes: int | None = None
+    ) -> keras.Model:
         """Create model from parameters"""
         outputs = TcnModel.layer_from_params(inputs=inputs, params=params, num_classes=num_classes)
         return keras.Model(inputs=inputs, outputs=outputs)

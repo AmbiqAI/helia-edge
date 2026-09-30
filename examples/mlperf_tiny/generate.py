@@ -64,11 +64,12 @@ def generate(name, output, seed=20260926):
     finally:
         converter.cleanup()
     (output / "model.tflite").write_bytes(content)
-    interpreter = Interpreter(model_content=content, num_threads=1,
-                              experimental_op_resolver_type=OpResolverType.BUILTIN_REF)
+    interpreter = Interpreter(
+        model_content=content, num_threads=1, experimental_op_resolver_type=OpResolverType.BUILTIN_REF
+    )
     interpreter.allocate_tensors()
-    inp, = interpreter.get_input_details()
-    out, = interpreter.get_output_details()
+    (inp,) = interpreter.get_input_details()
+    (out,) = interpreter.get_output_details()
     assert inp["dtype"] == out["dtype"] == np.float32
     actual = []
     for x in inputs:
@@ -83,22 +84,44 @@ def generate(name, output, seed=20260926):
     shutil.copyfile(Path(__file__).with_name("references.json"), output / "references.json")
     for path in (source.parent / "licenses").glob("mlperf-tiny-*.txt"):
         shutil.copyfile(path, output / path.name)
-    dependencies = {key: importlib.metadata.version(key) for key in
-                    ("keras", "tensorflow", "ai-edge-litert", "numpy", "helia-edge")}
-    manifest = {"model": name, "scale": 1.0, "seed": seed,
-                "kind": "synthetic architecture fixture; no official trained weights/accuracy/compliance claim",
-                "source_head": subprocess.check_output(["git", "-C", str(root), "rev-parse", "HEAD"], text=True).strip(),
-                "source_sha256": digest(source), "generator_sha256": digest(Path(__file__)),
-                "reference": "references.json", "lock_sha256": digest(root / "uv.lock"), "precision": "FP32", "dependencies": dependencies,
-                "python": platform.python_version(), "oracle": "ai-edge-litert BUILTIN_REF; one thread; no delegates",
-                "cases": ["zero", "amplified_deterministic_signal"], "signal_amplitude": amplitude,
-                "diagnostic_only": "amplitude selected for initialized-output discrimination; not real data", "preprocessing": "none; synthetic feature-domain inputs",
-                "max_abs_keras_error": float(np.max(np.abs(actual - expected))),
-                "input": {"name": inp["name"], "index": int(inp["index"]), "shape": inp["shape"].tolist(),
-                          "dtype": "float32", "bytes": int(np.prod(inp["shape"])) * 4},
-                "output": {"name": out["name"], "index": int(out["index"]), "shape": out["shape"].tolist(),
-                           "dtype": "float32", "bytes": int(np.prod(out["shape"])) * 4},
-                "files": {p.name: digest(p) for p in sorted(output.iterdir()) if p.is_file()}}
+    dependencies = {
+        key: importlib.metadata.version(key) for key in ("keras", "tensorflow", "ai-edge-litert", "numpy", "helia-edge")
+    }
+    manifest = {
+        "model": name,
+        "scale": 1.0,
+        "seed": seed,
+        "kind": "synthetic architecture fixture; no official trained weights/accuracy/compliance claim",
+        "source_head": subprocess.check_output(["git", "-C", str(root), "rev-parse", "HEAD"], text=True).strip(),
+        "source_sha256": digest(source),
+        "generator_sha256": digest(Path(__file__)),
+        "reference": "references.json",
+        "lock_sha256": digest(root / "uv.lock"),
+        "precision": "FP32",
+        "dependencies": dependencies,
+        "python": platform.python_version(),
+        "oracle": "ai-edge-litert BUILTIN_REF; one thread; no delegates",
+        "cases": ["zero", "amplified_deterministic_signal"],
+        "signal_amplitude": amplitude,
+        "diagnostic_only": "amplitude selected for initialized-output discrimination; not real data",
+        "preprocessing": "none; synthetic feature-domain inputs",
+        "max_abs_keras_error": float(np.max(np.abs(actual - expected))),
+        "input": {
+            "name": inp["name"],
+            "index": int(inp["index"]),
+            "shape": inp["shape"].tolist(),
+            "dtype": "float32",
+            "bytes": int(np.prod(inp["shape"])) * 4,
+        },
+        "output": {
+            "name": out["name"],
+            "index": int(out["index"]),
+            "shape": out["shape"].tolist(),
+            "dtype": "float32",
+            "bytes": int(np.prod(out["shape"])) * 4,
+        },
+        "files": {p.name: digest(p) for p in sorted(output.iterdir()) if p.is_file()},
+    }
     (output / "manifest.json").write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n")
     return manifest
 
@@ -110,5 +133,12 @@ if __name__ == "__main__":
     parser.add_argument("--seed", type=int, default=20260926)
     args = parser.parse_args()
     result = generate(args.model, args.output, args.seed)
-    print(json.dumps({"model": args.model, "manifest": str(args.output / "manifest.json"),
-                      "max_abs_keras_error": result["max_abs_keras_error"]}))
+    print(
+        json.dumps(
+            {
+                "model": args.model,
+                "manifest": str(args.output / "manifest.json"),
+                "max_abs_keras_error": result["max_abs_keras_error"],
+            }
+        )
+    )

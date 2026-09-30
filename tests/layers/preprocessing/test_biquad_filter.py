@@ -64,6 +64,7 @@ def test_cascaded_biquad_filter_compiles_with_tf_function():
         forward_backward=True,
         data_format="channels_last",
     )
+
     @tf.function
     def run_filter(z):
         return layer(z, training=True)

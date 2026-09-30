@@ -18,12 +18,23 @@ def test_config_roundtrip_and_keras_serialization():
         params.stacks = 2
 
 
-@pytest.mark.parametrize("config", [
-    {"stacks": 0}, {"stacks": 4}, {"stacks": True}, {"base_filters": "64"},
-    {"base_filters": 0}, {"dropout": 1.0}, {"dropout": float("nan")},
-    {"dropout": float("inf")}, {"pooling": "None"}, {"seed": 7},
-    {"weights": "asset.keras"}, {"name": "invalid/name"},
-])
+@pytest.mark.parametrize(
+    "config",
+    [
+        {"stacks": 0},
+        {"stacks": 4},
+        {"stacks": True},
+        {"base_filters": "64"},
+        {"base_filters": 0},
+        {"dropout": 1.0},
+        {"dropout": float("nan")},
+        {"dropout": float("inf")},
+        {"pooling": "None"},
+        {"seed": 7},
+        {"weights": "asset.keras"},
+        {"name": "invalid/name"},
+    ],
+)
 def test_invalid_config(config):
     with pytest.raises(ValidationError):
         MiniResNetV1Params.from_config(config)
@@ -40,8 +51,9 @@ def test_default_checkpoint_geometry():
     assert all(layer.use_bias and layer.filters == 64 for layer in convs)
     assert model.get_layer("conv2_block1_0_conv").strides == (2, 2)
     assert model.get_layer("conv2_block2_1_conv").strides == (1, 1)
-    assert all(layer.epsilon == 1.001e-5 for layer in model.layers
-               if isinstance(layer, keras.layers.BatchNormalization))
+    assert all(
+        layer.epsilon == 1.001e-5 for layer in model.layers if isinstance(layer, keras.layers.BatchNormalization)
+    )
 
 
 @pytest.mark.parametrize("pooling", ["flatten", "avg", "max"])
@@ -63,8 +75,7 @@ def test_smaller_variant_hydrates_and_serializes(pooling, tmp_path):
         mismatch.load_weights(path)
 
 
-@pytest.mark.parametrize("shape,classes", [((50, 1), 10), ((64, 50, 1), 0),
-                                          ((64, 50, 1), True), ((None, 50, 1), 10)])
+@pytest.mark.parametrize("shape,classes", [((50, 1), 10), ((64, 50, 1), 0), ((64, 50, 1), True), ((None, 50, 1), 10)])
 def test_invalid_input_contract(shape, classes):
     with pytest.raises(ValueError):
         MiniResNetV1Model.model_from_params(keras.Input(shape), MiniResNetV1Params(), classes)
@@ -75,8 +86,10 @@ def test_dynamic_global_pooling_and_explicit_layout(monkeypatch):
     previous = keras.config.image_data_format()
     try:
         keras.config.set_image_data_format("channels_first")
+
         def forbidden(*args, **kwargs):
             raise AssertionError("constructor altered caller state")
+
         monkeypatch.setattr(keras.backend, "clear_session", forbidden)
         monkeypatch.setattr(keras.utils, "set_random_seed", forbidden)
         model = MiniResNetV1Model.model_from_params(

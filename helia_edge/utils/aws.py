@@ -177,8 +177,7 @@ def download_s3_objects(
     """
 
     warnings.warn(
-        "download_s3_objects is deprecated and has a known path-nesting bug. "
-        "Use download_s3_prefix instead.",
+        "download_s3_objects is deprecated and has a known path-nesting bug. Use download_s3_prefix instead.",
         DeprecationWarning,
         stacklevel=2,
     )
@@ -319,14 +318,11 @@ def download_s3_prefix(
 
     def _local_path(key: str) -> Path:
         """Strip the prefix and join onto *dst*."""
-        relative = key[len(norm_prefix):] if key.startswith(norm_prefix) else key
+        relative = key[len(norm_prefix) :] if key.startswith(norm_prefix) else key
         return dst / PurePosixPath(relative)
 
     with ThreadPoolExecutor(max_workers=num_workers) as executor:
-        futures = {
-            executor.submit(func, item, _local_path(item["Key"])): item
-            for item in items
-        }
+        futures = {executor.submit(func, item, _local_path(item["Key"])): item for item in items}
         for future in as_completed(futures):
             err = future.exception()
             if err:

@@ -30,8 +30,15 @@ VARIANT = FastEnhancerParams(
     channels=12,
     kernel_size=(4, 5, 3),
     stride=2,
-    rnnformer={"num_blocks": 1, "channels": 12, "freq": 8, "num_heads": 3,
-               "positional_embedding": False, "attn_bias": True, "post_act": True},
+    rnnformer={
+        "num_blocks": 1,
+        "channels": 12,
+        "freq": 8,
+        "num_heads": 3,
+        "positional_embedding": False,
+        "attn_bias": True,
+        "post_act": True,
+    },
     activation="relu",
     mask="sigmoid",
     input_compression=0.5,
@@ -78,6 +85,7 @@ def max_error(model, params, tensors, frames=4, batch=2, seed=1):
     caches = [np.zeros((batch, rf.freq, rf.channels), np.float32) for _ in range(rf.num_blocks)]
     got = run(params, keras_step(model), spec, caches)
     want = run(params, lambda s, c: reference_frame(params, tensors, s, c), spec, caches)
+
     def scaled(pairs):
         pairs = list(pairs)
         peak = max(np.abs(w).max() for _, w in pairs)
@@ -144,8 +152,13 @@ def test_hydration_rejects_mismatch_without_partial_load():
 def test_release_names_map_to_module_paths():
     expected = fastenhancer_weight_shapes(FastEnhancerParams())
     release = {onnx: np.zeros(expected[key], np.float32) for onnx, key in FASTENHANCER_T_ONNX_NAMES.items()}
-    release.update({key: np.zeros(shape, np.float32) for key, shape in expected.items()
-                    if key not in FASTENHANCER_T_ONNX_NAMES.values()})
+    release.update(
+        {
+            key: np.zeros(shape, np.float32)
+            for key, shape in expected.items()
+            if key not in FASTENHANCER_T_ONNX_NAMES.values()
+        }
+    )
     release["/Constant_6_output_0"] = np.float32(1e-5)
     assert set(fastenhancer_t_onnx_weights(release)) == set(expected)
     with pytest.raises(ValueError, match="unrecognized"):

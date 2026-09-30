@@ -17,8 +17,7 @@ def normalize(value):
     if isinstance(value, dict):
         if "class_name" in value and "config" in value:
             return {"class_name": value["class_name"], "config": normalize(value["config"])}
-        return {k: normalize(v) for k, v in value.items()
-                if not (k in {"input_axes", "output_axes"} and v is None)}
+        return {k: normalize(v) for k, v in value.items() if not (k in {"input_axes", "output_axes"} and v is None)}
     if isinstance(value, (tuple, list)):
         return [normalize(v) for v in value]
     if isinstance(value, float):

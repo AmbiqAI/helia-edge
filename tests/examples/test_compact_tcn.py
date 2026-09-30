@@ -76,7 +76,11 @@ def exported(tmp_path_factory):
 def test_four_exports_with_manifest(exported):
     manifest = json.loads((exported / "manifest.json").read_text())
     assert {(e["width"], e["precision"]) for e in manifest["exports"]} == {
-        (8, "FP32"), (8, "INT8"), (16, "FP32"), (16, "INT8")}
+        (8, "FP32"),
+        (8, "INT8"),
+        (16, "FP32"),
+        (16, "INT8"),
+    }
     for name, digest in manifest["files"].items():
         assert fixture.sha256((exported / name).read_bytes()) == digest
     assert not [p for p in exported.iterdir() if "golden" in p.name or p.name == "recipe.json"]
@@ -143,6 +147,7 @@ def test_generation_rejects_actual_builder_regression_before_conversion(tmp_path
 
 def test_int8_validator_rejects_non_int8_operand_without_export(exported):
     import flatbuffers
+
     schema = fixture.schema
     retained = exported / "tcn-w8-int8.tflite"
     model = schema.ModelT.InitFromObj(schema.Model.GetRootAsModel(retained.read_bytes(), 0))
@@ -163,7 +168,9 @@ def test_production_guard_accepts_preset_and_template_filters_are_overridden(wid
     changed, config = fixture.build_model(width, tcn)
     fixture.validate_model(changed, width)
     assert all(block["filters"] == width for block in config["blocks"])
-    assert [fixture.array_hash(w) for w in original.get_weights()] == [fixture.array_hash(w) for w in changed.get_weights()]
+    assert [fixture.array_hash(w) for w in original.get_weights()] == [
+        fixture.array_hash(w) for w in changed.get_weights()
+    ]
 
 
 def test_retained_license_metadata_matches_copied_source(tmp_path):
