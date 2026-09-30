@@ -122,6 +122,27 @@ helia-edge export verify exports/manifest.json
   - Otherwise it regenerates every entry and exits 1 if any file's sha256 or size, spec or tensor record differs, and 0 when all match.
   - Exit 3: the manifest is missing or invalid.
 
+## Add an exporter or architecture
+
+`helia_edge.registry` holds the exporters (keyed `"<format>:<backend>"`) and the architectures that recipes build. Built-in entries are `"module:attr"` strings, imported only when used. Another package adds entries through the `helia_edge.plugins` entry-point group, without changes to heliaEDGE:
+
+```toml
+# pyproject.toml of your package
+[project.entry-points."helia_edge.plugins"]
+mypkg = "mypkg.edge:register"
+```
+
+```python
+# mypkg/edge.py
+def register(registry):
+    registry.architectures.add("my_tcn", "mypkg.models:build_my_tcn")
+    registry.exporters.add("litert:torch", "mypkg.export:export_torch_litert")
+```
+
+- **Architecture builders** take `(params, input_shape, num_classes)` and return a Keras model with batch size 1.
+- **Exporters** take `(model, spec, calibration)` and return an `ExportResult`.
+- **Loading:** plugins load once, the first time a key is not found. An unknown key raises `NotRegistered`, a `ValueError` that lists what is registered.
+
 ## Hand off to an Ambiq deployment
 
 The exported model is one part of the deployment. Select the inference runtime and check its operator and precision support before integrating it into firmware. Training backend support does not imply that every model can run on every target.
