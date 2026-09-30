@@ -7,6 +7,7 @@ from tensorflow.lite.python import schema_py_generated as schema
 _FLOAT16 = schema.TensorType.FLOAT16
 _FLOAT32 = schema.TensorType.FLOAT32
 _DEQUANTIZE = schema.BuiltinOperator.DEQUANTIZE
+_FLOAT16_MAX = float(np.finfo(np.float16).max)
 
 
 def to_native_fp16(model_content: bytes) -> bytes:
@@ -16,7 +17,9 @@ def to_native_fp16(model_content: bytes) -> bytes:
     ``DEQUANTIZE`` operators and computes in FLOAT32. This drops each
     FLOAT16 -> FLOAT32 ``DEQUANTIZE``, rewires its consumers to the FLOAT16
     source, and converts every remaining FLOAT32 tensor and constant buffer to
-    FLOAT16. Non-float tensors are unchanged.
+    FLOAT16. Constants outside the float16 range saturate to +/-65504, as in
+    TFLite's float16 optimization. Non-float tensors are unchanged. Signature
+    tensor indices are not remapped.
 
     Args:
         model_content (bytes): Weight-only float16 TFLite flatbuffer.
@@ -30,7 +33,8 @@ def to_native_fp16(model_content: bytes) -> bytes:
         remap: dict[int, int] = {}
         kept = []
         for op in subgraph.operators:
-            code = model.operatorCodes[op.opcodeIndex].builtinCode
+            opcode = model.operatorCodes[op.opcodeIndex]
+            code = max(opcode.builtinCode, opcode.deprecatedBuiltinCode)
             if code == _DEQUANTIZE and subgraph.tensors[op.inputs[0]].type == _FLOAT16:
                 remap[op.outputs[0]] = op.inputs[0]
             else:
@@ -57,8 +61,9 @@ def to_native_fp16(model_content: bytes) -> bytes:
                 continue
             converted.add(tensor.buffer)
             if buffer.data is not None and len(buffer.data) > 0:
-                values = np.frombuffer(bytes(buffer.data), dtype=np.float32).astype(np.float16)
-                buffer.data = list(values.view(np.uint8).tobytes())
+                values = np.frombuffer(bytes(buffer.data), dtype=np.float32)
+                values = np.clip(values, -_FLOAT16_MAX, _FLOAT16_MAX).astype(np.float16)
+                buffer.data = values.view(np.uint8)
 
     builder = flatbuffers.Builder(len(model_content))
     builder.Finish(model.Pack(builder), file_identifier=b"TFL3")

@@ -146,3 +146,11 @@ def test_predict_rejects_native_float16():
             converter.predict(np.zeros((1, 16, 16, 3), np.float32))
     finally:
         converter.cleanup()
+
+
+def test_out_of_range_float32_constants_saturate():
+    inputs = keras.Input((2,), batch_size=1)
+    outputs = keras.ops.minimum(keras.layers.Dense(2)(inputs), 1e5)
+    native = to_native_fp16(convert(keras.Model(inputs, outputs), QuantizationType.FP32))
+    values = np.concatenate([np.frombuffer(raw, np.float16) for dtype, raw in graph(native)[3] if dtype == "FLOAT16"])
+    assert np.isfinite(values).all() and values.max() == np.finfo(np.float16).max

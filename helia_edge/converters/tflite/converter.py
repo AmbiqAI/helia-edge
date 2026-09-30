@@ -28,7 +28,8 @@ from ...models import load_model
 
 
 def _reject_native_fp16(interpreter) -> None:
-    if any(detail["dtype"] == np.float16 for detail in interpreter.get_input_details()):
+    details = interpreter.get_input_details() + interpreter.get_output_details()
+    if any(detail["dtype"] == np.float16 for detail in details):
         raise ValueError("Native float16 models need an engine with float16 kernels; the interpreter cannot run them.")
 
 
