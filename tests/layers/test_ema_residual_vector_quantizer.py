@@ -1,12 +1,10 @@
 """Tests for EmaResidualVectorQuantizer."""
 
+import keras
 import numpy as np
 import pytest
 
-import keras
-
 from helia_edge.layers import EmaResidualVectorQuantizer
-
 
 # ------------------------------------------------------------------ #
 # Fixtures
@@ -112,7 +110,10 @@ def test_commitment_loss_added(rvq):
 def test_ema_updates_codebook():
     """Codebook should change after a training forward pass."""
     layer = EmaResidualVectorQuantizer(
-        num_levels=1, num_embeddings=8, embedding_dim=4, ema_decay=0.9,
+        num_levels=1,
+        num_embeddings=8,
+        embedding_dim=4,
+        ema_decay=0.9,
     )
     layer.build((None, 4))
     cb_before = np.array(layer._codebooks[0])
@@ -127,7 +128,10 @@ def test_ema_updates_codebook():
 def test_no_ema_at_inference():
     """Codebook should NOT change during inference."""
     layer = EmaResidualVectorQuantizer(
-        num_levels=1, num_embeddings=8, embedding_dim=4, ema_decay=0.9,
+        num_levels=1,
+        num_embeddings=8,
+        embedding_dim=4,
+        ema_decay=0.9,
     )
     layer.build((None, 4))
 
@@ -206,7 +210,9 @@ def test_model_fit_integration():
     """EMA RVQ should work inside a simple Model.fit loop."""
     enc = keras.layers.Dense(8)
     rvq = EmaResidualVectorQuantizer(
-        num_levels=2, num_embeddings=16, embedding_dim=8,
+        num_levels=2,
+        num_embeddings=16,
+        embedding_dim=8,
     )
     dec = keras.layers.Dense(4)
 

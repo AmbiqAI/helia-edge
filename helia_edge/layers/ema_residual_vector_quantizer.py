@@ -94,18 +94,9 @@ class EmaResidualVectorQuantizer(keras.layers.Layer):
         self.epsilon = float(epsilon)
 
         # Per-level metric trackers
-        self._lvl_perp = [
-            keras.metrics.Mean(name=f"rvq_l{lvl + 1}_perplexity")
-            for lvl in range(self.M)
-        ]
-        self._lvl_usage = [
-            keras.metrics.Mean(name=f"rvq_l{lvl + 1}_usage")
-            for lvl in range(self.M)
-        ]
-        self._lvl_bpi = [
-            keras.metrics.Mean(name=f"rvq_l{lvl + 1}_bits_per_index")
-            for lvl in range(self.M)
-        ]
+        self._lvl_perp = [keras.metrics.Mean(name=f"rvq_l{lvl + 1}_perplexity") for lvl in range(self.M)]
+        self._lvl_usage = [keras.metrics.Mean(name=f"rvq_l{lvl + 1}_usage") for lvl in range(self.M)]
+        self._lvl_bpi = [keras.metrics.Mean(name=f"rvq_l{lvl + 1}_bits_per_index") for lvl in range(self.M)]
         # Aggregates
         self._perp_mean = keras.metrics.Mean(name="rvq_perplexity_mean")
         self._usage_mean = keras.metrics.Mean(name="rvq_usage_mean")
@@ -180,9 +171,7 @@ class EmaResidualVectorQuantizer(keras.layers.Layer):
 
         # Batch cluster counts and embedding sums
         new_count = keras.ops.sum(one_hot, axis=0)  # (K,)
-        new_weight = keras.ops.matmul(
-            keras.ops.transpose(one_hot), r_flat
-        )  # (K, D)
+        new_weight = keras.ops.matmul(keras.ops.transpose(one_hot), r_flat)  # (K, D)
 
         # EMA update
         updated_count = gamma * self._ema_counts[lvl] + (1 - gamma) * new_count
@@ -249,14 +238,10 @@ class EmaResidualVectorQuantizer(keras.layers.Layer):
             one_hot = keras.ops.one_hot(idx, K)
             probs = keras.ops.mean(one_hot, axis=0)
             eps = keras.ops.convert_to_tensor(1e-10, dtype=self.compute_dtype)
-            log2 = keras.ops.log(
-                keras.ops.convert_to_tensor(2.0, self.compute_dtype)
-            )
+            log2 = keras.ops.log(keras.ops.convert_to_tensor(2.0, self.compute_dtype))
             H = -keras.ops.sum(probs * (keras.ops.log(probs + eps) / log2))
             perp = keras.ops.exp(H * log2)
-            usage = keras.ops.sum(
-                keras.ops.cast(probs > 0, self.compute_dtype)
-            ) / float(K)
+            usage = keras.ops.sum(keras.ops.cast(probs > 0, self.compute_dtype)) / float(K)
 
             self._lvl_perp[lvl].update_state(perp)
             self._lvl_usage[lvl].update_state(usage)
@@ -278,12 +263,7 @@ class EmaResidualVectorQuantizer(keras.layers.Layer):
     @property
     def metrics(self):
         """Expose per-level + aggregate metrics so ``Model.fit`` logs them."""
-        return (
-            self._lvl_perp
-            + self._lvl_usage
-            + self._lvl_bpi
-            + [self._perp_mean, self._usage_mean, self._bpi_sum]
-        )
+        return self._lvl_perp + self._lvl_usage + self._lvl_bpi + [self._perp_mean, self._usage_mean, self._bpi_sum]
 
     # ------------------------------------------------------------------
     # Encode / decode utilities

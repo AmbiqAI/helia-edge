@@ -1,8 +1,9 @@
 """Deterministic resizing; explicit target interpolation and discrete masks."""
 
 import keras
-from .base_augmentation import BaseAugmentation1D, BaseAugmentation2D
+
 from ...utils import helia_export
+from .base_augmentation import BaseAugmentation1D, BaseAugmentation2D
 
 
 def _resize(layer, x, interpolation):

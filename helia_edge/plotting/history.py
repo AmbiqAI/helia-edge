@@ -9,6 +9,7 @@ Functions:
 """
 
 from pathlib import Path
+
 from .._lazy import Extra, optional_imports
 
 with optional_imports(Extra.PLOTTING):

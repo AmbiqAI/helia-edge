@@ -11,13 +11,14 @@ Classes:
 
 """
 
+from functools import lru_cache
+
 import keras
 import numpy as np
 import numpy.typing as npt
-from functools import lru_cache
 
-from .base_augmentation import BaseAugmentation1D
 from ...utils import helia_export
+from .base_augmentation import BaseAugmentation1D
 
 
 @lru_cache(maxsize=128)

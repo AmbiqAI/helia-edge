@@ -62,12 +62,8 @@ class ConfusionMatrix(keras.metrics.Metric):
 
         invalid_true = keras.ops.logical_or(y_true_flat < 0, y_true_flat >= self.num_classes)
         invalid_pred = keras.ops.logical_or(pred_flat < 0, pred_flat >= self.num_classes)
-        has_invalid = keras.ops.logical_or(
-            keras.ops.any(invalid_true), keras.ops.any(invalid_pred)
-        )
-        invalid_message = (
-            f"labels and predictions must be in [0, {self.num_classes - 1}]"
-        )
+        has_invalid = keras.ops.logical_or(keras.ops.any(invalid_true), keras.ops.any(invalid_pred))
+        invalid_message = f"labels and predictions must be in [0, {self.num_classes - 1}]"
         if keras.backend.backend() == "tensorflow":
             import tensorflow as tf
 

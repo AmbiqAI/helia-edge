@@ -63,8 +63,8 @@ import keras
 from pydantic import BaseModel, Field
 
 from ..layers.convolutional import conv2d
-from ..layers.normalization import batch_normalization
 from ..layers.mbconv import MBConvParams, mbconv_block
+from ..layers.normalization import batch_normalization
 from .utils import make_divisible
 
 

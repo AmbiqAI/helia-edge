@@ -1,9 +1,9 @@
 """FastEnhancer config validation and preset resolution without optional backends."""
 
 import os
-from pathlib import Path
 import subprocess
 import sys
+from pathlib import Path
 
 import pytest
 from pydantic import ValidationError
@@ -72,7 +72,7 @@ def test_json_roundtrip():
 
 def test_params_import_without_backends():
     root = Path(__file__).resolve().parents[2]
-    code = '''
+    code = """
 import importlib.abc
 import sys
 class NoBackend(importlib.abc.MetaPathFinder):
@@ -84,6 +84,12 @@ from helia_edge.models import FastEnhancerParams, resolve_fastenhancer
 record = resolve_fastenhancer('fastenhancer_t')
 assert FastEnhancerParams.model_validate_json(record.params.model_dump_json()) == record.params
 assert not any(name in sys.modules for name in ('keras', 'tensorflow', 'torch', 'jax'))
-'''
-    subprocess.run([sys.executable, "-c", code], check=True, cwd=root,
-                   env={**os.environ, "PYTHONPATH": str(root)}, capture_output=True, text=True)
+"""
+    subprocess.run(
+        [sys.executable, "-c", code],
+        check=True,
+        cwd=root,
+        env={**os.environ, "PYTHONPATH": str(root)},
+        capture_output=True,
+        text=True,
+    )

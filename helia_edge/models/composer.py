@@ -18,10 +18,10 @@ import logging
 import keras
 from pydantic import BaseModel, Field
 
-from ..layers.normalization import batch_normalization
-from ..layers.convolutional import conv2d
-from ..layers.squeeze_excite import se_layer
 from ..layers.activations import relu6
+from ..layers.convolutional import conv2d
+from ..layers.normalization import batch_normalization
+from ..layers.squeeze_excite import se_layer
 from .utils import load_model
 
 logger = logging.getLogger(__name__)

@@ -25,19 +25,41 @@ def mlperf_tiny_kws(*, name: str = "mlperf_tiny_kws") -> keras.Model:
     floor-based 24x5 pool). No audio preprocessing or trained weights included.
     """
     inputs = keras.Input(shape=(49, 10, 1), name="features")
-    x = keras.layers.Conv2D(64, (10, 4), strides=(2, 2), padding="same", data_format="channels_last", use_bias=True,
-                            kernel_initializer="glorot_uniform", kernel_regularizer=keras.regularizers.L2(1e-4),
-                            name="stem")(inputs)
+    x = keras.layers.Conv2D(
+        64,
+        (10, 4),
+        strides=(2, 2),
+        padding="same",
+        data_format="channels_last",
+        use_bias=True,
+        kernel_initializer="glorot_uniform",
+        kernel_regularizer=keras.regularizers.L2(1e-4),
+        name="stem",
+    )(inputs)
     x = _bn_relu(x, "stem")
     x = keras.layers.Dropout(0.2, name="stem_dropout")(x)
     for stage in range(1, 5):
         # Serialized reference depthwise kernels use GlorotUniform and no regularizer.
-        x = keras.layers.DepthwiseConv2D((3, 3), padding="same", data_format="channels_last", depth_multiplier=1, use_bias=True,
-                                        depthwise_initializer="glorot_uniform", name=f"block{stage}_dw")(x)
+        x = keras.layers.DepthwiseConv2D(
+            (3, 3),
+            padding="same",
+            data_format="channels_last",
+            depth_multiplier=1,
+            use_bias=True,
+            depthwise_initializer="glorot_uniform",
+            name=f"block{stage}_dw",
+        )(x)
         x = _bn_relu(x, f"block{stage}_dw")
-        x = keras.layers.Conv2D(64, (1, 1), padding="same", data_format="channels_last", use_bias=True,
-                                kernel_initializer="glorot_uniform", kernel_regularizer=keras.regularizers.L2(1e-4),
-                                name=f"block{stage}_pw")(x)
+        x = keras.layers.Conv2D(
+            64,
+            (1, 1),
+            padding="same",
+            data_format="channels_last",
+            use_bias=True,
+            kernel_initializer="glorot_uniform",
+            kernel_regularizer=keras.regularizers.L2(1e-4),
+            name=f"block{stage}_pw",
+        )(x)
         x = _bn_relu(x, f"block{stage}_pw")
     x = keras.layers.Dropout(0.4, name="head_dropout")(x)
     x = keras.layers.AveragePooling2D((25, 5), data_format="channels_last", name="pool")(x)
@@ -53,19 +75,54 @@ def mlperf_tiny_vww(*, name: str = "mlperf_tiny_vww") -> keras.Model:
     MobileNet's zero-padding/ReLU6 variant. No image preprocessing included.
     """
     inputs = keras.Input(shape=(96, 96, 3), name="image")
-    x = keras.layers.Conv2D(8, 3, strides=2, padding="same", data_format="channels_last", use_bias=True,
-                            kernel_initializer="he_normal", kernel_regularizer=keras.regularizers.L2(1e-4),
-                            name="stem")(inputs)
+    x = keras.layers.Conv2D(
+        8,
+        3,
+        strides=2,
+        padding="same",
+        data_format="channels_last",
+        use_bias=True,
+        kernel_initializer="he_normal",
+        kernel_regularizer=keras.regularizers.L2(1e-4),
+        name="stem",
+    )(inputs)
     x = _bn_relu(x, "stem")
-    stages = ((16, 1), (32, 2), (32, 1), (64, 2), (64, 1), (128, 2),
-              (128, 1), (128, 1), (128, 1), (128, 1), (128, 1), (256, 2), (256, 1))
+    stages = (
+        (16, 1),
+        (32, 2),
+        (32, 1),
+        (64, 2),
+        (64, 1),
+        (128, 2),
+        (128, 1),
+        (128, 1),
+        (128, 1),
+        (128, 1),
+        (128, 1),
+        (256, 2),
+        (256, 1),
+    )
     for stage, (filters, stride) in enumerate(stages, 1):
-        x = keras.layers.DepthwiseConv2D(3, strides=stride, padding="same", data_format="channels_last", use_bias=True,
-                                        depthwise_initializer="glorot_uniform", name=f"block{stage}_dw")(x)
+        x = keras.layers.DepthwiseConv2D(
+            3,
+            strides=stride,
+            padding="same",
+            data_format="channels_last",
+            use_bias=True,
+            depthwise_initializer="glorot_uniform",
+            name=f"block{stage}_dw",
+        )(x)
         x = _bn_relu(x, f"block{stage}_dw")
-        x = keras.layers.Conv2D(filters, 1, padding="same", data_format="channels_last", use_bias=True,
-                                kernel_initializer="he_normal", kernel_regularizer=keras.regularizers.L2(1e-4),
-                                name=f"block{stage}_pw")(x)
+        x = keras.layers.Conv2D(
+            filters,
+            1,
+            padding="same",
+            data_format="channels_last",
+            use_bias=True,
+            kernel_initializer="he_normal",
+            kernel_regularizer=keras.regularizers.L2(1e-4),
+            name=f"block{stage}_pw",
+        )(x)
         x = _bn_relu(x, f"block{stage}_pw")
     x = keras.layers.AveragePooling2D((3, 3), data_format="channels_last", name="pool")(x)
     x = keras.layers.Flatten(data_format="channels_last", name="flatten")(x)
@@ -79,18 +136,26 @@ def mlperf_tiny_resnet(*, name: str = "mlperf_tiny_resnet") -> keras.Model:
     Three residual stacks, nine convolutions; projection shortcuts have no
     batch normalization. This is not a generic ResNet18 constructor.
     """
+
     def conv(x, filters, kernel, stride, layer_name):
-        return keras.layers.Conv2D(filters, kernel, strides=stride, padding="same", data_format="channels_last", use_bias=True,
-                                   kernel_initializer="he_normal", kernel_regularizer=keras.regularizers.L2(1e-4),
-                                   name=layer_name)(x)
+        return keras.layers.Conv2D(
+            filters,
+            kernel,
+            strides=stride,
+            padding="same",
+            data_format="channels_last",
+            use_bias=True,
+            kernel_initializer="he_normal",
+            kernel_regularizer=keras.regularizers.L2(1e-4),
+            name=layer_name,
+        )(x)
 
     inputs = keras.Input(shape=(32, 32, 3), name="image")
     x = _bn_relu(conv(inputs, 28, 3, 1, "stem"), "stem")
     for stage, (filters, stride) in enumerate(((28, 1), (56, 2), (112, 2)), 1):
         y = _bn_relu(conv(x, filters, 3, stride, f"stack{stage}_conv1"), f"stack{stage}_conv1")
         y = conv(y, filters, 3, 1, f"stack{stage}_conv2")
-        y = keras.layers.BatchNormalization(axis=-1, momentum=0.99, epsilon=0.001,
-                                             name=f"stack{stage}_conv2_bn")(y)
+        y = keras.layers.BatchNormalization(axis=-1, momentum=0.99, epsilon=0.001, name=f"stack{stage}_conv2_bn")(y)
         if stride == 2:
             x = conv(x, filters, 1, 2, f"stack{stage}_projection")
         x = keras.layers.Add(name=f"stack{stage}_add")([x, y])
@@ -131,7 +196,6 @@ class MlperfTinyModel:
         """Build without resetting session/RNG state or loading/converting weights."""
         if not isinstance(params, MlperfTinyParams):
             params = MlperfTinyParams.model_validate(params)
-        builders = {"kws": mlperf_tiny_kws, "vww": mlperf_tiny_vww,
-                    "resnet": mlperf_tiny_resnet, "ad": mlperf_tiny_ad}
+        builders = {"kws": mlperf_tiny_kws, "vww": mlperf_tiny_vww, "resnet": mlperf_tiny_resnet, "ad": mlperf_tiny_ad}
         build = builders[params.architecture]
         return build() if name is None else build(name=name)

@@ -1,7 +1,7 @@
 """Typed containers for tensor payloads; record metadata stays with the caller."""
 
 from dataclasses import dataclass, field
-from typing import Generic, TypeVar, TypedDict
+from typing import Generic, TypedDict, TypeVar
 
 T = TypeVar("T")
 

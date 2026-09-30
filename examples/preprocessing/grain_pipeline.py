@@ -10,6 +10,7 @@ import numpy as np
 def preprocess_record(record, rng):
     """Apply existing layers with a Grain-owned per-record seed on the CPU."""
     import keras
+
     from helia_edge.layers.preprocessing import FirFilter, Normalization1D, RandomGaussianNoise1D
 
     with keras.device("cpu"):

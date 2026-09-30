@@ -1,4 +1,5 @@
 import keras
+
 from helia_edge.layers.gumbel_softmax_bottleneck import GumbelSoftmaxBottleneck
 
 

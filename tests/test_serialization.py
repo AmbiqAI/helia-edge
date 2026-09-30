@@ -20,11 +20,11 @@ def test_custom_layer_safe_reload(tmp_path, layer_name):
     elif layer_name == "fir":
         from helia_edge.layers.preprocessing import FirFilter
 
-        layer = FirFilter(np.array([.25, .5, .25], dtype=np.float32))
+        layer = FirFilter(np.array([0.25, 0.5, 0.25], dtype=np.float32))
     elif layer_name == "noise":
         from helia_edge.layers.preprocessing import RandomGaussianNoise1D
 
-        layer = RandomGaussianNoise1D(.1, seed=42)
+        layer = RandomGaussianNoise1D(0.1, seed=42)
     else:
         layer = EmaResidualVectorQuantizer(num_levels=1, num_embeddings=4, embedding_dim=2)
     model = keras.Sequential([keras.Input(shape=(3, 2)), layer])

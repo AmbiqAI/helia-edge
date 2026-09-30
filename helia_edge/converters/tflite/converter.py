@@ -12,19 +12,18 @@ Classes:
 
 import io
 import tempfile
-from pathlib import Path
 from enum import StrEnum
+from pathlib import Path
 
 import keras
 import numpy as np
 import numpy.typing as npt
 import pandas as pd
-
 import tensorflow as tf
 
+from ...models import load_model
 from ..cpp import xxd_c_dump
 from .fp16 import to_native_fp16
-from ...models import load_model
 
 
 def _reject_native_fp16(interpreter) -> None:

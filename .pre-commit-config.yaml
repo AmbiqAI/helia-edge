@@ -1,0 +1,40 @@
+# Run with prek (pinned in the ci group); pre-commit reads the same file.
+# pre-commit stage: needs only the ci group.
+# pre-push stage: needs the full environment (uv sync --locked --all-extras --group ci).
+default_install_hook_types: [pre-commit, pre-push]
+repos:
+  - repo: local
+    hooks:
+      - id: ruff-format
+        name: ruff format --check
+        entry: uv run --no-sync ruff format --check
+        language: system
+        types_or: [python, pyi, jupyter]
+        stages: [pre-commit]
+      - id: ruff-check
+        name: ruff check
+        entry: uv run --no-sync ruff check
+        language: system
+        types_or: [python, pyi, jupyter]
+        stages: [pre-commit]
+      - id: uv-lock
+        name: uv lock --check
+        entry: uv lock --check
+        language: system
+        files: ^(pyproject\.toml|uv\.lock)$
+        pass_filenames: false
+        stages: [pre-commit]
+      - id: ty
+        name: ty check
+        entry: uv run --no-sync ty check --error-on-warning
+        language: system
+        pass_filenames: false
+        always_run: true
+        stages: [pre-push]
+      - id: pytest-fast
+        name: pytest (fast set)
+        entry: uv run --no-sync pytest -q tests/test_import_isolation.py tests/test_optional_dependencies.py tests/utils/test_rng.py
+        language: system
+        pass_filenames: false
+        always_run: true
+        stages: [pre-push]

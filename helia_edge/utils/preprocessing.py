@@ -3,12 +3,12 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Iterable, Iterator
-from typing import Any, TYPE_CHECKING
-
-from .sampling import StreamMode
 from numbers import Integral
+from typing import TYPE_CHECKING, Any
 
 import numpy.typing as npt
+
+from .sampling import StreamMode
 
 if TYPE_CHECKING:
     import keras

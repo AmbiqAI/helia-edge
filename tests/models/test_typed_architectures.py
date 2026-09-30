@@ -8,12 +8,18 @@ import pytest
 from pydantic import ValidationError
 
 from helia_edge.models import (
-    MlperfTinyModel, MlperfTinyParams, TcnModel, TcnParams, compact_tcn_params,
-    mlperf_tiny_ad, mlperf_tiny_kws, mlperf_tiny_resnet, mlperf_tiny_vww,
+    MlperfTinyModel,
+    MlperfTinyParams,
+    TcnModel,
+    TcnParams,
+    compact_tcn_params,
+    mlperf_tiny_ad,
+    mlperf_tiny_kws,
+    mlperf_tiny_resnet,
+    mlperf_tiny_vww,
 )
 
-BUILDERS = {"kws": mlperf_tiny_kws, "vww": mlperf_tiny_vww,
-            "resnet": mlperf_tiny_resnet, "ad": mlperf_tiny_ad}
+BUILDERS = {"kws": mlperf_tiny_kws, "vww": mlperf_tiny_vww, "resnet": mlperf_tiny_resnet, "ad": mlperf_tiny_ad}
 
 
 @pytest.mark.parametrize("architecture", BUILDERS)
@@ -37,8 +43,9 @@ def test_family_adapter_preserves_wrapper_config_weights_and_serialization(archi
     np.testing.assert_array_equal(expected, keras.ops.convert_to_numpy(restored(x, training=False)))
 
 
-@pytest.mark.parametrize("config", [{"architecture": "resnet18"}, {"architecture": "kws", "seed": 1},
-                                     {"architecture": "vww", "scale": 0.5}])
+@pytest.mark.parametrize(
+    "config", [{"architecture": "resnet18"}, {"architecture": "kws", "seed": 1}, {"architecture": "vww", "scale": 0.5}]
+)
 def test_fixed_family_rejects_unsupported_fields(config):
     with pytest.raises(ValidationError):
         MlperfTinyModel.model_from_params(config)
@@ -134,8 +141,19 @@ def test_tcn_config_keras_serialization_and_explicit_weights(tmp_path, monkeypat
     np.testing.assert_array_equal(expected, keras.ops.convert_to_numpy(loaded(x, training=False)))
 
 
-@pytest.mark.parametrize("field,value", [("filters", 0), ("depth", 0), ("branch", 0),
-    ("kernel", [1, 0]), ("dilation", -1), ("ex_ratio", 0), ("se_ratio", -1), ("dropout", 1.0)])
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("filters", 0),
+        ("depth", 0),
+        ("branch", 0),
+        ("kernel", [1, 0]),
+        ("dilation", -1),
+        ("ex_ratio", 0),
+        ("se_ratio", -1),
+        ("dropout", 1.0),
+    ],
+)
 def test_tcn_config_rejects_invalid_block_geometry(field, value):
     config = compact_tcn_params().model_dump(mode="json")
     config["blocks"][0][field] = value
@@ -159,8 +177,9 @@ def test_small_tcn_zero_se_disables_attention(explicit_zero, tmp_path):
     params = TcnParams.from_config({"block_type": "sm", "blocks": [block], "output_kernel": [1, 1]})
     model = TcnModel.model_from_params(keras.Input((16, 2)), params, 3)
     assert model.output_shape == (None, 16, 3)
-    assert not any(isinstance(layer, (keras.layers.GlobalAveragePooling2D, keras.layers.Multiply))
-                   for layer in model.layers)
+    assert not any(
+        isinstance(layer, (keras.layers.GlobalAveragePooling2D, keras.layers.Multiply)) for layer in model.layers
+    )
     assert sum(isinstance(layer, keras.layers.DepthwiseConv2D) for layer in model.layers) == 1
     assert sum(isinstance(layer, keras.layers.Conv2D) for layer in model.layers) == 2
     x = np.arange(32, dtype="float32").reshape(1, 16, 2) / 32

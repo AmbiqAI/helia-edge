@@ -12,5 +12,4 @@ Please check [Keras Callbacks](https://keras.io/api/callbacks/) for additional c
 """
 
 from . import tqdm_progress_bar
-
 from .tqdm_progress_bar import TQDMProgressBar

@@ -1,9 +1,9 @@
 """TimePPG against an independent NumPy forward pass in the upstream NCW layout."""
 
 import os
-from pathlib import Path
 import subprocess
 import sys
+from pathlib import Path
 
 import keras
 import numpy as np

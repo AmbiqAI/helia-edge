@@ -1,5 +1,6 @@
-import keras
 from typing import Sequence
+
+import keras
 
 from ..utils import helia_export
 

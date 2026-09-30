@@ -9,8 +9,9 @@ Classes:
 """
 
 import keras
+
+from ...utils import helia_export, parse_factor
 from .base_augmentation import BaseAugmentation1D
-from ...utils import parse_factor, helia_export
 
 
 @helia_export(path="helia_edge.layers.preprocessing.RandomGaussianNoise1D")

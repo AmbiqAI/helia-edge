@@ -1,10 +1,10 @@
 """Load public exports from the same declarations used by type checkers."""
 
+import os
+import sys
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from enum import StrEnum
-import os
-import sys
 from typing import Any
 
 from lazy_loader import attach_stub

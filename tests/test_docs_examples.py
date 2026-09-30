@@ -2,8 +2,8 @@
 
 import json
 import os
-from pathlib import Path
 import re
+from pathlib import Path
 
 import pytest
 
@@ -21,8 +21,9 @@ def test_first_model_walkthrough(tmp_path, monkeypatch):
     namespace = {}
     backend = os.environ.get("KERAS_BACKEND", "tensorflow")
     for block in blocks:
-        block = block.replace('os.environ["KERAS_BACKEND"] = "tensorflow"',
-                              f'os.environ["KERAS_BACKEND"] = "{backend}"')
+        block = block.replace(
+            'os.environ["KERAS_BACKEND"] = "tensorflow"', f'os.environ["KERAS_BACKEND"] = "{backend}"'
+        )
         exec(compile(block, "first-model.mdx", "exec"), namespace)
     assert namespace["model"].output_shape == (1, 240, 2)
     assert (tmp_path / "model.keras").stat().st_size > 0

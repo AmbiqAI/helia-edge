@@ -16,22 +16,19 @@ from .miniresnet_params import MiniResNetV1Params
 
 keras.saving.register_keras_serializable(package="helia_edge")(MiniResNetV1Params)
 
+
 def _block(inputs: keras.KerasTensor, filters: int, *, projection: bool, name: str) -> keras.KerasTensor:
     stride = 2 if projection else 1
     shortcut = inputs
     if projection:
-        shortcut = keras.layers.Conv2D(
-            filters, 1, strides=stride, data_format="channels_last", name=f"{name}_0_conv"
-        )(shortcut)
+        shortcut = keras.layers.Conv2D(filters, 1, strides=stride, data_format="channels_last", name=f"{name}_0_conv")(
+            shortcut
+        )
         shortcut = keras.layers.BatchNormalization(axis=3, epsilon=1.001e-5, name=f"{name}_0_bn")(shortcut)
-    x = keras.layers.Conv2D(
-        filters, 1, strides=stride, data_format="channels_last", name=f"{name}_1_conv"
-    )(inputs)
+    x = keras.layers.Conv2D(filters, 1, strides=stride, data_format="channels_last", name=f"{name}_1_conv")(inputs)
     x = keras.layers.BatchNormalization(axis=3, epsilon=1.001e-5, name=f"{name}_1_bn")(x)
     x = keras.layers.Activation("relu", name=f"{name}_1_relu")(x)
-    x = keras.layers.Conv2D(
-        filters, 3, padding="same", data_format="channels_last", name=f"{name}_2_conv"
-    )(x)
+    x = keras.layers.Conv2D(filters, 3, padding="same", data_format="channels_last", name=f"{name}_2_conv")(x)
     x = keras.layers.BatchNormalization(axis=3, epsilon=1.001e-5, name=f"{name}_2_bn")(x)
     x = keras.layers.Activation("relu", name=f"{name}_2_relu")(x)
     x = keras.layers.Add(name=f"{name}_add")([shortcut, x])
@@ -42,9 +39,7 @@ class MiniResNetV1Model:
     """Build a standard Keras Functional model from typed architecture config."""
 
     @staticmethod
-    def model_from_params(
-        inputs: keras.KerasTensor, params: MiniResNetV1Params, num_classes: int
-    ) -> keras.Model:
+    def model_from_params(inputs: keras.KerasTensor, params: MiniResNetV1Params, num_classes: int) -> keras.Model:
         """Construct an untrained classifier for NHWC spectrogram patches.
 
         Hydration is explicit: ``model.load_weights(checkpoint_path)``. Only
@@ -65,9 +60,7 @@ class MiniResNetV1Model:
             raise ValueError("flatten pooling requires fixed spatial dimensions")
 
         x = keras.layers.ZeroPadding2D(3, data_format="channels_last", name="conv1_pad")(inputs)
-        x = keras.layers.Conv2D(
-            params.base_filters, 7, strides=2, data_format="channels_last", name="conv1_conv"
-        )(x)
+        x = keras.layers.Conv2D(params.base_filters, 7, strides=2, data_format="channels_last", name="conv1_conv")(x)
         x = keras.layers.BatchNormalization(axis=3, epsilon=1.001e-5, name="conv1_bn")(x)
         x = keras.layers.Activation("relu", name="conv1_relu")(x)
         x = keras.layers.ZeroPadding2D(1, data_format="channels_last", name="pool1_pad")(x)

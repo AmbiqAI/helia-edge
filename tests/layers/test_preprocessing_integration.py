@@ -3,7 +3,8 @@
 import keras
 import numpy as np
 import pytest
-from helia_edge.layers.preprocessing import Resizing1D, Resizing2D, RandomCrop1D, AugmentationPipeline
+
+from helia_edge.layers.preprocessing import AugmentationPipeline, RandomCrop1D, Resizing1D, Resizing2D
 
 
 def array(x):

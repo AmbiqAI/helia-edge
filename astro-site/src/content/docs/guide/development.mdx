@@ -44,18 +44,27 @@ that must remain compatible with Keras trees and tuple unpacking. Dictionaries
 remain appropriate for keyed collections and framework-defined serialization.
 Keep comments about constraints or reasoning; put usage and architecture in docs.
 
-## Static checking
+## Checks and git hooks
+
+Checks run through [prek](https://github.com/j178/prek) hooks declared in
+`.pre-commit-config.yaml`. CI runs the same two stages:
 
 ```sh
-uv sync --extra tensorflow --extra torch --extra litert --extra plotting --extra aws --group typing
-uv run ty check --error-on-warning
+uv sync --locked --all-extras --group ci
+uv run prek install                                  # once per clone
+uv run prek run --all-files --hook-stage pre-commit  # ruff format, ruff check, uv lock
+uv run prek run --all-files --hook-stage pre-push    # ty, fast pytest set
 ```
 
-The dedicated typing environment contains both backends for resolving annotations.
+The pre-commit stage needs only the `ci` group. The pre-push stage needs both
+backends to resolve annotations, so run it from the full environment above; CI
+installs CPU-only Torch for it. ruff, ty and prek are pinned exactly in the `ci`
+group, which `dev` includes. pre-commit reads the same configuration if prek is
+unavailable.
+
 Runtime isolation is tested separately. Base, plotting-only, AWS-only and backend
 environments each run their applicable tests; combined environments cover model
-retrieval and visualization. Do not install every extra to qualify a base install. `ty` is pinned in the `typing` group,
-included by `dev` and `ci`, and enforced by the CI typing job.
+retrieval and visualization. Do not install every extra to qualify a base install.
 
 `tool.ty.src.include` lists the current gate: lazy public exports, modernized
 sampling/helpers, patch layers, masked-autoencoder and backend parity helpers.

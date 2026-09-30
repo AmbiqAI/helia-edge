@@ -1,5 +1,5 @@
-import numpy as np
 import keras
+import numpy as np
 
 from helia_edge.metrics import MultiF1Score
 

@@ -12,8 +12,8 @@ Functions:
 """
 
 import gzip
-import os
 import hashlib
+import os
 import pickle
 from pathlib import Path
 from string import Template

@@ -5,10 +5,10 @@ import copy
 import hashlib
 import importlib.metadata
 import json
-from pathlib import Path
 import platform
 import shutil
 import subprocess
+from pathlib import Path
 
 import keras
 import numpy as np
@@ -41,8 +41,18 @@ TCN = {
     "input_norm": "batch",
     "block_type": "sm",
     "blocks": [
-        {"depth": 1, "branch": 1, "filters": 8, "kernel": [1, 3], "dilation": [1, 2**stage], "ex_ratio": 1,
-         "se_ratio": 4, "dropout": None, "norm": "batch", "activation": "relu6"}
+        {
+            "depth": 1,
+            "branch": 1,
+            "filters": 8,
+            "kernel": [1, 3],
+            "dilation": [1, 2**stage],
+            "ex_ratio": 1,
+            "se_ratio": 4,
+            "dropout": None,
+            "norm": "batch",
+            "activation": "relu6",
+        }
         for stage in range(4)
     ],
     "output_kernel": [1, 1],
@@ -73,12 +83,31 @@ def validate_model(model, width):
     fields = {
         "InputLayer": ("batch_shape",),
         "Reshape": ("target_shape",),
-        "DepthwiseConv2D": ("kernel_size", "strides", "padding", "dilation_rate", "depth_multiplier", "use_bias", "activation", "data_format"),
-        "Conv2D": ("filters", "kernel_size", "strides", "padding", "dilation_rate", "use_bias", "activation", "data_format"),
+        "DepthwiseConv2D": (
+            "kernel_size",
+            "strides",
+            "padding",
+            "dilation_rate",
+            "depth_multiplier",
+            "use_bias",
+            "activation",
+            "data_format",
+        ),
+        "Conv2D": (
+            "filters",
+            "kernel_size",
+            "strides",
+            "padding",
+            "dilation_rate",
+            "use_bias",
+            "activation",
+            "data_format",
+        ),
         "BatchNormalization": ("axis", "momentum", "epsilon"),
         "Activation": ("activation",),
         "GlobalAveragePooling2D": ("keepdims", "data_format"),
-        "Multiply": (), "Add": (),
+        "Multiply": (),
+        "Add": (),
     }
 
     def node(kind, values, *inputs):
@@ -118,7 +147,12 @@ def validate_model(model, width):
         inputs = [] if kind == "InputLayer" else layer._inbound_nodes[0].input_tensors
         return node(kind, [config[key] for key in fields[kind]], *(actual(t) for t in inputs))
 
-    if width not in (8, 16) or len(model.outputs) != 1 or actual(model.output) != expected or len(seen) != len(model.layers):
+    if (
+        width not in (8, 16)
+        or len(model.outputs) != 1
+        or actual(model.output) != expected
+        or len(seen) != len(model.layers)
+    ):
         raise ValueError("Source violates compact TCN preset topology/semantics")
 
 
@@ -126,9 +160,13 @@ def retain_license(output):
     """Retain source/fixture licensing; dependency versions are not a license audit."""
     source = Path(__file__).resolve().parents[2] / "LICENSE"
     shutil.copyfile(source, output / "LICENSE")
-    return {"source_spdx": "BSD-3-Clause", "file": "LICENSE", "sha256": sha256(source.read_bytes()),
-            "weights": "synthetic seeded initialization; no third-party trained weights",
-            "dependencies": "versions recorded separately; dependency license audit not provided"}
+    return {
+        "source_spdx": "BSD-3-Clause",
+        "file": "LICENSE",
+        "sha256": sha256(source.read_bytes()),
+        "weights": "synthetic seeded initialization; no third-party trained weights",
+        "dependencies": "versions recorded separately; dependency license audit not provided",
+    }
 
 
 def calibration_inputs(samples):
@@ -139,18 +177,23 @@ def calibration_inputs(samples):
 
 
 def runtime(content):
-    interpreter = Interpreter(model_content=content, num_threads=1,
-                              experimental_op_resolver_type=OpResolverType.BUILTIN_REF)
+    interpreter = Interpreter(
+        model_content=content, num_threads=1, experimental_op_resolver_type=OpResolverType.BUILTIN_REF
+    )
     interpreter.allocate_tensors()
     return interpreter
 
 
 def tensor_info(detail):
     quant = detail["quantization_parameters"]
-    return {"name": detail["name"], "shape": detail["shape"].tolist(),
-            "dtype": np.dtype(detail["dtype"]).name,
-            "scales": quant["scales"].tolist(), "zero_points": quant["zero_points"].tolist(),
-            "quantized_dimension": int(quant["quantized_dimension"])}
+    return {
+        "name": detail["name"],
+        "shape": detail["shape"].tolist(),
+        "dtype": np.dtype(detail["dtype"]).name,
+        "scales": quant["scales"].tolist(),
+        "zero_points": quant["zero_points"].tolist(),
+        "quantized_dimension": int(quant["quantized_dimension"]),
+    }
 
 
 def graph_info(content, precision):
@@ -165,12 +208,22 @@ def graph_info(content, precision):
     for i in range(graph.TensorsLength()):
         tensor = graph.Tensors(i)
         quant = tensor.Quantization()
-        tensors.append({"index": i, "name": tensor.Name().decode(),
-                        "shape": tensor.ShapeAsNumpy().tolist(), "dtype": type_names[tensor.Type()],
-                        "constant": model.Buffers(tensor.Buffer()).DataLength() > 0,
-                        "quantization": {"scales": quant.ScaleAsNumpy().tolist() if quant.ScaleLength() else [],
-                                         "zero_points": quant.ZeroPointAsNumpy().tolist() if quant.ZeroPointLength() else [],
-                                         "quantized_dimension": quant.QuantizedDimension()} if quant else None})
+        tensors.append(
+            {
+                "index": i,
+                "name": tensor.Name().decode(),
+                "shape": tensor.ShapeAsNumpy().tolist(),
+                "dtype": type_names[tensor.Type()],
+                "constant": model.Buffers(tensor.Buffer()).DataLength() > 0,
+                "quantization": {
+                    "scales": quant.ScaleAsNumpy().tolist() if quant.ScaleLength() else [],
+                    "zero_points": quant.ZeroPointAsNumpy().tolist() if quant.ZeroPointLength() else [],
+                    "quantized_dimension": quant.QuantizedDimension(),
+                }
+                if quant
+                else None,
+            }
+        )
     operators = []
     for i in range(graph.OperatorsLength()):
         op = graph.Operators(i)
@@ -180,38 +233,59 @@ def graph_info(content, precision):
         outputs = [int(x) for x in op.OutputsAsNumpy() if x >= 0]
         spatial = None
         if opcode in (schema.BuiltinOperator.DEPTHWISE_CONV_2D, schema.BuiltinOperator.CONV_2D):
-            options = schema.DepthwiseConv2DOptions() if opcode == schema.BuiltinOperator.DEPTHWISE_CONV_2D \
+            options = (
+                schema.DepthwiseConv2DOptions()
+                if opcode == schema.BuiltinOperator.DEPTHWISE_CONV_2D
                 else schema.Conv2DOptions()
+            )
             raw_options = op.BuiltinOptions()
             options.Init(raw_options.Bytes, raw_options.Pos)
-            spatial = {"dilation": [options.DilationHFactor(), options.DilationWFactor()],
-                       "stride": [options.StrideH(), options.StrideW()],
-                       "padding": options.Padding(), "fused_activation": options.FusedActivationFunction()}
-        operators.append({"name": op_names[opcode], "version": code.Version(), "spatial_options": spatial,
-                          "inputs": inputs, "outputs": outputs,
-                          "input_dtypes": [tensors[x]["dtype"] for x in inputs],
-                          "output_dtypes": [tensors[x]["dtype"] for x in outputs]})
+            spatial = {
+                "dilation": [options.DilationHFactor(), options.DilationWFactor()],
+                "stride": [options.StrideH(), options.StrideW()],
+                "padding": options.Padding(),
+                "fused_activation": options.FusedActivationFunction(),
+            }
+        operators.append(
+            {
+                "name": op_names[opcode],
+                "version": code.Version(),
+                "spatial_options": spatial,
+                "inputs": inputs,
+                "outputs": outputs,
+                "input_dtypes": [tensors[x]["dtype"] for x in inputs],
+                "output_dtypes": [tensors[x]["dtype"] for x in outputs],
+            }
+        )
     depthwise = [op for op in operators if op["name"] == "DEPTHWISE_CONV_2D"]
     if len(depthwise) != 4:
         raise ValueError("Export violates compact TCN preset: expected four depthwise stages")
     for index, op in enumerate(depthwise):
         options = op["spatial_options"]
         kernel = tensors[op["inputs"][1]]["shape"]
-        if (options["dilation"] != [1, 2**index] or options["stride"] != [1, 1]
-                or options["padding"] != schema.Padding.SAME or kernel[1:3] != [1, 3]):
+        if (
+            options["dilation"] != [1, 2**index]
+            or options["stride"] != [1, 1]
+            or options["padding"] != schema.Padding.SAME
+            or kernel[1:3] != [1, 3]
+        ):
             raise ValueError("Export violates compact TCN preset kernel/dilation/stride/padding")
     allowed = {"INT8", "INT32"} if precision == "INT8" else {"FLOAT32", "INT32"}
     if precision not in {"INT8", "FP32"} or any(t["dtype"] not in allowed for t in tensors):
         raise ValueError("Unexpected operand dtype (including floating-point in INT8 export)")
-    return {"tensors": tensors, "operators": operators,
-            "compute_contract": "INT8 activations/weights with integer bias/shape operands" if precision == "INT8"
-            else "FP32 data operands with integer shape operands",
-            "target_accumulator_and_dispatch": "not measured"}
+    return {
+        "tensors": tensors,
+        "operators": operators,
+        "compute_contract": "INT8 activations/weights with integer bias/shape operands"
+        if precision == "INT8"
+        else "FP32 data operands with integer shape operands",
+        "target_accumulator_and_dispatch": "not measured",
+    }
 
 
 def infer(interpreter, inputs):
-    inp, = interpreter.get_input_details()
-    out, = interpreter.get_output_details()
+    (inp,) = interpreter.get_input_details()
+    (out,) = interpreter.get_output_details()
     result = []
     for sample in inputs:
         interpreter.set_tensor(inp["index"], sample[None])
@@ -226,22 +300,35 @@ def provenance():
     files += sorted((root / "helia_edge").rglob("*.py"))
     files += [root / "pyproject.toml", root / "uv.lock"]
     dependencies = dict(sorted((d.metadata["Name"], d.version) for d in importlib.metadata.distributions()))
-    return {"git_head": subprocess.check_output(["git", "-C", str(root), "rev-parse", "HEAD"], text=True).strip(),
-            "files": {str(p.relative_to(root)): sha256(p.read_bytes()) for p in files},
-            "python": platform.python_version(), "dependencies": dependencies,
-            "dependencies_sha256": sha256(json.dumps(dependencies, sort_keys=True).encode())}
+    return {
+        "git_head": subprocess.check_output(["git", "-C", str(root), "rev-parse", "HEAD"], text=True).strip(),
+        "files": {str(p.relative_to(root)): sha256(p.read_bytes()) for p in files},
+        "python": platform.python_version(),
+        "dependencies": dependencies,
+        "dependencies_sha256": sha256(json.dumps(dependencies, sort_keys=True).encode()),
+    }
 
 
 def generate(output, calibration_samples=32):
     calibration = calibration_inputs(calibration_samples)
     output.mkdir(parents=True, exist_ok=False)
     np.save(output / "calibration.npy", calibration, allow_pickle=False)
-    manifest = {"schema_version": 2, "kind": "seeded synthetic models and exports; no trained task-quality claim",
-                "state": "stateless same-padding whole windows; no streaming claim",
-                "source": provenance(), "license": retain_license(output),
-                "preset": {"seed": SEED, "input_shape": list(INPUT_SHAPE), "num_classes": NUM_CLASSES,
-                           "calibration_samples": calibration_samples, "tcn": TCN},
-                "calibration_sample_hashes": list(map(array_hash, calibration)), "exports": []}
+    manifest = {
+        "schema_version": 2,
+        "kind": "seeded synthetic models and exports; no trained task-quality claim",
+        "state": "stateless same-padding whole windows; no streaming claim",
+        "source": provenance(),
+        "license": retain_license(output),
+        "preset": {
+            "seed": SEED,
+            "input_shape": list(INPUT_SHAPE),
+            "num_classes": NUM_CLASSES,
+            "calibration_samples": calibration_samples,
+            "tcn": TCN,
+        },
+        "calibration_sample_hashes": list(map(array_hash, calibration)),
+        "exports": [],
+    }
     for width in WIDTHS:
         model, config = build_model(width)
         validate_model(model, width)
@@ -253,17 +340,21 @@ def generate(output, calibration_samples=32):
             stem = f"tcn-w{width}-{precision.lower()}"
             converter = LiteRTKerasConverter(model)
             try:
-                content = converter.convert(calibration, quantization=QuantizationType(precision),
-                                            mode=ConversionType.CONCRETE, strict=True,
-                                            io_type="int8" if precision == "INT8" else "float32")
+                content = converter.convert(
+                    calibration,
+                    quantization=QuantizationType(precision),
+                    mode=ConversionType.CONCRETE,
+                    strict=True,
+                    io_type="int8" if precision == "INT8" else "float32",
+                )
             finally:
                 converter.cleanup()
             (output / f"{stem}.tflite").write_bytes(content)
             graph = graph_info(content, precision)
             write_json(output / f"{stem}-graph.json", graph)
             interpreter = runtime(content)
-            inp, = interpreter.get_input_details()
-            out, = interpreter.get_output_details()
+            (inp,) = interpreter.get_input_details()
+            (out,) = interpreter.get_output_details()
             expected_dtype = np.int8 if precision == "INT8" else np.float32
             if inp["dtype"] != expected_dtype or out["dtype"] != expected_dtype:
                 raise ValueError("Export interface dtype mismatch")
@@ -277,13 +368,24 @@ def generate(output, calibration_samples=32):
                 fp32_error = float(np.max(np.abs(exported - reference)))
             if weight_hashes != list(map(array_hash, model.get_weights())):
                 raise ValueError("Conversion changed the source weights")
-            manifest["exports"].append({"width": width, "precision": precision,
-                "model": f"{stem}.tflite", "model_sha256": sha256(content), "model_bytes": len(content),
-                "graph": f"{stem}-graph.json", "config": f"w{width}-config.json", "weights": f"w{width}-weights.npz",
-                "weight_array_hashes": weight_hashes, "parameter_count": model.count_params(),
-                "input": tensor_info(inp), "output": tensor_info(out),
-                "output_bytes": int(np.prod(out["shape"])) * np.dtype(out["dtype"]).itemsize,
-                "fp32_keras_max_abs_error_on_calibration": fp32_error})
+            manifest["exports"].append(
+                {
+                    "width": width,
+                    "precision": precision,
+                    "model": f"{stem}.tflite",
+                    "model_sha256": sha256(content),
+                    "model_bytes": len(content),
+                    "graph": f"{stem}-graph.json",
+                    "config": f"w{width}-config.json",
+                    "weights": f"w{width}-weights.npz",
+                    "weight_array_hashes": weight_hashes,
+                    "parameter_count": model.count_params(),
+                    "input": tensor_info(inp),
+                    "output": tensor_info(out),
+                    "output_bytes": int(np.prod(out["shape"])) * np.dtype(out["dtype"]).itemsize,
+                    "fp32_keras_max_abs_error_on_calibration": fp32_error,
+                }
+            )
     manifest["files"] = {p.name: sha256(p.read_bytes()) for p in sorted(output.iterdir()) if p.is_file()}
     write_json(output / "manifest.json", manifest)
     return manifest

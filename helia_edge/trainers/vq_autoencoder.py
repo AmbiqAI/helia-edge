@@ -1,5 +1,7 @@
 from __future__ import annotations
+
 import keras
+
 from helia_edge.layers.vector_quantizer import VectorQuantizer
 
 

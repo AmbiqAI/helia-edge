@@ -1,5 +1,5 @@
-import pytest
 import keras
+import pytest
 
 from helia_edge.metrics.flops import get_flops
 

@@ -56,8 +56,8 @@ import keras
 from pydantic import BaseModel, Field
 
 from ..layers import se_layer
-from ..layers.normalization import batch_normalization
 from ..layers.convolutional import conv2d
+from ..layers.normalization import batch_normalization
 
 
 class MobileOneBlockParams(BaseModel):

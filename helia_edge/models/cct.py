@@ -17,9 +17,9 @@ Functions:
 
 from typing import Callable, cast
 
-from pydantic import BaseModel, Field
-import numpy as np
 import keras
+import numpy as np
+from pydantic import BaseModel, Field
 
 
 class CCTParams(BaseModel):

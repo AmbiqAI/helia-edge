@@ -19,7 +19,7 @@ REFERENCES = json.loads((ROOT / "tests/fixtures/mlperf-tiny-reference.json").rea
 
 def graph(content):
     model = schema.ModelT.InitFromObj(schema.Model.GetRootAsModel(content, 0))
-    subgraph, = model.subgraphs
+    (subgraph,) = model.subgraphs
     codes = {v: k for k, v in vars(schema.BuiltinOperator).items() if isinstance(v, int)}
     producers = {int(i): "input" for i in subgraph.inputs}
     result = []
@@ -27,10 +27,15 @@ def graph(content):
         code = model.operatorCodes[op.opcodeIndex]
         name = codes[max(code.builtinCode, code.deprecatedBuiltinCode)]
         inputs = [int(i) for i in op.inputs if i >= 0]
-        result.append({"op": name, "inputs": [producers[i] for i in inputs if i in producers],
-                       "output_shapes": [subgraph.tensors[i].shape.tolist() for i in op.outputs],
-                       "parameter_shapes": [subgraph.tensors[i].shape.tolist() for i in inputs if i not in producers],
-                       "options": vars(op.builtinOptions) if op.builtinOptions else None})
+        result.append(
+            {
+                "op": name,
+                "inputs": [producers[i] for i in inputs if i in producers],
+                "output_shapes": [subgraph.tensors[i].shape.tolist() for i in op.outputs],
+                "parameter_shapes": [subgraph.tensors[i].shape.tolist() for i in inputs if i not in producers],
+                "options": vars(op.builtinOptions) if op.builtinOptions else None,
+            }
+        )
         for index in op.outputs:
             producers[int(index)] = len(result) - 1
     return result
@@ -38,9 +43,20 @@ def graph(content):
 
 def topology(operators):
     # Quantized-bias/quantization flags and opcode versions are precision/runtime-specific.
-    fields = {"padding", "strideW", "strideH", "filterWidth", "filterHeight", "dilationWFactor",
-              "dilationHFactor", "depthMultiplier", "fusedActivationFunction", "beta", "keepNumDims",
-              "weightsFormat"}
+    fields = {
+        "padding",
+        "strideW",
+        "strideH",
+        "filterWidth",
+        "filterHeight",
+        "dilationWFactor",
+        "dilationHFactor",
+        "depthMultiplier",
+        "fusedActivationFunction",
+        "beta",
+        "keepNumDims",
+        "weightsFormat",
+    }
 
     def removable_flatten(index):
         op = operators[index]
@@ -48,8 +64,9 @@ def topology(operators):
             return False
         incoming = operators[op["inputs"][0]]["output_shapes"]
         outgoing = op["output_shapes"]
-        return len(incoming) == len(outgoing) == 1 and incoming[0][:3] == [1, 1, 1] \
-            and outgoing[0] == [1, incoming[0][-1]]
+        return (
+            len(incoming) == len(outgoing) == 1 and incoming[0][:3] == [1, 1, 1] and outgoing[0] == [1, incoming[0][-1]]
+        )
 
     def node(index):
         if index == "input":
@@ -62,8 +79,7 @@ def topology(operators):
         if op["op"] == "FULLY_CONNECTED" and len(parameters) == 1:
             parameters.append([op["output_shapes"][0][-1]])
         options = {key: value for key, value in (op["options"] or {}).items() if key in fields}
-        return (op["op"], op["output_shapes"], parameters, options,
-                tuple(node(i) for i in op["inputs"]))
+        return (op["op"], op["output_shapes"], parameters, options, tuple(node(i) for i in op["inputs"]))
 
     return sum(not removable_flatten(i) for i in range(len(operators))), node(len(operators) - 1)
 

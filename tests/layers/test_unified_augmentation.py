@@ -3,13 +3,14 @@
 import keras
 import numpy as np
 import pytest
+
 from helia_edge.layers.preprocessing import (
+    BaseAugmentation1D,
+    FirFilter,
+    Normalization1D,
     RandomCrop1D,
     RandomCrop2D,
     RandomFlip2D,
-    BaseAugmentation1D,
-    Normalization1D,
-    FirFilter,
     RandomGaussianNoise1D,
     Sample,
 )
