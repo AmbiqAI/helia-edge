@@ -32,8 +32,8 @@ def check_calibration(spec: ExportSpec, calibration: npt.NDArray | None, input_s
         raise ValueError(f"Calibration shape {calibration.shape} does not match model input {tuple(input_shape)}")
     if calibration.shape[0] == 0:
         raise ValueError("Calibration data is empty")
-    fixed = all(d is None or d == c for c, d in zip(calibration.shape[1:], input_shape[1:], strict=False))
-    if calibration.ndim != len(input_shape) or not fixed:
+    fixed = all(d is None or d == c for c, d in zip(calibration.shape[1:], input_shape[1:], strict=True))
+    if not fixed:
         raise ValueError(f"Calibration shape {calibration.shape} does not match model input {tuple(input_shape)}")
     if not np.isfinite(calibration).all():
         raise ValueError("Calibration data contains NaN or infinity")
@@ -58,13 +58,13 @@ def export_model(model, spec: ExportSpec, calibration: npt.NDArray | None = None
         ValueError: If the format is unknown, the model has more than one input, or the calibration
             data is invalid.
     """
+    if spec.format != "litert":
+        raise ValueError(f"Unknown export format {spec.format!r}; available: 'litert'")
     try:
         import keras
     except ModuleNotFoundError as exc:
         raise ImportError("export_model requires Keras with TensorFlow. Install helia-edge[litert].") from exc
 
-    if spec.format != "litert":
-        raise ValueError(f"Unknown export format {spec.format!r}; available: 'litert'")
     backend = keras.backend.backend()
     if backend != "tensorflow":
         raise BackendUnavailable(

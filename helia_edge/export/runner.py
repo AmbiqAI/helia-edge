@@ -19,8 +19,9 @@ def _litert_interpreter():
 class LiteRTRunner:
     """Run a single-input, single-output ``.tflite`` model one sample at a time.
 
-    Native float16 graphs run when the runtime has float16 kernels for every operator; otherwise
-    the runtime's error is raised unchanged.
+    The input tensor is resized to each sample's shape along the model's dynamic dimensions only;
+    fixed dimensions must match. Native float16 graphs run when the runtime has float16 kernels for
+    every operator; otherwise the runtime's error is raised unchanged.
 
     Args:
         content: Model flatbuffer bytes.
@@ -46,6 +47,9 @@ class LiteRTRunner:
             raise ValueError(f"Input dtype {x.dtype} does not match the model input {np.dtype(self.input['dtype'])}")
         outputs = []
         for sample in x:
+            if tuple(self.interpreter.get_input_details()[0]["shape"]) != (1, *sample.shape):
+                self.interpreter.resize_tensor_input(self.input["index"], (1, *sample.shape), strict=True)
+                self.interpreter.allocate_tensors()
             self.interpreter.set_tensor(self.input["index"], sample[None])
             self.interpreter.invoke()
             outputs.append(self.interpreter.get_tensor(self.output["index"])[0])
