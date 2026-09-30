@@ -1,7 +1,8 @@
 """Train with the Torch backend, export with the TensorFlow backend, and compare.
 
 train  (KERAS_BACKEND=torch):      fit seeded models briefly; save weights, params and Torch outputs.
-export (KERAS_BACKEND=tensorflow): rebuild from params, load weights, compare Keras and LiteRT outputs.
+export (KERAS_BACKEND=tensorflow): rebuild from params, load weights, compare Keras and LiteRT outputs;
+                                   --report FILE also writes the differences and bounds as JSON.
 run: both halves in separate processes, given one Python for each backend.
 """
 
@@ -25,10 +26,10 @@ SEED = 20261001
 SAMPLES = 16
 
 # Largest |output difference| accepted against the Torch-trained model's own outputs. Observed with
-# TensorFlow 2.21, Torch 2.14 and ai-edge-litert 2.2: Keras <= 2e-7, LiteRT fp32 <= 2e-7, float16-stored
+# TensorFlow 2.21, Torch 2.14 and ai-edge-litert 2.2: Keras <= 1.1e-7, LiteRT fp32 <= 9e-8, float16-stored
 # weights <= 3.2e-4 and a8w8 (calibrated on the compared inputs) <= 9e-3. The float bounds keep at least a
 # 6x margin; the a8w8 bound keeps 2x and rejects untrained weights for the TCN and MiniResNet models
-# (errors >= 0.47), but not for KWS, whose untrained a8w8 error is only 5e-3.
+# (errors >= 0.4), but not for KWS, whose untrained a8w8 error is about 5e-3.
 TOLERANCE = {"keras": 1e-5, "fp32": 1e-5, "fp32-w16": 2e-3, "a8w8": 2e-2}
 # Fresh (untrained) weights must differ from the trained outputs by more than this (10x the Keras
 # bound; observed >= 4e-3), so the data and training are strong enough to expose a skipped load.
@@ -120,17 +121,14 @@ def export(source: Path, report: Path | None):
         }
         # LiteRT runs on its reference kernels, the convention for benchmark goldens. Its XNNPACK delegate
         # (ai-edge-litert 2.2) cannot prepare the compact TCN at a8w8, with integer or float I/O.
-        for precision in ("fp32", "fp32-w16"):
-            result = export_model(model, ExportSpec(precision=precision, io_dtype="float32", mode="concrete"))
-            row[precision] = float(
-                np.abs(LiteRTRunner(result.content, reference_kernels=True).predict(x) - expected).max()
-            )
-        quantized = export_model(model, ExportSpec(precision="a8w8", io_dtype="int8", mode="concrete"), x)
-        y = LiteRTRunner(quantized.content, reference_kernels=True).predict(x)
-        if y.shape != expected.shape:
-            failures.append(f"{name}: a8w8 output shape {y.shape} differs from {expected.shape}")
-            y = np.full(expected.shape, np.inf, np.float32)
-        row["a8w8"] = float(np.abs(y - expected).max())
+        for precision, io_dtype in (("fp32", "float32"), ("fp32-w16", "float32"), ("a8w8", "int8")):
+            spec = ExportSpec(precision=precision, io_dtype=io_dtype, mode="concrete")
+            result = export_model(model, spec, x if precision == "a8w8" else None)
+            y = LiteRTRunner(result.content, reference_kernels=True).predict(x)
+            if y.shape != expected.shape:
+                failures.append(f"{name}: {precision} output shape {y.shape} differs from {expected.shape}")
+                y = np.full(expected.shape, np.inf, np.float32)
+            row[precision] = float(np.abs(y - expected).max())
         results[name] = row
         if fresh <= SENSITIVITY:
             failures.append(f"{name}: fresh weights already match within {fresh:.2e}; the check is not sensitive")

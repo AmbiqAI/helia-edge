@@ -111,9 +111,11 @@ jobs:
         with:
           name: mae-${{ matrix.backend }}
           path: ${{ runner.temp }}/mae-evidence.npz
-      - if: matrix.backend == 'torch' && matrix.python == '3.12'
+      - name: Train cross-backend export models
+        if: matrix.backend == 'torch' && matrix.python == '3.12'
         run: uv run --no-sync python tests/export/cross_backend_export.py train --output '${{ runner.temp }}/cross-backend'
-      - if: matrix.backend == 'torch' && matrix.python == '3.12'
+      - name: Upload cross-backend export models
+        if: matrix.backend == 'torch' && matrix.python == '3.12'
         uses: actions/upload-artifact@v4
         with:
           name: cross-backend-torch
