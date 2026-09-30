@@ -43,6 +43,22 @@ def test_int8_export_encodes_and_decodes(model, x):
     np.testing.assert_allclose(y, model.predict(x, verbose=0), atol=0.1)
 
 
+def test_int8_encode_saturates(model, x):
+    runner = LiteRTRunner(
+        export_model(model, ExportSpec(precision="a8w8", io_dtype="int8", mode="concrete"), x).content
+    )
+    encoded = runner.encode(np.stack([np.full((8, 8, 2), 1e6, np.float32), np.full((8, 8, 2), -1e6, np.float32)]))
+    assert encoded[0].min() == 127 and encoded[1].max() == -128
+
+
+def test_int16_export_runs(model, x):
+    runner = LiteRTRunner(
+        export_model(model, ExportSpec(precision="a16w8", io_dtype="int16", mode="concrete"), x).content
+    )
+    assert runner.encode(x).dtype == np.int16
+    np.testing.assert_allclose(runner.predict(x), model.predict(x, verbose=0), atol=0.05)
+
+
 def test_reference_kernels_agree_with_optimized_kernels_on_int8(model, x):
     content = export_model(model, ExportSpec(precision="a8w8", io_dtype="int8", mode="concrete"), x).content
     reference, optimized = LiteRTRunner(content, reference_kernels=True), LiteRTRunner(content)

@@ -6,11 +6,11 @@ import keras
 import numpy as np
 import pytest
 
-from helia_edge.converters.tflite import ConversionType, QuantizationType, TfLiteKerasConverter
-from helia_edge.export import ExportSpec, IODType, Precision, TensorRole, export_model
-
 if keras.backend.backend() != "tensorflow":
     pytest.skip("LiteRT export runs on the TensorFlow backend", allow_module_level=True)
+
+from helia_edge.converters.tflite import ConversionType, QuantizationType, TfLiteKerasConverter  # noqa: E402
+from helia_edge.export import VALID_IO, ExportSpec, IODType, Precision, TensorRole, export_model  # noqa: E402
 
 LEGACY = {
     Precision.FP32: (QuantizationType.FP32, None, IODType.FLOAT32),
@@ -62,6 +62,48 @@ def test_export_model_matches_the_legacy_converter(model, calibration, precision
     assert result.spec == spec
 
 
+@pytest.mark.parametrize(("precision", "io_dtype"), [(p, d) for p in Precision for d in sorted(VALID_IO[p])])
+def test_exported_io_dtype_is_the_requested_one(model, calibration, precision, io_dtype):
+    data = calibration if precision in (Precision.A8W8, Precision.A16W8) else None
+    result = export_model(model, ExportSpec(precision=precision, io_dtype=io_dtype, mode="concrete"), data)
+    assert [r.dtype for r in (*result.inputs, *result.outputs)] == [io_dtype, io_dtype]
+
+
+@pytest.mark.parametrize(
+    ("quantization", "expected"),
+    [(QuantizationType.INT8, IODType.INT8), (QuantizationType.INT16X8, IODType.FLOAT32)],
+)
+def test_legacy_default_io_types(model, calibration, quantization, expected):
+    from helia_edge.export.litert import tensor_records
+
+    converter = TfLiteKerasConverter(model)
+    try:
+        content = converter.convert(calibration, quantization=quantization, mode=ConversionType.CONCRETE)
+    finally:
+        converter.cleanup()
+    inputs, outputs = tensor_records(content)
+    assert inputs[0].dtype == outputs[0].dtype == expected
+
+
+@pytest.mark.parametrize("strict", [True, False])
+def test_strict_reaches_the_converter(model, calibration, monkeypatch, strict):
+    import tensorflow as tf
+
+    from helia_edge.export import litert
+
+    seen = []
+    convert = litert.convert_litert
+
+    def spy(*args, **kwargs):
+        conversion = convert(*args, **kwargs)
+        seen.append(list(conversion.converter.target_spec.supported_ops))
+        return conversion
+
+    monkeypatch.setattr(litert, "convert_litert", spy)
+    export_model(model, ExportSpec(precision="a8w8", io_dtype="int8", mode="concrete", strict=strict), calibration)
+    assert (tf.lite.OpsSet.TFLITE_BUILTINS in seen[0]) is (not strict)
+
+
 def test_records_describe_quantized_io(model, calibration):
     result = export_model(model, ExportSpec(precision="a8w8", io_dtype="int8", mode="concrete"), calibration)
     (inp,), (out,) = result.inputs, result.outputs
@@ -87,6 +129,48 @@ def test_dynamic_dimensions_calibrate_and_are_recorded():
     calibration = np.random.default_rng(3).standard_normal((4, 10, 3)).astype(np.float32)
     result = export_model(model, ExportSpec(precision="a8w8", io_dtype="int8", mode="keras"), calibration)
     assert result.inputs[0].shape == (1, -1, 3)
+
+
+class FakeDistribution:
+    def __init__(self, root, direct_url):
+        self.version, self.root, self.direct_url = "9.9.9", root, direct_url
+
+    def locate_file(self, name):
+        return self.root / name
+
+    def read_text(self, name):
+        return self.direct_url if name == "direct_url.json" else None
+
+
+@pytest.mark.parametrize(
+    ("layout", "expected"),
+    [
+        ("vcs", ("9.9.9", "abc123")),
+        ("editable", ("9.9.9", None)),
+        ("wheel", ("9.9.9", None)),
+        ("other-tree", ("unknown", None)),
+    ],
+)
+def test_environment_identity_of_installed_distributions(monkeypatch, tmp_path, layout, expected):
+    import importlib.metadata
+    import json
+
+    import helia_edge
+    from helia_edge.export import result
+
+    site, source = tmp_path / "site", tmp_path / "src"
+    imported = source if layout == "editable" else site
+    monkeypatch.setattr(helia_edge, "__file__", str(imported / "helia_edge" / "__init__.py"))
+    direct_url = {
+        "vcs": json.dumps({"url": "https://example.invalid/helia-edge.git", "vcs_info": {"commit_id": "abc123"}}),
+        "editable": json.dumps({"url": f"file://{source}", "dir_info": {"editable": True}}),
+        "wheel": None,
+        "other-tree": None,
+    }[layout]
+    root = tmp_path / "elsewhere" if layout == "other-tree" else site
+    monkeypatch.setattr(importlib.metadata, "distribution", lambda name: FakeDistribution(root, direct_url))
+    env = result.environment_record()
+    assert (env.helia_edge, env.helia_edge_commit) == expected
 
 
 def test_environment_is_unknown_for_an_uninstalled_tree(monkeypatch, tmp_path):
@@ -125,6 +209,7 @@ def test_calibration_is_rejected_for_float_precisions(model, calibration):
         (np.zeros((4, 16, 16), np.float32), "does not match"),
         (np.zeros((4, 8, 16, 3), np.float32), "does not match"),
         (np.full((4, 16, 16, 3), np.nan, np.float32), "NaN or infinity"),
+        (np.array(1.0, np.float32), "does not match"),
         ([[0.0]], "float32"),
     ],
 )
