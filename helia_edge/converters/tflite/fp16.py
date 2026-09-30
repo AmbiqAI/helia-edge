@@ -21,6 +21,7 @@ def to_native_fp16(model_content: bytes) -> bytes:
     TFLite's float16 optimization. Non-float tensors are unchanged. The dropped
     ``DEQUANTIZE`` outputs and operator codes no operator uses are removed, and
     operator, subgraph and signature tensor indices are renumbered to match.
+    Buffers of removed tensors stay in the model; they are empty.
 
     Args:
         model_content (bytes): Weight-only float16 TFLite flatbuffer.
@@ -85,7 +86,8 @@ def _drop_tensors(subgraph, candidates: set[int]) -> dict[int, int]:
     used = set(subgraph.inputs) | set(subgraph.outputs)
     for op in subgraph.operators:
         used.update(op.inputs, op.outputs, [] if op.intermediates is None else op.intermediates)
-    kept = [i for i in range(len(subgraph.tensors)) if i not in candidates - used]
+    dropped = candidates - used
+    kept = [i for i in range(len(subgraph.tensors)) if i not in dropped]
     index = {old: new for new, old in enumerate(kept)}
 
     def renumber(values):
