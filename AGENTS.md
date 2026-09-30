@@ -11,6 +11,8 @@ Keras 3 add-on for training and exporting models to Ambiq edge targets. Full gui
   - `uv run prek run --all-files --hook-stage pre-commit`: ruff format, ruff check, `uv lock --check`.
   - `uv run prek run --all-files --hook-stage pre-push`: `ty check --error-on-warning`, fast pytest set.
 - ruff, ty and prek are pinned exactly in the `ci` group; change a pin in `pyproject.toml` and relock.
+- Export recipes: `helia-edge export run RECIPE.yaml --out DIR`, then `helia-edge export verify DIR/manifest.json`
+  (exit 0 ok, 1 drift, 2 environment mismatch); `helia-edge export schema --kind recipe|manifest`.
 - Backend tests: set `KERAS_BACKEND` (`tensorflow` or `torch`) before importing Keras; see the
   `backend` job in `.github/workflows/ci.yaml` for each backend's test set.
 
