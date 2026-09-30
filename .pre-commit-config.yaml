@@ -9,13 +9,13 @@ repos:
         name: ruff format --check
         entry: uv run --no-sync ruff format --check
         language: system
-        types_or: [python, pyi]
+        types_or: [python, pyi, jupyter]
         stages: [pre-commit]
       - id: ruff-check
         name: ruff check
         entry: uv run --no-sync ruff check
         language: system
-        types_or: [python, pyi]
+        types_or: [python, pyi, jupyter]
         stages: [pre-commit]
       - id: uv-lock
         name: uv lock --check
