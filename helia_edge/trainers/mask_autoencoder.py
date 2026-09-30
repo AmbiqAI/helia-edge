@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import TYPE_CHECKING, Any, NamedTuple, Self, cast
+from typing import TYPE_CHECKING, Any, NamedTuple, Self
 
 import keras
 
 from .._backend import Backend
 from ..utils import helia_export
+from .steps import gradient_step, no_grad, require_backend
 
 if TYPE_CHECKING:
     from .._typing import Array, Tensor
@@ -125,50 +126,18 @@ class MaskedAutoencoder(keras.Model):
         # Nested layers own their metric updates.
         return self.compute_metrics(x, targets, predictions)
 
-    def _tensorflow_train_step(self, x: Array) -> dict[str, Tensor]:
-        import tensorflow as tf
-
-        with tf.GradientTape() as tape:
-            loss, targets, predictions = self.calculate_loss(x)
-            scaled_loss = self.optimizer.scale_loss(loss)
-        variables = self.trainable_weights
-        gradients = tape.gradient(scaled_loss, variables)
-        pairs = [(g, v) for g, v in zip(gradients, variables) if g is not None]
-        self.optimizer.apply_gradients(pairs)
-        return self._update_metrics(loss, targets, predictions, x=x)
-
-    def _torch_train_step(self, x: Array) -> dict[str, Tensor]:
-        import torch
-
-        self.zero_grad()
-        loss, targets, predictions = self.calculate_loss(x)
-        cast(torch.Tensor, self.optimizer.scale_loss(loss)).backward()
-        variables = self.trainable_weights
-        pairs = [(v.value.grad, v) for v in variables if v.value.grad is not None]
-        with torch.no_grad():
-            self.optimizer.apply([g for g, _ in pairs], [v for _, v in pairs])
-            return self._update_metrics(loss, targets, predictions, x=x)
-
     def train_step(self, data: Any) -> dict[str, Tensor]:
         x = self._inputs(data)
-        backend = keras.backend.backend()
-        if backend == Backend.TENSORFLOW:
-            return self._tensorflow_train_step(x)
-        if backend == Backend.TORCH:
-            return self._torch_train_step(x)
-        raise NotImplementedError(f"MaskedAutoencoder training does not support the {backend!r} backend.")
+        require_backend("MaskedAutoencoder training", (Backend.TENSORFLOW, Backend.TORCH))
+        loss, targets, predictions = gradient_step(self, lambda: self.calculate_loss(x))
+        with no_grad():
+            return self._update_metrics(loss, targets, predictions, x=x)
 
     def test_step(self, data: Any) -> dict[str, Tensor]:
         x = self._inputs(data)
-        backend = keras.backend.backend()
-        if backend == Backend.TORCH:
-            import torch
-
-            with torch.no_grad():
-                return self._update_metrics(*self.calculate_loss(x, test=True), x=x)
-        if backend == Backend.TENSORFLOW:
+        require_backend("MaskedAutoencoder evaluation", (Backend.TENSORFLOW, Backend.TORCH))
+        with no_grad():
             return self._update_metrics(*self.calculate_loss(x, test=True), x=x)
-        raise NotImplementedError(f"MaskedAutoencoder evaluation does not support the {backend!r} backend.")
 
     def get_config(self) -> dict[str, Any]:
         config = super().get_config()

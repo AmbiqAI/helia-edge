@@ -12,6 +12,7 @@ import keras
 import tensorflow as tf
 
 from ..utils import convert_inputs_to_tf_dataset, helia_export
+from .steps import require_backend
 
 
 @helia_export(path="helia_edge.trainers.ContrastiveTrainer")
@@ -279,20 +280,12 @@ class ContrastiveTrainer(keras.Model):
         return {metric.name: metric.result() for metric in self.metrics}
 
     def train_step(self, data):
-        if keras.backend.backend() == "tensorflow":
-            return self._tensorflow_train_step(data)
-        elif keras.backend.backend() == "jax":
-            raise NotImplementedError("JAX backend is not supported.")
-        elif keras.backend.backend() == "torch":
-            raise NotImplementedError("PyTorch backend is not supported.")
+        require_backend(f"{type(self).__name__} training", ("tensorflow",))
+        return self._tensorflow_train_step(data)
 
     def test_step(self, data):
-        if keras.backend.backend() == "tensorflow":
-            return self._tensorflow_test_step(data)
-        elif keras.backend.backend() == "jax":
-            raise NotImplementedError("JAX backend is not supported.")
-        elif keras.backend.backend() == "torch":
-            raise NotImplementedError("PyTorch backend is not supported.")
+        require_backend(f"{type(self).__name__} evaluation", ("tensorflow",))
+        return self._tensorflow_test_step(data)
 
     def call(self, inputs):
         raise NotImplementedError("ContrastiveTrainer.call() is not implemented - please call your model directly.")

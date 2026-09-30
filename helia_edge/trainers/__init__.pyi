@@ -3,6 +3,7 @@ from . import distiller as distiller
 from . import gs_autoencoder as gs_autoencoder
 from . import mask_autoencoder as mask_autoencoder
 from . import simclr as simclr
+from . import steps as steps
 from . import vq_autoencoder as vq_autoencoder
 from .contrastive import ContrastiveTrainer as ContrastiveTrainer
 from .distiller import Distiller as Distiller
@@ -11,4 +12,8 @@ from .mask_autoencoder import MaskedAutoencoder as MaskedAutoencoder
 from .mask_autoencoder import Reconstruction as Reconstruction
 from .mask_autoencoder import ReconstructionLoss as ReconstructionLoss
 from .simclr import SimCLRTrainer as SimCLRTrainer
+from .steps import NotSupported as NotSupported
+from .steps import gradient_step as gradient_step
+from .steps import no_grad as no_grad
+from .steps import require_backend as require_backend
 from .vq_autoencoder import VQAutoencoder as VQAutoencoder
