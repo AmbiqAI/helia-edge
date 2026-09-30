@@ -30,6 +30,10 @@ Python 3.12.3 is the minimum. TensorFlow is tested on 3.12–3.13 and Torch on
 The MAE parity fixture and comparison helper live in `tests/trainers/`. CI uses
 them to check forward values, gradients and optimizer updates across isolated
 backends. They are regression infrastructure, not performance measurements.
+`tests/export/cross_backend_export.py` trains models with the Torch backend and
+exports them with the TensorFlow backend; CI runs its two halves in separate jobs.
+Run both locally with `python tests/export/cross_backend_export.py run
+--torch-python <torch env python> --tensorflow-python <tensorflow env python>`.
 
 ## API conventions
 

@@ -127,6 +127,7 @@ include = [
     "tests/typing/*.py",
     "tests/trainers/mae_parity_fixture.py",
     "tests/trainers/compare_mae_backends.py",
+    "tests/export/cross_backend_export.py",
 ]
 
 [tool.ty.rules]
