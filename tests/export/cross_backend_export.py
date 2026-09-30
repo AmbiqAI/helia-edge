@@ -11,6 +11,7 @@ import os
 import subprocess
 import sys
 import tempfile
+import zlib
 from pathlib import Path
 
 os.environ.setdefault("CUDA_VISIBLE_DEVICES", "-1")
@@ -24,13 +25,14 @@ SEED = 20261001
 SAMPLES = 16
 
 # Largest |output difference| accepted against the Torch-trained model's own outputs. Observed with
-# TensorFlow 2.21, Torch 2.14 and ai-edge-litert 2.2: Keras <= 9e-8, LiteRT fp32 <= 2e-7 and
-# float16-stored weights <= 3e-4, so the bounds keep at least a 9x margin.
-TOLERANCE = {"keras": 1e-5, "fp32": 1e-5, "fp32-w16": 2e-3}
+# TensorFlow 2.21, Torch 2.14 and ai-edge-litert 2.2: Keras <= 2e-7, LiteRT fp32 <= 2e-7, float16-stored
+# weights <= 3.2e-4 and a8w8 (calibrated on the compared inputs) <= 9e-3. The float bounds keep at least a
+# 6x margin; the a8w8 bound keeps 2x and rejects untrained weights for the TCN and MiniResNet models
+# (errors >= 0.47), but not for KWS, whose untrained a8w8 error is only 5e-3.
+TOLERANCE = {"keras": 1e-5, "fp32": 1e-5, "fp32-w16": 2e-3, "a8w8": 2e-2}
 # Fresh (untrained) weights must differ from the trained outputs by more than this (10x the Keras
 # bound; observed >= 4e-3), so the data and training are strong enough to expose a skipped load.
 SENSITIVITY = 1e-4
-# LiteRT outputs come from its reference kernels, the convention for benchmark goldens.
 
 
 def models():
@@ -70,7 +72,7 @@ def models():
 
 
 def data(name, shape):
-    rng = np.random.default_rng([SEED, len(name)])
+    rng = np.random.default_rng([SEED, zlib.crc32(name.encode())])
     return rng.standard_normal((SAMPLES, *shape)).astype(np.float32)
 
 
@@ -116,21 +118,23 @@ def export(source: Path, report: Path | None):
             "fresh_weights": fresh,
             "keras": float(np.abs(keras.ops.convert_to_numpy(model(x, training=False)) - expected).max()),
         }
+        # LiteRT runs on its reference kernels, the convention for benchmark goldens. Its XNNPACK delegate
+        # (ai-edge-litert 2.2) cannot prepare the compact TCN at a8w8, with integer or float I/O.
         for precision in ("fp32", "fp32-w16"):
             result = export_model(model, ExportSpec(precision=precision, io_dtype="float32", mode="concrete"))
             row[precision] = float(
                 np.abs(LiteRTRunner(result.content, reference_kernels=True).predict(x) - expected).max()
             )
         quantized = export_model(model, ExportSpec(precision="a8w8", io_dtype="int8", mode="concrete"), x)
-        # Reference kernels: the XNNPACK delegate in ai-edge-litert 2.2 cannot prepare the int8 TCN graph.
         y = LiteRTRunner(quantized.content, reference_kernels=True).predict(x)
-        row["a8w8_runs"] = bool(y.shape == expected.shape and np.isfinite(y).all())
+        if y.shape != expected.shape:
+            failures.append(f"{name}: a8w8 output shape {y.shape} differs from {expected.shape}")
+            y = np.full(expected.shape, np.inf, np.float32)
+        row["a8w8"] = float(np.abs(y - expected).max())
         results[name] = row
         if fresh <= SENSITIVITY:
             failures.append(f"{name}: fresh weights already match within {fresh:.2e}; the check is not sensitive")
         failures += [f"{name}: {k} differs by {row[k]:.2e} > {t:.0e}" for k, t in TOLERANCE.items() if row[k] > t]
-        if not row["a8w8_runs"]:
-            failures.append(f"{name}: a8w8 export did not produce finite outputs of the expected shape")
     print(json.dumps(results, indent=1))
     if report:
         report.write_text(
