@@ -1,11 +1,11 @@
 """Architectures an export recipe can build, with one builder signature.
 
 Every builder takes ``(params, input_shape, num_classes)`` and returns an untrained Keras model
-with batch size 1. Recipes name architectures through ``BUILTIN_ARCHITECTURES``; entries are
-``"module:attr"`` strings, so nothing is imported until a recipe uses one.
+with batch size 1. ``BUILTIN_ARCHITECTURES`` holds the built-in entries of
+``helia_edge.registry.architectures`` as ``"module:attr"`` strings, so nothing is imported until a
+recipe uses one; other packages add architectures through the registry.
 """
 
-import importlib
 from collections.abc import Callable, Mapping
 from typing import Any
 
@@ -21,11 +21,14 @@ Builder = Callable[[Mapping[str, Any], tuple[int, ...] | None, int | None], Any]
 
 
 def resolve_architecture(name: str) -> Builder:
-    """Return the builder registered for ``name``."""
-    if name not in BUILTIN_ARCHITECTURES:
-        raise ValueError(f"Unknown architecture {name!r}; available: {sorted(BUILTIN_ARCHITECTURES)}")
-    module, attr = BUILTIN_ARCHITECTURES[name].split(":")
-    return getattr(importlib.import_module(module), attr)
+    """Return the builder registered for ``name`` in ``helia_edge.registry.architectures``.
+
+    Raises:
+        NotRegistered: A ``ValueError`` if neither a built-in nor a plugin registers ``name``.
+    """
+    from ..registry import architectures
+
+    return architectures.get(name)
 
 
 def _require(name: str, input_shape, num_classes, *, shape: bool, classes: bool | None) -> None:
