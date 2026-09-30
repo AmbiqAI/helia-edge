@@ -70,7 +70,12 @@ def inspect_model(
     model: Annotated[Path, typer.Argument(help="A .tflite model.", exists=True, dir_okay=False)],
 ) -> None:
     """Print a .tflite model's inputs, outputs and operators as JSON."""
-    from .export.litert import operator_names, tensor_records
+    try:
+        from .export.litert import operator_names, tensor_records
+    except ModuleNotFoundError as exc:
+        raise typer.BadParameter(
+            f"inspect requires TensorFlow ({exc.name} is missing). Install helia-edge[litert]."
+        ) from exc
 
     content = model.read_bytes()
     inputs, outputs = tensor_records(content)
@@ -85,7 +90,7 @@ def inspect_model(
 
 @app.command("info")
 def info() -> None:
-    """Print versions, the selected Keras backend and installed optional capabilities."""
+    """Print versions, the KERAS_BACKEND variable and installed optional capabilities."""
     from .export.result import environment_record
 
     record = environment_record()
@@ -94,7 +99,7 @@ def info() -> None:
         "helia_edge_commit": record.helia_edge_commit,
         "python": record.python,
         "packages": dict(record.packages),
-        "keras_backend": os.environ.get("KERAS_BACKEND", "tensorflow"),
+        "keras_backend_env": os.environ.get("KERAS_BACKEND"),
         "installed": {
             name: importlib.util.find_spec(module) is not None
             for name, module in (

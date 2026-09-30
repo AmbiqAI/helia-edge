@@ -283,3 +283,68 @@ def test_bytes_do_not_depend_on_models_built_earlier_in_the_process(workdir):
     inputs = keras.Input((4,))
     keras.Model(inputs, keras.layers.Dense(2)(keras.layers.Dense(3)(inputs)))  # advances Keras name counters
     assert run_recipe(workdir / "tcn.yaml", workdir / "b").entries[0].model.sha256 == first
+
+
+def test_verify_reports_a_changed_source_as_drift(workdir):
+    run_recipe(ad_recipe(workdir), workdir / "out")
+    data = np.load(workdir / "ad.npy")
+    np.save(workdir / "ad.npy", data + 1)
+    report = verify_manifest(workdir / "out" / "manifest.json")
+    assert report.status == "drift" and report.differences[0].startswith("source:")
+
+
+def test_verify_detects_edited_manifest_records(workdir):
+    run_recipe(ad_recipe(workdir), workdir / "out")
+    path = workdir / "out" / "manifest.json"
+    data = json.loads(path.read_text())
+    data["entries"][1]["inputs"][0]["scale"] = 123.0
+    path.write_text(json.dumps(data))
+    report = verify_manifest(path)
+    assert report.status == "drift" and "a8w8: recorded inputs differs from the regenerated one" in report.differences
+
+
+def test_npz_sources_are_recognised_by_content(workdir):
+    (workdir / "tcn.bin").write_bytes((workdir / "tcn.npz").read_bytes())
+    recipe = {
+        "schema": "helia-edge/export@1",
+        "model": {
+            "kind": "params_seed",
+            "architecture": "tcn",
+            "params": TCN,
+            "input_shape": [32, 4],
+            "num_classes": 2,
+            "seed": 1,
+        },
+        "reference": {"source": array_source(workdir / "tcn.bin", "x")},
+        "exports": [{"name": "fp32", "precision": "fp32", "io_dtype": "float32", "mode": "keras"}],
+    }
+    write(workdir / "tcn.yaml", recipe)
+    assert run_recipe(workdir / "tcn.yaml", workdir / "out").entries[0].reference is not None
+
+
+def test_multi_input_keras_files_are_refused_clearly(workdir):
+    a, b = keras.Input((4,), batch_size=1), keras.Input((4,), batch_size=1)
+    keras.Model([a, b], keras.layers.Add()([a, b])).save(workdir / "two.keras")
+    write(
+        workdir / "two.yaml",
+        {
+            "schema": "helia-edge/export@1",
+            "model": {"kind": "keras_file", "file": path_source(workdir / "two.keras")},
+            "exports": [{"name": "fp32", "precision": "fp32", "io_dtype": "float32", "mode": "concrete"}],
+        },
+    )
+    with pytest.raises(ValueError, match="single-input"):
+        run_recipe(workdir / "two.yaml", workdir / "out")
+
+
+def test_only_import_selects_the_imported_model(workdir):
+    manifest = run_recipe(ad_recipe(workdir), workdir / "src", only=["fp32"])
+    (workdir / "m.tflite").write_bytes((workdir / "src" / manifest.entries[0].model.path).read_bytes())
+    write(
+        workdir / "i.yaml",
+        {
+            "schema": "helia-edge/export@1",
+            "model": {"kind": "tflite_import", "file": path_source(workdir / "m.tflite")},
+        },
+    )
+    assert [e.name for e in run_recipe(workdir / "i.yaml", workdir / "i", only=["import"]).entries] == ["import"]

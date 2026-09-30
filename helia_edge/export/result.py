@@ -38,6 +38,7 @@ class EnvironmentRecord:
     helia_edge: str
     helia_edge_commit: str | None
     python: str
+    platform: str
     packages: tuple[tuple[str, str | None], ...]
 
 
@@ -87,5 +88,6 @@ def environment_record() -> EnvironmentRecord:
         helia_edge=version,
         helia_edge_commit=commit,
         python=platform.python_version(),
+        platform=f"{platform.system()}-{platform.machine()}",
         packages=tuple((name, _version(name)) for name in _VERSIONED),
     )

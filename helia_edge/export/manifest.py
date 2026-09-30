@@ -53,6 +53,7 @@ class EnvironmentEntry(_Strict):
     helia_edge: str
     helia_edge_commit: str | None
     python: str
+    platform: str
     packages: dict[str, str | None]
 
     @classmethod
@@ -61,6 +62,7 @@ class EnvironmentEntry(_Strict):
             helia_edge=record.helia_edge,
             helia_edge_commit=record.helia_edge_commit,
             python=record.python,
+            platform=record.platform,
             packages=dict(record.packages),
         )
 

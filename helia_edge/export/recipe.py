@@ -118,6 +118,9 @@ class ExportRecipe(_Strict):
         names = [entry.name for entry in self.exports]
         if len(set(names)) != len(names):
             raise ValueError(f"export names must be unique: {names}")
+        reserved = {"import", "manifest.json"} & set(names)
+        if reserved:
+            raise ValueError(f"export names {sorted(reserved)} are reserved")
         if isinstance(self.model, TfliteImport):
             if self.exports or self.calibration:
                 raise ValueError("tflite_import recipes take no exports or calibration")

@@ -79,11 +79,13 @@ def load_array(source: ArraySource, base_dir: Path, samples: int | None = None) 
     """Load a ``.npy`` array, or key ``source.key`` of a ``.npz``; keep the first ``samples`` rows."""
     path = fetch(source.file, base_dir)
     location = source.file.path if isinstance(source.file, PathSource) else source.file.url
-    if location.endswith(".npz"):
+    with open(path, "rb") as f:
+        archive = f.read(4) == b"PK\x03\x04"  # .npz files are zip archives; .npy files start with \x93NUMPY
+    if archive:
         if source.key is None:
             raise SourceError(f"{location} is an .npz archive; set key")
-        with np.load(path, allow_pickle=False) as archive:
-            array = archive[source.key]
+        with np.load(path, allow_pickle=False) as arrays:
+            array = arrays[source.key]
     else:
         if source.key is not None:
             raise SourceError(f"{location} is not an .npz archive; omit key")
@@ -95,6 +97,8 @@ def _batch1(model):
     """Rebuild a single-input functional model whose batch dimension is not fixed to 1."""
     import keras
 
+    if len(model.inputs) != 1:
+        raise ValueError(f"Recipes support single-input models; this model has {len(model.inputs)} inputs")
     if model.input_shape[0] == 1:
         return model
     inputs = keras.Input(model.input_shape[1:], batch_size=1)
@@ -185,9 +189,10 @@ def run_recipe(recipe_path: Path, out_dir: Path, only: Collection[str] | None = 
     recipe_path, out_dir = Path(recipe_path).resolve(), Path(out_dir).resolve()
     recipe = load_recipe(recipe_path)
     base = recipe_path.parent
+    names = ["import"] if isinstance(recipe.model, TfliteImport) else [e.name for e in recipe.exports]
+    if only is not None and set(only) - set(names):
+        raise ValueError(f"Unknown export names: {sorted(set(only) - set(names))}; the recipe has {names}")
     selected = [e for e in recipe.exports if only is None or e.name in only]
-    if only is not None and {e.name for e in selected} != set(only):
-        raise ValueError(f"Unknown export names: {sorted(set(only) - {e.name for e in selected})}")
     out_dir.mkdir(parents=True, exist_ok=True)
     reference = None
     if recipe.reference is not None:
@@ -232,7 +237,7 @@ class VerifyReport:
 def _environment_differences(recorded: EnvironmentEntry, current: EnvironmentEntry) -> list[str]:
     differences = [
         f"{key}: {getattr(recorded, key)} -> {getattr(current, key)}"
-        for key in ("helia_edge", "helia_edge_commit", "python")
+        for key in ("helia_edge", "helia_edge_commit", "python", "platform")
         if getattr(recorded, key) != getattr(current, key)
     ]
     for package in sorted(set(recorded.packages) | set(current.packages)):
@@ -277,9 +282,10 @@ def verify_manifest(manifest_path: Path, allow_env_mismatch: bool = False) -> Ve
         return VerifyReport("env_mismatch", [], environment)
 
     with tempfile.TemporaryDirectory() as directory:
-        imported = any(entry.spec is None for entry in manifest.entries)
-        only = None if imported else [entry.name for entry in manifest.entries]
-        fresh = run_recipe(recipe_path, Path(directory), only=only)
+        try:
+            fresh = run_recipe(recipe_path, Path(directory), only=[entry.name for entry in manifest.entries])
+        except SourceError as exc:
+            return VerifyReport("drift", [f"source: {exc}"], environment)
     regenerated = {entry.name: entry for entry in fresh.entries}
     for entry in manifest.entries:
         again = regenerated.get(entry.name)
@@ -289,6 +295,9 @@ def verify_manifest(manifest_path: Path, allow_env_mismatch: bool = False) -> Ve
         for (label, record), (_, new) in zip(_files(entry), _files(again), strict=False):
             if record.sha256 != new.sha256:
                 differences.append(f"{entry.name}: {label} sha256 {record.sha256[:12]} -> {new.sha256[:12]}")
+        for field_name in ("spec", "inputs", "outputs"):
+            if getattr(entry, field_name) != getattr(again, field_name):
+                differences.append(f"{entry.name}: recorded {field_name} differs from the regenerated one")
         if (entry.reference is None) != (again.reference is None):
             differences.append(f"{entry.name}: reference presence changed")
     return VerifyReport("drift" if differences else "ok", differences, environment)

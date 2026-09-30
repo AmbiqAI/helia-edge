@@ -69,6 +69,13 @@ def test_a_valid_recipe_round_trips():
             },
             "name",
         ),
+        (
+            {
+                "exports": [{"name": "manifest.json", "precision": "fp32", "io_dtype": "float32", "mode": "concrete"}],
+                "calibration": None,
+            },
+            "reserved",
+        ),
     ],
 )
 def test_invalid_recipes_are_rejected(changes, message):
@@ -113,8 +120,19 @@ for args in (["info"], ["export", "schema"], ["export", "schema", "--kind", "man
     result = CliRunner().invoke(app, args)
     assert result.exit_code == 0, result.output
 report = json.loads(CliRunner().invoke(app, ["info"]).output)
-assert {"helia_edge", "python", "packages", "keras_backend", "installed"} <= report.keys()
+assert {"helia_edge", "python", "packages", "keras_backend_env", "installed"} <= report.keys()
 assert not {"keras", "tensorflow", "torch"} & sys.modules.keys(), sorted({"keras", "tensorflow", "torch"} & sys.modules.keys())
 """
     result = subprocess.run([sys.executable, "-c", source], text=True, capture_output=True, timeout=120)
     assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_cli_inspect_without_tensorflow_says_what_to_install(tmp_path):
+    import importlib.util
+
+    if importlib.util.find_spec("tensorflow") is not None:
+        pytest.skip("Checks the base environment")
+    model = tmp_path / "m.tflite"
+    model.write_bytes(b"TFL3")
+    result = CliRunner().invoke(app, ["inspect", str(model)])
+    assert result.exit_code != 0 and "helia-edge[litert]" in result.output
