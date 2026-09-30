@@ -113,13 +113,14 @@ helia-edge export verify exports/manifest.json
   - `keras_file`: a saved `.keras` model;
   - `tflite_import`: an existing `.tflite` file, taken as is.
 - **Sources:** `path` sources resolve relative to the recipe. `url` sources are downloaded once into `~/.cache/helia-edge/sources` (set `HELIA_EDGE_CACHE` to move it). A source whose sha256 differs is refused.
-- **Calibration and reference data:** calibration uses the first `samples` rows in stored order. Reference inputs are run with LiteRT's reference kernels. Both are saved as `.npy` files next to each model.
+- **Calibration and reference data:** calibration uses the first `samples` rows in stored order (more rows than stored is an error). Reference inputs are run with LiteRT's reference kernels; the inputs as fed and the outputs are saved as `.npy` files next to each model.
 - **Batch size and session:** models are exported with batch size 1. Each is built in a fresh Keras session, because auto-generated layer names become tensor names in the exported bytes.
 - **Manifest:** `manifest.json` (`schema: helia-edge/manifest@1`) records the recipe's sha256, the environment (helia-edge version, plus its commit when installed from a git URL; Python; platform; NumPy, Keras, TensorFlow and ai-edge-litert versions), and each file's sha256. `run` writes into `--out` without removing files from earlier runs; only the entries in the manifest are verified. `helia-edge export schema --kind recipe|manifest` prints the JSON Schemas.
-- **`export verify`:**
-  - Exit 1 (drift): a file, a source or the recipe changed.
+- **`export verify`:** checks in this order:
+  - Exit 1 (drift): a file, a source or the recipe changed. Environment differences are still listed.
   - Exit 2 (environment mismatch): the environment differs from the recorded one; nothing is regenerated. `--allow-env-mismatch` regenerates anyway and lists the differences.
-  - Otherwise it regenerates every entry and exits 1 on any sha256 difference, 0 when all match.
+  - Otherwise it regenerates every entry and exits 1 if any file's sha256 or size, spec or tensor record differs, and 0 when all match.
+  - Exit 3: the manifest is missing or invalid.
 
 ## Hand off to an Ambiq deployment
 
