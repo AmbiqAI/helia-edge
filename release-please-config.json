@@ -4,6 +4,7 @@
     ".": {
       "release-type": "python",
       "prerelease": true,
+      "bump-minor-pre-major": true,
       "package-name": "helia-edge",
       "changelog-path": "CHANGELOG.md",
       "include-component-in-tag": false
