@@ -471,3 +471,14 @@ def test_a_plugin_architecture_is_available_to_recipes(workdir, monkeypatch):
     }
     write(workdir / "p.yaml", recipe)
     assert run_recipe(workdir / "p.yaml", workdir / "out").entries[0].spec.precision == "fp32"
+
+
+def test_recipes_refuse_formats_other_than_litert(workdir):
+    recipe = {
+        "schema": "helia-edge/export@1",
+        "model": {"kind": "params_seed", "architecture": "mlperf_tiny", "params": {"architecture": "ad"}, "seed": 1},
+        "exports": [{"name": "x", "format": "onnx", "precision": "fp32", "io_dtype": "float32", "mode": "concrete"}],
+    }
+    write(workdir / "o.yaml", recipe)
+    with pytest.raises(ValueError, match="litert format only"):
+        run_recipe(workdir / "o.yaml", workdir / "out")

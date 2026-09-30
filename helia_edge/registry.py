@@ -38,19 +38,29 @@ class Registry(Generic[V]):
     Args:
         item: What an entry is, used in error messages (for example ``"architecture"``).
         builtins: Built-in entries as ``key -> "module:attr"``.
+        key_parts: Number of non-empty ``:``-separated parts a key must have (1 for plain names,
+            2 for ``"<format>:<backend>"``).
     """
 
-    def __init__(self, item: str, builtins: dict[str, str] | None = None) -> None:
+    def __init__(self, item: str, builtins: dict[str, str] | None = None, key_parts: int = 1) -> None:
         self.item = item
-        self._targets: dict[str, str] = dict(builtins or {})
+        self.key_parts = key_parts
+        self._targets: dict[str, str] = {}
         self._values: dict[str, V] = {}
+        for key, target in (builtins or {}).items():
+            self.add(key, target)
 
     def add(self, key: str, value: V | str) -> None:
         """Register ``value`` under ``key``; a ``"module:attr"`` string is imported on first lookup."""
+        parts = key.split(":")
+        if len(parts) != self.key_parts or not all(parts):
+            shape = "a name without ':'" if self.key_parts == 1 else f"{self.key_parts} ':'-separated parts"
+            raise ValueError(f"{self.item} keys are {shape}, got {key!r}")
         if key in self:
             raise ValueError(f"{self.item} {key!r} is already registered")
         if isinstance(value, str):
-            if ":" not in value:
+            target = value.split(":")
+            if len(target) != 2 or not all(target):
                 raise ValueError(f"lazy {self.item} targets are 'module:attr' strings, got {value!r}")
             self._targets[key] = value
         else:
@@ -92,18 +102,32 @@ class Registry(Generic[V]):
 _plugins_loaded = False
 
 
+class PluginError(RuntimeError):
+    """One or more ``helia_edge.plugins`` entry points failed to load or register."""
+
+
 def load_plugins() -> None:
-    """Call every ``helia_edge.plugins`` entry point once, passing this module."""
+    """Call every ``helia_edge.plugins`` entry point once, passing this module.
+
+    Every plugin is attempted even if an earlier one fails; failures are then raised together as
+    ``PluginError`` (once; later lookups see only what did register).
+    """
     global _plugins_loaded
     if _plugins_loaded:
         return
     _plugins_loaded = True
+    failures = []
     for entry_point in importlib.metadata.entry_points(group=PLUGIN_GROUP):
-        entry_point.load()(sys.modules[__name__])
+        try:
+            entry_point.load()(sys.modules[__name__])
+        except Exception as exc:  # reported below with the plugin's name
+            failures.append(f"{getattr(entry_point, 'name', entry_point)}: {type(exc).__name__}: {exc}")
+    if failures:
+        raise PluginError("helia_edge plugins failed to register:\n" + "\n".join(failures))
 
 
 exporters: Registry[Callable[..., Any]] = Registry(
-    "exporter", {"litert:tensorflow": "helia_edge.export.litert:export_litert"}
+    "exporter", {"litert:tensorflow": "helia_edge.export.litert:export_litert"}, key_parts=2
 )
 """``"<format>:<backend>" -> exporter(model, spec, calibration) -> ExportResult``."""
 

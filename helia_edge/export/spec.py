@@ -80,8 +80,8 @@ class ExportSpec(BaseModel):
     """What to export. ``precision``, ``io_dtype`` and ``mode`` have no defaults.
 
     Attributes:
-        format: Export format. ``litert`` (a ``.tflite`` flatbuffer), the default, is the only one
-            available; ``export_model`` refuses others.
+        format: Export format. ``litert`` (a ``.tflite`` flatbuffer), the default, is built in;
+            other formats come from exporters registered in ``helia_edge.registry.exporters``.
         precision: Numeric format of the graph.
         io_dtype: Input and output element type; must be valid for ``precision`` (``VALID_IO``).
         mode: How the model is traced for conversion.

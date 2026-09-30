@@ -280,3 +280,28 @@ def test_a_format_without_an_exporter_for_this_backend(model, monkeypatch):
     spec = ExportSpec(format="custom", precision="fp32", io_dtype="float32", mode="concrete")
     with pytest.raises(BackendUnavailable, match="KERAS_BACKEND=torch"):
         export_model(model, spec)
+
+
+def test_plugins_load_when_only_this_backend_is_missing(model, monkeypatch):
+    import types
+
+    from helia_edge import registry
+
+    def exporter(model_, spec, calibration):
+        return "from plugin"
+
+    def register(module):
+        module.exporters.add("fmt2:tensorflow", exporter)
+
+    monkeypatch.setitem(registry.exporters._values, "fmt2:torch", lambda *a: None)
+    monkeypatch.setattr(registry, "_plugins_loaded", False)
+    monkeypatch.setattr(
+        registry.importlib.metadata,
+        "entry_points",
+        lambda group: [types.SimpleNamespace(name="p", load=lambda: register)],
+    )
+    try:
+        spec = ExportSpec(format="fmt2", precision="fp32", io_dtype="float32", mode="concrete")
+        assert export_model(model, spec) == "from plugin"
+    finally:
+        registry.exporters._values.pop("fmt2:tensorflow", None)

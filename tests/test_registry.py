@@ -78,3 +78,33 @@ def test_plugins_load_once_on_a_miss(monkeypatch):
     with pytest.raises(NotRegistered):
         registry.architectures.get("missing")
     assert len(calls) == 1
+
+
+def test_keys_and_targets_are_validated():
+    with pytest.raises(ValueError, match="2 ':'-separated parts"):
+        registry.exporters.add("custom", len)
+    with pytest.raises(ValueError, match="without ':'"):
+        registry.architectures.add("a:b", len)
+    with pytest.raises(ValueError, match="module:attr"):
+        Registry("thing").add("x", "a:b:c")
+    with pytest.raises(ValueError, match="module:attr"):
+        Registry("thing", {"x": "nocolon"})
+
+
+def test_a_failing_plugin_does_not_stop_the_others(monkeypatch):
+    def broken(module):
+        raise RuntimeError("boom")
+
+    def good(module):
+        module.architectures.add("good_arch", len)
+
+    entry_points = [
+        types.SimpleNamespace(name="broken", load=lambda: broken),
+        types.SimpleNamespace(name="good", load=lambda: good),
+    ]
+    monkeypatch.setattr(registry, "_plugins_loaded", False)
+    monkeypatch.setattr(registry.importlib.metadata, "entry_points", lambda group: entry_points)
+    monkeypatch.setattr(registry, "architectures", Registry("architecture"))
+    with pytest.raises(registry.PluginError, match="broken: RuntimeError: boom"):
+        registry.architectures.get("good_arch")
+    assert registry.architectures.get("good_arch") is len

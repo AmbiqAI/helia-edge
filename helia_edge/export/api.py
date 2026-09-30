@@ -52,10 +52,10 @@ def export_model(model, spec: ExportSpec, calibration: npt.NDArray | None = None
         ExportResult: The exported bytes, their sha256, the I/O tensor records and the environment.
 
     Raises:
-        BackendUnavailable: If ``helia_edge.registry.exporters`` has no exporter for ``spec.format``
-            on the active Keras backend. A
-            process cannot switch Keras backend: rebuild the model from its params and weights in a
-            process started with ``KERAS_BACKEND=tensorflow``.
+        BackendUnavailable: If ``helia_edge.registry.exporters`` (built-ins and plugins) has no
+            exporter for ``spec.format`` on the active Keras backend. A process cannot switch Keras
+            backend: rebuild the model from its params and weights in a process started with a
+            backend that has one (``KERAS_BACKEND=tensorflow`` for the built-in LiteRT exporter).
         ValueError: If the format is unknown, the model has more than one input, or the calibration
             data is invalid.
     """
@@ -73,9 +73,12 @@ def export_model(model, spec: ExportSpec, calibration: npt.NDArray | None = None
     try:
         import keras
     except ModuleNotFoundError as exc:
-        raise ImportError("export_model requires Keras with TensorFlow. Install helia-edge[litert].") from exc
+        raise ImportError("export_model requires Keras and a backend. Install helia-edge[litert].") from exc
 
     backend = keras.backend.backend()
+    if backend not in backends:
+        load_plugins()
+        backends = backends_for(spec.format)
     if backend not in backends:
         raise BackendUnavailable(
             f"{spec.format} export needs the {' or '.join(backends)} backend; the active Keras backend is "
