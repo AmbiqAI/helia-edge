@@ -12,20 +12,20 @@ SHA256 = Annotated[str, Field(pattern=r"^[0-9a-f]{64}$")]
 NAME = Annotated[str, Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9_.-]*$", max_length=64)]
 
 
-class _Strict(BaseModel):
-    model_config = ConfigDict(frozen=True, extra="forbid")
-
-
-class UrlSource(_Strict):
+class UrlSource(BaseModel):
     """A file fetched over HTTP(S) and checked against its sha256."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
 
     kind: Literal["url"]
     url: Annotated[str, Field(pattern=r"^https?://")]
     sha256: SHA256
 
 
-class PathSource(_Strict):
+class PathSource(BaseModel):
     """A local file, relative to the recipe file unless absolute, checked against its sha256."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
 
     kind: Literal["path"]
     path: str
@@ -35,16 +35,20 @@ class PathSource(_Strict):
 FileSource = Annotated[UrlSource | PathSource, Field(discriminator="kind")]
 
 
-class ArraySource(_Strict):
+class ArraySource(BaseModel):
     """A float32 array from a ``.npy`` file, or from key ``key`` of a ``.npz`` file."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
 
     kind: Literal["array"]
     file: FileSource
     key: str | None = None
 
 
-class ParamsSeed(_Strict):
+class ParamsSeed(BaseModel):
     """Build an architecture from params with seeded initialization; no trained weights."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
 
     kind: Literal["params_seed"]
     architecture: str
@@ -54,8 +58,10 @@ class ParamsSeed(_Strict):
     seed: int
 
 
-class ParamsWeights(_Strict):
+class ParamsWeights(BaseModel):
     """Build an architecture from params, then load trained weights (``.weights.h5`` or ``.keras``)."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
 
     kind: Literal["params_weights"]
     architecture: str
@@ -65,15 +71,19 @@ class ParamsWeights(_Strict):
     weights: FileSource
 
 
-class KerasFile(_Strict):
+class KerasFile(BaseModel):
     """Load a saved ``.keras`` model."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
 
     kind: Literal["keras_file"]
     file: FileSource
 
 
-class TfliteImport(_Strict):
+class TfliteImport(BaseModel):
     """Use an existing ``.tflite`` model as is; the recipe then has no exports."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
 
     kind: Literal["tflite_import"]
     file: FileSource
@@ -82,15 +92,19 @@ class TfliteImport(_Strict):
 ModelSource = Annotated[ParamsSeed | ParamsWeights | KerasFile | TfliteImport, Field(discriminator="kind")]
 
 
-class CalibrationSpec(_Strict):
+class CalibrationSpec(BaseModel):
     """Calibration samples: the first ``samples`` rows in stored order, or all rows when None."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
 
     source: ArraySource
     samples: Annotated[int, Field(gt=0)] | None = None
 
 
-class ReferenceSpec(_Strict):
+class ReferenceSpec(BaseModel):
     """Reference inputs; outputs are computed with LiteRT's reference kernels."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
 
     source: ArraySource
     samples: Annotated[int, Field(gt=0)] | None = None
@@ -102,7 +116,7 @@ class ExportEntry(ExportSpec):
     name: NAME
 
 
-class ExportRecipe(_Strict):
+class ExportRecipe(BaseModel):
     """Everything needed to regenerate a set of exports. Every file carries a sha256."""
 
     schema_: Literal["helia-edge/export@1"] = Field(alias="schema")

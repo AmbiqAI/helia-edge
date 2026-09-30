@@ -12,20 +12,20 @@ from .spec import ExportSpec, IODType, TensorRole
 MANIFEST_SCHEMA = "helia-edge/manifest@1"
 
 
-class _Strict(BaseModel):
-    model_config = ConfigDict(frozen=True, extra="forbid")
-
-
-class FileRecord(_Strict):
+class FileRecord(BaseModel):
     """A file written next to the manifest; ``path`` is relative to the manifest."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
 
     path: str
     sha256: SHA256
     bytes: int
 
 
-class TensorEntry(_Strict):
+class TensorEntry(BaseModel):
     """A model input or output; dynamic dimensions are -1."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
 
     name: str
     role: TensorRole
@@ -39,16 +39,20 @@ class TensorEntry(_Strict):
         return cls(**vars(record))
 
 
-class ReferenceRecord(_Strict):
+class ReferenceRecord(BaseModel):
     """Reference inputs as fed to the model and its outputs from LiteRT's reference kernels."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
 
     inputs: FileRecord
     outputs: FileRecord
     resolver: Literal["builtin_ref"] = "builtin_ref"
 
 
-class EnvironmentEntry(_Strict):
+class EnvironmentEntry(BaseModel):
     """Versions that can change exported bytes; ``verify`` refuses to compare across a difference."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
 
     helia_edge: str
     helia_edge_commit: str | None
@@ -67,8 +71,10 @@ class EnvironmentEntry(_Strict):
         )
 
 
-class ManifestEntry(_Strict):
+class ManifestEntry(BaseModel):
     """One exported (or imported) model. ``spec`` is None for a ``tflite_import`` recipe."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
 
     name: NAME
     spec: ExportSpec | None
@@ -78,7 +84,7 @@ class ManifestEntry(_Strict):
     reference: ReferenceRecord | None = None
 
 
-class ExportManifest(_Strict):
+class ExportManifest(BaseModel):
     """What ``helia-edge export run`` produced, with every file's sha256."""
 
     schema_: Literal["helia-edge/manifest@1"] = Field(alias="schema")

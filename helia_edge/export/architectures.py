@@ -46,6 +46,7 @@ def _input(input_shape):
 
 
 def build_tcn(params, input_shape, num_classes):
+    """Build a TCN from ``TcnParams``; needs ``input_shape``, ``num_classes`` optional."""
     from ..models import TcnModel, TcnParams
 
     _require("tcn", input_shape, num_classes, shape=True, classes=None)
@@ -53,6 +54,7 @@ def build_tcn(params, input_shape, num_classes):
 
 
 def build_mlperf_tiny(params, input_shape, num_classes):
+    """Build an MLPerf Tiny reference model from ``MlperfTinyParams``; its input shape is fixed."""
     from ..models import MlperfTinyModel, MlperfTinyParams
 
     _require("mlperf_tiny", input_shape, num_classes, shape=False, classes=False)
@@ -60,6 +62,7 @@ def build_mlperf_tiny(params, input_shape, num_classes):
 
 
 def build_miniresnet_v1(params, input_shape, num_classes):
+    """Build MiniResNet-v1 from ``MiniResNetV1Params``; needs ``input_shape`` and ``num_classes``."""
     from ..models import MiniResNetV1Model, MiniResNetV1Params
 
     _require("miniresnet_v1", input_shape, num_classes, shape=True, classes=True)
@@ -67,6 +70,7 @@ def build_miniresnet_v1(params, input_shape, num_classes):
 
 
 def build_timeppg(params, input_shape, num_classes):
+    """Build TimePPG from ``TimePPGParams``; needs ``input_shape``, one regression output."""
     from ..models import TimePPGModel, TimePPGParams
 
     _require("timeppg", input_shape, num_classes, shape=True, classes=False)
@@ -74,6 +78,7 @@ def build_timeppg(params, input_shape, num_classes):
 
 
 def build_cornet(params, input_shape, num_classes):
+    """Build CorNET from ``CorNetParams``; needs ``input_shape``, one regression output."""
     from ..models import CorNetModel, CorNetParams
 
     _require("cornet", input_shape, num_classes, shape=True, classes=False)

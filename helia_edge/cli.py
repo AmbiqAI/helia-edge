@@ -15,6 +15,8 @@ app.add_typer(export_app, name="export")
 
 
 class SchemaKind(StrEnum):
+    """Document whose JSON Schema ``helia-edge export schema`` prints."""
+
     RECIPE = "recipe"
     MANIFEST = "manifest"
 
@@ -124,4 +126,5 @@ def info() -> None:
 
 
 def main() -> None:
+    """Entry point of the ``helia-edge`` command."""
     app()

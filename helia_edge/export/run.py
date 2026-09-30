@@ -38,6 +38,7 @@ class SourceError(ValueError):
 
 
 def sha256_file(path: Path) -> str:
+    """Return the hex sha256 of a file, read in chunks."""
     digest = hashlib.sha256()
     with open(path, "rb") as f:
         for chunk in iter(lambda: f.read(1 << 20), b""):
