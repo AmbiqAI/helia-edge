@@ -105,6 +105,7 @@ def _drop_tensors(subgraph, candidates: set[int]) -> dict[int, int]:
 
 
 def _drop_unused_opcodes(model) -> None:
+    """Remove operator codes no operator uses and renumber each operator's opcode index."""
     used = sorted({op.opcodeIndex for subgraph in model.subgraphs for op in subgraph.operators})
     index = {old: new for new, old in enumerate(used)}
     model.operatorCodes = [model.operatorCodes[i] for i in used]

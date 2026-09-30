@@ -329,6 +329,16 @@ def test_pruned_graph_computes_the_weight_only_outputs(name):
     np.testing.assert_allclose(run(as_float32(native), x), run(weight_only, x), rtol=0, atol=1e-6)
 
 
+def test_tflite_predict_rejects_native_float16():
+    converter = TfLiteKerasConverter(build_model())
+    try:
+        converter.convert(quantization=QuantizationType.FP16_NATIVE, mode=ConversionType.CONCRETE)
+        with pytest.raises(ValueError, match="float16 kernels"):
+            converter.predict(np.zeros((1, 16, 16, 3), np.float32))
+    finally:
+        converter.cleanup()
+
+
 def test_reject_native_fp16_guard(exports):
     weight_only, native = exports
     with pytest.raises(ValueError, match="float16 kernels"):
