@@ -59,7 +59,7 @@ litert = [
 
 [dependency-groups]
 dev = [
-    {include-group = "typing"},
+    {include-group = "ci"},
     "ipython>=8.25.0",
     "ipykernel>=6.29.5",
     "notebook>=7.2.1",
@@ -79,8 +79,9 @@ docs = [
 ]
 ci = [
     {include-group = "typing"},
+    "prek==0.5.4",
     "pytest>=8.2.0",
-    "ruff>=0.7.2",
+    "ruff==0.15.21",
 ]
 typing = [
     "ty==0.0.82",
