@@ -57,6 +57,34 @@ Keep the original trained model, calibration selection, conversion settings and 
 
 </details>
 
+## Typed export
+
+`helia_edge.export` states every setting that changes the exported bytes and returns the bytes with their identity:
+
+```python
+import numpy as np
+from helia_edge.export import ExportSpec, LiteRTRunner, export_model
+
+spec = ExportSpec(precision="a8w8", io_dtype="int8", mode="concrete")
+result = export_model(model, spec, calibration=representative_x.astype(np.float32))
+print(result.sha256, result.inputs[0].scale, result.environment.helia_edge)
+predictions = LiteRTRunner(result.content).predict(representative_x)
+```
+
+| Precision | Graph | Input/output dtype |
+|---|---|---|
+| `fp32` | float32 weights and compute | `float32` |
+| `fp32-w16` | float16 weights, dequantized at runtime; float32 compute | `float32` |
+| `fp16` | native float16 graph | `float16` |
+| `a8w8` | int8 activations and weights | `int8` or `float32` |
+| `a16w8` | int16 activations, int8 weights | `int16` or `float32` |
+
+- `mode` and `io_dtype` have no defaults, and an invalid precision/dtype pair is rejected.
+- `a8w8` and `a16w8` need calibration: a non-empty, finite float32 array shaped like the model input, used one sample at a time in stored order. Other precisions refuse calibration data.
+- Export needs the TensorFlow backend and a single-input model. A model trained with the Torch backend is rebuilt from its params and weights in a process started with `KERAS_BACKEND=tensorflow`.
+- The legacy converters produce the same bytes for the same settings. `ExportSpec` values match helia-benchmark's precision names; `QuantizationType` values map through `LEGACY_PRECISION`.
+- `LiteRTRunner` runs model bytes with ai-edge-litert, rounding and saturating integer inputs. It runs native float16 graphs where the runtime has float16 kernels for every operator.
+
 ## Hand off to an Ambiq deployment
 
 The exported model is one part of the deployment. Select the inference runtime and check its operator and precision support before integrating it into firmware. Training backend support does not imply that every model can run on every target.
