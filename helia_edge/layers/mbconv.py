@@ -11,15 +11,15 @@ Functions:
 
 """
 
-from typing import Callable
 from collections.abc import Iterable
+from typing import Callable
 
 import keras
 from pydantic import BaseModel, Field
 
-from .squeeze_excite import se_layer
 from .convolutional import conv2d
 from .normalization import batch_normalization
+from .squeeze_excite import se_layer
 
 
 class MBConvParams(BaseModel):

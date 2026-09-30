@@ -2,8 +2,9 @@
 
 import keras
 import numpy as np
-from .base_augmentation import BaseAugmentation1D
+
 from ...utils import helia_export
+from .base_augmentation import BaseAugmentation1D
 
 
 @helia_export(path="helia_edge.layers.preprocessing.AddSineWave")

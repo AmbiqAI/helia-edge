@@ -10,11 +10,12 @@ Functions:
 
 """
 
+import glob
+import itertools
 import os
 import tempfile
-import itertools
-import glob
 from pathlib import Path
+
 import keras
 
 from .._lazy import Extra, optional_imports

@@ -10,8 +10,8 @@ Classes:
 
 import keras
 
-from .contrastive import ContrastiveTrainer
 from ..utils import helia_export
+from .contrastive import ContrastiveTrainer
 
 
 @helia_export(path="helia_edge.trainers.SimCLRTrainer")

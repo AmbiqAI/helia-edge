@@ -1,9 +1,9 @@
 """Render committed notebook cells without executing training code."""
 import base64
 import json
-from pathlib import Path
 import re
 import shutil
+from pathlib import Path
 
 SITE = Path(__file__).resolve().parents[1]
 REPO = SITE.parent

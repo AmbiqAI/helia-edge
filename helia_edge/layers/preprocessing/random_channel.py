@@ -10,8 +10,8 @@ Classes:
 
 import keras
 
-from .base_augmentation import BaseAugmentation
 from ...utils import helia_export
+from .base_augmentation import BaseAugmentation
 
 
 @helia_export(path="helia_edge.layers.preprocessing.RandomChannel")

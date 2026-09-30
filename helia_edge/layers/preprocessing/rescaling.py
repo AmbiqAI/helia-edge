@@ -10,8 +10,9 @@ Classes:
 """
 
 import keras
-from .base_augmentation import BaseAugmentation1D, BaseAugmentation2D
+
 from ...utils import helia_export
+from .base_augmentation import BaseAugmentation1D, BaseAugmentation2D
 
 
 @helia_export(path="helia_edge.layers.preprocessing.Rescaling1D")

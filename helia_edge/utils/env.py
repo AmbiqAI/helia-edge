@@ -10,10 +10,10 @@ Functions:
     disable_tensorflow_gpu: Disable TensorFlow GPU
 """
 
+import logging
 import os
 import sys
 from contextlib import contextmanager
-import logging
 
 from rich.logging import RichHandler
 

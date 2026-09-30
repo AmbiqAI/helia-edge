@@ -1,12 +1,10 @@
 """Tests for EmaResidualVectorQuantizer."""
 
+import keras
 import numpy as np
 import pytest
 
-import keras
-
 from helia_edge.layers import EmaResidualVectorQuantizer
-
 
 # ------------------------------------------------------------------ #
 # Fixtures

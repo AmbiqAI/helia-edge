@@ -1,8 +1,9 @@
 """Signal-only occlusion with explicit half-open intervals and owned RNG."""
 
 import keras
+
+from ...utils import helia_export, parse_factor
 from .base_augmentation import BaseAugmentation1D, BaseAugmentation2D
-from ...utils import parse_factor, helia_export
 
 
 def interval_mask(layer, shape, axis, minimum, maximum):

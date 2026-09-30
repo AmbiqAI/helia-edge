@@ -1,9 +1,9 @@
 """Recipe validation must not require optional execution backends."""
 
 import os
-from pathlib import Path
 import subprocess
 import sys
+from pathlib import Path
 
 
 def test_public_params_validate_without_backend_imports():

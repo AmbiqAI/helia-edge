@@ -1,9 +1,10 @@
 """Signal-only spectrogram masking using the shared augmentation contract."""
 
 import keras
+
+from ...utils import helia_export
 from .base_augmentation import BaseAugmentation2D
 from .random_cutout import interval_mask
-from ...utils import helia_export
 
 
 @helia_export(path="helia_edge.layers.preprocessing.SpecAugment2D")

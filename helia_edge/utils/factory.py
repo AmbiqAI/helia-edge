@@ -9,8 +9,8 @@ Classes:
 
 """
 
-from typing import TypeVar, Generic, Type
 from threading import Lock
+from typing import Generic, Type, TypeVar
 
 T = TypeVar("T")
 

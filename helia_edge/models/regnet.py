@@ -21,10 +21,9 @@ from typing import Callable, Literal
 import keras
 from pydantic import BaseModel, Field
 
-from ..layers.normalization import batch_normalization
 from ..layers.convolutional import conv2d
+from ..layers.normalization import batch_normalization
 from ..layers.squeeze_excite import se_layer
-
 from .utils import make_divisible
 
 

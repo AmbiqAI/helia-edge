@@ -1,9 +1,9 @@
 """CorNET geometry against the paper's Table III and rolled/unrolled equivalence."""
 
 import os
-from pathlib import Path
 import subprocess
 import sys
+from pathlib import Path
 
 import keras
 import numpy as np

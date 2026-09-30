@@ -11,11 +11,11 @@ Functions:
 
 """
 
+import functools
 import os
 import warnings
-import functools
-from pathlib import Path, PurePosixPath
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from pathlib import Path, PurePosixPath
 
 from .._lazy import Extra, optional_imports
 

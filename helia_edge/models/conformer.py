@@ -22,8 +22,8 @@ Functions:
 import keras
 from pydantic import BaseModel, Field
 
-from ..layers.normalization import layer_normalization, batch_normalization
-from ..layers.activations import swish, glu, relu
+from ..layers.activations import glu, relu, swish
+from ..layers.normalization import batch_normalization, layer_normalization
 
 
 class SubsampleBlockParams(BaseModel):

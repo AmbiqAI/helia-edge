@@ -5,10 +5,10 @@ import copy
 import hashlib
 import importlib.metadata
 import json
-from pathlib import Path
 import platform
 import shutil
 import subprocess
+from pathlib import Path
 
 import keras
 import numpy as np

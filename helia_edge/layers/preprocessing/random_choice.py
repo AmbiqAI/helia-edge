@@ -1,8 +1,9 @@
 """Batchwise random layer choice with captured branches and owned RNG."""
 
 import keras
-from .base_augmentation import BaseAugmentation
+
 from ...utils import helia_export
+from .base_augmentation import BaseAugmentation
 
 
 @helia_export(path="helia_edge.layers.preprocessing.RandomChoice")

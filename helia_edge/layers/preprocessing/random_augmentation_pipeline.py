@@ -1,8 +1,9 @@
 """Repeated batchwise random choices sharing the standard training contract."""
 
 import keras
-from .random_choice import RandomChoice
+
 from ...utils import helia_export
+from .random_choice import RandomChoice
 
 
 @helia_export(path="helia_edge.layers.preprocessing.RandomAugmentation1DPipeline")

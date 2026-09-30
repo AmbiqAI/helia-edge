@@ -5,11 +5,10 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 from helia_edge.utils.aws import (
+    _list_s3_objects,
     download_s3_objects,
     download_s3_prefix,
-    _list_s3_objects,
 )
-
 
 # ---------------------------------------------------------------------------
 # Helpers

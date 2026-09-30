@@ -1,9 +1,9 @@
 """FastEnhancer config validation and preset resolution without optional backends."""
 
 import os
-from pathlib import Path
 import subprocess
 import sys
+from pathlib import Path
 
 import pytest
 from pydantic import ValidationError

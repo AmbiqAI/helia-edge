@@ -8,8 +8,15 @@ import pytest
 from pydantic import ValidationError
 
 from helia_edge.models import (
-    MlperfTinyModel, MlperfTinyParams, TcnModel, TcnParams, compact_tcn_params,
-    mlperf_tiny_ad, mlperf_tiny_kws, mlperf_tiny_resnet, mlperf_tiny_vww,
+    MlperfTinyModel,
+    MlperfTinyParams,
+    TcnModel,
+    TcnParams,
+    compact_tcn_params,
+    mlperf_tiny_ad,
+    mlperf_tiny_kws,
+    mlperf_tiny_resnet,
+    mlperf_tiny_vww,
 )
 
 BUILDERS = {"kws": mlperf_tiny_kws, "vww": mlperf_tiny_vww,

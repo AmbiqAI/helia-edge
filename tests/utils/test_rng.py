@@ -1,7 +1,7 @@
 """Sampling probabilities and seeded compatibility for ID schedules."""
 
-from itertools import islice
 import random
+from itertools import islice
 
 import pytest
 

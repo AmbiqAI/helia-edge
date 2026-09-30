@@ -1,5 +1,5 @@
-import numpy as np
 import keras
+import numpy as np
 import pytest
 
 import helia_edge as helia

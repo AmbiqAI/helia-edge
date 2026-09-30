@@ -1,8 +1,9 @@
 """Random image flips with one parameter set for spatially aligned leaves."""
 
 import keras
-from .base_augmentation import BaseAugmentation2D
+
 from ...utils import helia_export
+from .base_augmentation import BaseAugmentation2D
 
 
 @helia_export(path="helia_edge.layers.preprocessing.RandomFlip2D")
