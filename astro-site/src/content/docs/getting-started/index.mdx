@@ -3,58 +3,141 @@ title: "Install heliaEDGE"
 description: "Install the backend and optional capabilities for your Edge AI workflow."
 ---
 
+import { Tabs, TabItem } from '@astrojs/starlight/components';
 import CardGrid from '@ambiqai/helia-ui/astro/CardGrid';
 import LinkCard from '@ambiqai/helia-ui/astro/LinkCard';
 
-## Install heliaEDGE
+This site follows the repository's `main` branch. The generated API and guides can include changes that are not yet in a PyPI release. Use a source checkout to follow the examples against the same API; use PyPI when you need a released package.
 
-You can install __helia-edge__ from PyPI via:
+## Choose your installation
 
-```bash
-pip install 'helia-edge[tensorflow]'
-```
+Use Python 3.12.3 or newer: 3.12–3.13 for TensorFlow and LiteRT, or 3.12–3.14 for Torch and framework-independent helpers.
 
-Alternatively, you can install using uv via:
+<Tabs>
+<TabItem label="Source checkout">
 
-```bash
-uv add 'helia-edge[tensorflow]'
-```
-
-:::note
-For Torch, install `helia-edge[torch]` and set `KERAS_BACKEND=torch` before
-importing Keras. Base `helia-edge` installs framework-independent helpers.
-See [Backend support](/helia-edge/getting-started/backends/) for tested
-components, optional export dependencies and limitations. JAX is not part of
-the tested support matrix.
-:::
-
-Plotting and S3 access are optional. Select them alongside your backend when needed:
+Use this path for the API documented on this site. Clone once, then select your backend:
 
 ```sh
-pip install 'helia-edge[tensorflow,plotting,aws]'
+git clone https://github.com/AmbiqAI/helia-edge.git
+cd helia-edge
 ```
 
-The training notebook uses plotting; S3 downloads and S3 model loading use `aws`.
-Public plotting and download paths are unchanged. TensorFlow conversion and
-custom-object registration do not require either extra.
+<Tabs syncKey="edge-backend">
+<TabItem label="TensorFlow">
 
-## Requirements
+```sh
+uv sync --python 3.12 --extra tensorflow
+```
 
-* Python 3.12.3 or newer: 3.12–3.13 for TensorFlow; 3.12–3.14 for Torch/base.
+</TabItem>
+<TabItem label="PyTorch">
 
-Check the project's [pyproject.toml](https://github.com/AmbiqAI/helia-edge/blob/main/pyproject.toml) file for a list of up-to-date Python dependencies. Note that the installation methods above will install all required dependencies.
+```sh
+uv sync --python 3.12 --extra torch
+```
 
-## Select the backend
+</TabItem>
+</Tabs>
 
-Set `KERAS_BACKEND=tensorflow` or `KERAS_BACKEND=torch` before importing Keras or accessing a Keras-based EDGE component. Use separate environments when comparing backend behavior.
+Run scripts with `uv run`. Record `git rev-parse HEAD` with your experiments.
 
-| Capability | Install extra | Use |
-|---|---|---|
-| TensorFlow-backed Keras | `tensorflow` | Model construction, supported training paths and TensorFlow input pipelines |
-| PyTorch-backed Keras | `torch` | The portable components listed in Backend support |
-| LiteRT conversion and runtime | `litert` | TensorFlow conversion and host prediction checks |
-| Plotting | `plotting` | Training history, confusion matrices and ROC plots |
-| S3 access | `aws` | S3 downloads and model retrieval |
+</TabItem>
+<TabItem label="PyPI release">
+
+Release 0.6.2 uses the earlier TensorFlow-based API and includes plotting and AWS dependencies by default. Use the source checkout for the portable TensorFlow/PyTorch APIs and optional capability extras described on this site.
+
+<Tabs syncKey="edge-installer">
+<TabItem label="pip">
+
+```sh
+pip install 'helia-edge==0.6.2'
+```
+
+</TabItem>
+<TabItem label="uv">
+
+```sh
+uv add 'helia-edge==0.6.2'
+```
+
+</TabItem>
+</Tabs>
+
+The 0.6.2 release offers a `litert` extra; it has no `torch`, `tensorflow`, `plotting` or `aws` extras.
+
+</TabItem>
+</Tabs>
+
+<details>
+<summary>Add plotting, S3 access or model conversion</summary>
+
+In a source checkout, choose only the capabilities your workflow uses. Combine extras with `uv sync`:
+
+```sh
+uv sync --python 3.12 --extra tensorflow --extra plotting --extra aws
+```
+
+| Extra | Adds |
+|---|---|
+| `plotting` | Training history, confusion matrices and patch visualization |
+| `aws` | S3 downloads and model retrieval |
+| `litert` | TensorFlow conversion and LiteRT host prediction |
+
+The source package without backend extras installs framework-independent helpers without a training backend. JAX is outside the tested matrix.
+
+</details>
+
+## Check the environment
+
+Run this in a fresh Python process in the environment you installed:
+
+<Tabs syncKey="edge-backend">
+<TabItem label="TensorFlow">
+
+```python
+import os
+os.environ["KERAS_BACKEND"] = "tensorflow"
+
+from importlib.metadata import version
+import keras
+import helia_edge
+
+print("heliaEDGE:", version("helia-edge"))
+print("Keras backend:", keras.backend.backend())
+```
+
+</TabItem>
+<TabItem label="PyTorch">
+
+```python
+import os
+os.environ["KERAS_BACKEND"] = "torch"
+
+from importlib.metadata import version
+import keras
+import helia_edge
+
+print("heliaEDGE:", version("helia-edge"))
+print("Keras backend:", keras.backend.backend())
+```
+
+</TabItem>
+</Tabs>
+
+The backend should match your selection. A source checkout can retain the package version from the last release, so use the Git revision to identify source behavior.
+
+<details>
+<summary>Troubleshoot installation and imports</summary>
+
+| Symptom | Next step |
+|---|---|
+| Missing TensorFlow or Torch | Install the matching extra in the environment running the script. |
+| The wrong backend is active | Set `KERAS_BACKEND` before importing Keras, then restart the Python process or notebook kernel. |
+| A documented import is missing | Check whether you installed a release or the source revision used by the docs. |
+| A saved model reports an unknown custom class | Follow the registration steps in the save/load guide. |
+
+</details>
 
 ## Next step
 

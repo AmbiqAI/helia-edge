@@ -1,6 +1,6 @@
 ---
 title: "Development"
-description: "Python 3.12.3 is the minimum. TensorFlow is tested on 3.12–3.13 and Torch on 3.12–3.14. Python 3.15's native lazy-import syntax is outside that matrix; from…"
+description: Contribute source, API contracts and documentation, and run the relevant checks.
 ---
 
 Python 3.12.3 is the minimum. TensorFlow is tested on 3.12–3.13 and Torch on
@@ -22,7 +22,8 @@ Python 3.12.3 is the minimum. TensorFlow is tested on 3.12–3.13 and Torch on
 - `helia_edge/`: installed library and public type declarations.
 - `tests/`: regression tests, with supporting code beside the tests it serves;
   fixed datasets in `tests/fixtures/` and static contracts in `tests/typing/`.
-- `docs/`: user and contributor guidance; `scripts/` supports documentation builds.
+- `astro-site/`: authored site pages, API generation, search and browser checks.
+- `docs/guides/`: notebook sources rendered into the site. Other `docs/` prose is migration history; edit its Astro counterpart.
 - `.github/workflows/`: CI orchestration. Generated files belong in the runner's
   temporary directory and are uploaded as artifacts when needed.
 
@@ -64,3 +65,21 @@ typing debt and are outside this initial gate. There are no global rule
 suppressions; extend coverage as those modules are corrected.
 
 To inspect the remaining package debt, run `uv run ty check helia_edge`.
+
+## Update documentation and API contracts
+
+Edit task guides in `astro-site/src/content/docs/`. Update public Python docstrings with parameter shapes, units, return values and error behavior when an API changes. Public re-exports belong in the adjacent `__init__.pyi` file as well.
+
+The API generator reads source statically with Griffe, including lazy exports. Do not edit generated reference pages. To regenerate and validate the site with Node 24:
+
+```sh
+cd astro-site
+npm ci
+npm run check
+npm run build
+npm run check:output
+npx playwright install chromium
+npm test
+```
+
+These checks cover types, internal links, exported API contracts, search, navigation and responsive layouts. The backend CI matrix also executes the introductory examples in `tests/test_docs_examples.py`. Add executable coverage when a guide introduces a new runnable workflow. Notebook pages render committed cells and saved outputs; the site build does not execute their training runs.

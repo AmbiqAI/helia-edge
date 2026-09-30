@@ -38,13 +38,19 @@
   text-align: center;
 }
 
-.edge-intro { display:grid; grid-template-columns:1.15fr 1fr; gap:1rem 3rem; padding-block:2.5rem; }
+.edge-intro { display:grid; grid-template-columns:1.15fr 1fr; gap:1.5rem 3rem; padding:clamp(1.5rem,4vw,3.5rem); border:1px solid #252a32; border-radius:1.5rem; background:#0e1116; color:#f5f6f8; --helia-product-accent:#ff526c; }
 .edge-home .edge-eyebrow { font-size:.7rem; font-weight:650; letter-spacing:.12em; color:var(--helia-product-accent); margin:0 0 1rem; }
-.edge-intro > .edge-eyebrow { grid-column:1/-1; }
-.edge-home .edge-intro h1 { margin:0; font-size:clamp(2.2rem,4.4vw,3.5rem); line-height:1.08; letter-spacing:-.04em; }
+.edge-hero-meta { grid-column:1/-1; display:flex; align-items:center; justify-content:space-between; gap:1rem; margin:0 0 1rem; }
+.edge-hero-name { font-size:1.5rem; letter-spacing:-.035em; white-space:nowrap; }
+.edge-hero-name > span { color:var(--helia-product-accent); margin-right:.35rem; }
+.edge-hero-version { margin:0!important; border:1px solid #505966; border-radius:999px; padding:.35rem .75rem; font-size:.8rem; color:#c8ced8; white-space:nowrap; }
+.edge-home .edge-intro h1 { color:#f5f6f8; margin:0; font-size:clamp(2.2rem,4.4vw,3.5rem); line-height:1.08; letter-spacing:-.04em; }
 .edge-intro em { font-style:normal; color:var(--helia-product-accent); }
 .edge-intro-copy { margin:0!important; }
-.edge-intro-copy > p { margin-top:0; color:var(--sl-color-gray-2); }
+.edge-intro-copy > p { margin-top:0; color:#c8ced8; }
+.edge-intro .helia-button { background:transparent; border-color:#68717f; color:#f5f6f8; }
+.edge-intro .helia-button:hover { background:#252a32; border-color:#ff526c; }
+.edge-intro .helia-button:focus-visible { outline:2px solid #ff526c; outline-offset:4px; }
 .edge-home .edge-backend-caption { font-size:.75rem; }
 .edge-home-section { margin-block:4rem; }
 .edge-home .edge-home-section h2 { margin:0 0 1.5rem; font-size:clamp(1.65rem,3vw,2rem); letter-spacing:-.025em; }
@@ -53,3 +59,9 @@
 .edge-backend-layout > div { margin:0; }
 .edge-backend-layout p { margin-top:0; }
 @media(max-width:48rem) { .edge-intro,.edge-backend-layout{grid-template-columns:1fr;gap:1rem}.edge-intro{padding-block:1.5rem}.edge-home-section{margin-block:2.75rem}.edge-home .edge-intro h1{margin-bottom:.5rem} }
+
+.sl-markdown-content img[src$='/mae-reconstruction.svg'] {
+  width: 100%;
+  max-width: 38rem;
+  margin-inline: auto;
+}

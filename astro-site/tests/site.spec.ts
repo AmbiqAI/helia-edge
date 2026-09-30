@@ -46,3 +46,21 @@ test('site search returns generated API',async({page})=>{
   });
   expect(results.some((r:{url:string})=>r.url.includes('models/tcn'))).toBe(true);
 });
+
+test('installation choices sync and advanced examples stay available', async ({page}) => {
+  await page.goto('getting-started/');
+  await page.getByRole('tab',{name:'PyTorch',exact:true}).first().click();
+  await expect(page.getByRole('tab',{name:'PyTorch',exact:true}).last()).toHaveAttribute('aria-selected','true');
+  await expect(page.getByRole('tabpanel').filter({hasText:'uv sync --python 3.12 --extra torch'}).last()).toBeVisible();
+  await page.getByRole('tab',{name:'PyPI release',exact:true}).click();
+  await page.getByRole('tab',{name:'uv',exact:true}).click();
+  await expect(page.getByRole('tabpanel').filter({hasText:"uv add 'helia-edge==0.6.2'"}).last()).toBeVisible();
+  await page.goto('getting-started/backends/');
+  await expect(page.getByRole('tab',{name:'PyTorch',exact:true})).toHaveAttribute('aria-selected','true');
+  await page.goto('guide/input-pipeline/');
+  const details=page.locator('details').filter({has:page.locator('summary',{hasText:'Use a weighted, repeating schedule'})});
+  await expect(details).not.toHaveAttribute('open','');
+  await details.locator('summary').click();
+  await expect(details).toHaveAttribute('open','');
+  await expect(details.locator('pre')).toContainText('weighted.take(6)');
+});
