@@ -12,9 +12,12 @@ Functions:
 
 import glob
 import itertools
+import json
 import os
 import tempfile
+import zipfile
 from pathlib import Path
+from typing import Any
 
 import keras
 
@@ -43,6 +46,152 @@ def make_divisible(v: int, divisor: int = 4, min_value: int | None = None) -> in
     return new_v
 
 
+def undot_layer_names(config: Any) -> tuple[Any, dict[str, str]]:
+    """Rename layers whose names contain ``.`` in a saved Keras model config.
+
+    Torch registers each layer as a module attribute, and attribute names cannot contain ``.``.
+    Every layer-like entry is renamed, including the model itself and any named loss or metric
+    objects, so a name in any of them can trigger the collision check.
+    Each ``.`` becomes ``_``. Layer names, connections (``keras_history``), the model's input
+    and output lists, and the output-name keys of ``compile_config`` (losses, metrics, loss
+    weights) are renamed together; weights are stored by structure, not by name, so they need no
+    change.
+
+    Args:
+        config: The parsed ``config.json`` of a ``.keras`` file.
+
+    Returns:
+        tuple: The renamed config (a new object) and the mapping from old to new names.
+
+    Raises:
+        ValueError: If a new name equals another layer's name.
+    """
+    names: set[str] = set()
+
+    def collect(node: Any) -> None:
+        if isinstance(node, dict):
+            if "class_name" in node and isinstance(node.get("config"), dict):
+                name = node["config"].get("name")
+                if isinstance(name, str):
+                    names.add(name)
+            for value in node.values():
+                collect(value)
+        elif isinstance(node, list):
+            for value in node:
+                collect(value)
+
+    collect(config)
+    mapping = {name: name.replace(".", "_") for name in sorted(names) if "." in name}
+    targets: dict[str, str] = {}
+    for old, new in mapping.items():
+        if new in names or new in targets:
+            other = new if new in names else targets[new]
+            raise ValueError(f"Cannot rename layer {old!r} to {new!r}: it would collide with {other!r}")
+        targets[new] = old
+
+    def rename(node: Any, key: str | None = None) -> Any:
+        if isinstance(node, dict) and key in ("input_layers", "output_layers"):
+            # Dict-structured model inputs or outputs: keys are names, values are references.
+            return {mapping.get(k, k): rename_reference(v) for k, v in node.items()}
+        if isinstance(node, dict):
+            out = {k: rename(v, k) for k, v in node.items()}
+            if "class_name" in out and isinstance(out.get("config"), dict) and out["config"].get("name") in mapping:
+                out["config"] = {**out["config"], "name": mapping[out["config"]["name"]]}
+            if "class_name" in out and out.get("name") in mapping:
+                out["name"] = mapping[out["name"]]
+            return out
+        if isinstance(node, list):
+            if key == "keras_history" and node and node[0] in mapping:
+                return [mapping[node[0]], *node[1:]]
+            if key in ("input_layers", "output_layers"):
+                return rename_reference(node)
+            return [rename(value) for value in node]
+        return node
+
+    def rename_reference(reference: Any) -> Any:
+        if isinstance(reference, list) and reference and isinstance(reference[0], str):
+            return [mapping.get(reference[0], reference[0]), *reference[1:]]
+        if isinstance(reference, list):
+            return [rename_reference(value) for value in reference]
+        return reference
+
+    def rename_keys(node: Any) -> Any:
+        if isinstance(node, dict):
+            return {mapping.get(k, k): rename_keys(v) for k, v in node.items()}
+        if isinstance(node, list):
+            return [rename_keys(value) for value in node]
+        return node
+
+    renamed = rename(config)
+    if isinstance(renamed, dict) and isinstance(renamed.get("compile_config"), dict):
+        renamed["compile_config"] = rename_keys(renamed["compile_config"])
+    return renamed, mapping
+
+
+def _normalizes_last_axis_only(entry: dict) -> bool:
+    """Whether a saved LayerNormalization entry normalizes only the last axis, which Torch supports."""
+    axis = entry.get("config", {}).get("axis")
+    axes = axis if isinstance(axis, list) else [axis]
+    shape = (entry.get("build_config") or {}).get("input_shape")
+    rank = len(shape) if isinstance(shape, list) else None
+    return len(axes) == 1 and (axes[0] == -1 or (rank is not None and axes[0] == rank - 1))
+
+
+def use_helia_layer_normalization(config: Any) -> tuple[Any, int]:
+    """Swap Keras ``LayerNormalization`` entries for ``helia_edge.layers.LayerNormalization``.
+
+    The two classes share configuration and weights. Keras's Torch backend cannot normalize
+    non-trailing axes; the helia_edge class can, so this lets models saved with the Keras class
+    load on Torch. Entries that normalize the last axis alone keep the Keras class.
+
+    Args:
+        config: The parsed ``config.json`` of a ``.keras`` file.
+
+    Returns:
+        tuple: The new config and the number of entries swapped.
+    """
+    count = 0
+
+    def swap(node: Any) -> Any:
+        nonlocal count
+        if isinstance(node, dict):
+            out = {k: swap(v) for k, v in node.items()}
+            if (
+                out.get("class_name") == "LayerNormalization"
+                and out.get("module") == "keras.layers"
+                and not _normalizes_last_axis_only(out)
+            ):
+                out["module"] = "helia_edge.layers.normalization"
+                out["registered_name"] = "helia_edge>LayerNormalization"
+                count += 1
+            return out
+        if isinstance(node, list):
+            return [swap(value) for value in node]
+        return node
+
+    return swap(config), count
+
+
+def _load_keras_file(path: os.PathLike) -> keras.Model:
+    """Load a local model file; on Torch, ``.keras`` configs are adapted first (dotted names, layer norm)."""
+    path = Path(path)
+    if keras.backend.backend() != "torch" or path.suffix != ".keras":
+        return keras.models.load_model(path)
+    with zipfile.ZipFile(path) as archive:
+        config = json.loads(archive.read("config.json"))
+        renamed, mapping = undot_layer_names(config)
+        renamed, swapped = use_helia_layer_normalization(renamed)
+        if not mapping and not swapped:
+            return keras.models.load_model(path)
+        with tempfile.TemporaryDirectory() as tmpdirname:
+            target = Path(tmpdirname) / path.name
+            with zipfile.ZipFile(target, "w") as out:
+                for item in archive.infolist():
+                    data = json.dumps(renamed).encode() if item.filename == "config.json" else archive.read(item)
+                    out.writestr(item, data)
+            return keras.models.load_model(target)
+
+
 def load_model(model_path: os.PathLike) -> keras.Model:
     """Loads a Keras model stored either remotely or locally.
     NOTE: Currently supports wandb, s3, and https for remote.
@@ -53,6 +202,12 @@ def load_model(model_path: os.PathLike) -> keras.Model:
             FILE: file:/path/to/model.tf
             S3: s3:bucket/prefix/model.tf
             https: https://path/to/model.tf
+
+    On the Torch backend, ``.keras`` files are adapted before loading: names containing ``.``
+    (common in models saved by earlier helia-edge versions) are renamed to use ``_``, and Keras
+    ``LayerNormalization`` layers over non-trailing axes load as
+    ``helia_edge.layers.LayerNormalization``; see ``undot_layer_names`` and
+    ``use_helia_layer_normalization``. Other formats load unchanged.
 
     Returns:
         keras.Model: Model
@@ -80,7 +235,7 @@ def load_model(model_path: os.PathLike) -> keras.Model:
                 if not file_paths:
                     raise FileNotFoundError("Model file not found in artifact")
                 model_path = file_paths[0]
-                model = keras.models.load_model(model_path)
+                model = _load_keras_file(model_path)
             # END WITH
 
         case "s3":
@@ -107,7 +262,7 @@ def load_model(model_path: os.PathLike) -> keras.Model:
                     Key=key,
                     Filename=str(dst_path),
                 )
-                model = keras.models.load_model(dst_path)
+                model = _load_keras_file(dst_path)
             # END WITH
 
         case "https":
@@ -115,12 +270,12 @@ def load_model(model_path: os.PathLike) -> keras.Model:
                 model_ext = Path(model_path).suffix
                 dst_path = Path(tmpdirname) / f"model{model_ext}"
                 download_file(model_path, dst_path)
-                model = keras.models.load_model(dst_path)
+                model = _load_keras_file(dst_path)
             # END WITH
 
         case _:
             model_path = model_path.removeprefix("file:")
-            model = keras.models.load_model(model_path)
+            model = _load_keras_file(model_path)
     # END MATCH
 
     return model

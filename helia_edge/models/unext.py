@@ -30,6 +30,8 @@ from typing import Literal
 import keras
 from pydantic import BaseModel, Field
 
+from ..layers.normalization import LayerNormalization
+
 
 class UNextBlockParams(BaseModel):
     """UNext block parameters
@@ -133,7 +135,7 @@ def norm_layer(norm: str, name: str) -> keras.Layer:
             return keras.layers.BatchNormalization(axis=-1, name=f"{name}_BN")(x)
         if norm == "layer":
             ln_axis = 2 if x.shape[1] == 1 else 1 if x.shape[2] == 1 else (1, 2)
-            return keras.layers.LayerNormalization(axis=ln_axis, name=f"{name}_LN")(x)
+            return LayerNormalization(axis=ln_axis, name=f"{name}_LN")(x)
         return x
 
     return layer
@@ -174,7 +176,7 @@ def unext_block(
                 name=f"{name}_norm",
             )(y)
         elif norm == "layer":
-            y = keras.layers.LayerNormalization(
+            y = LayerNormalization(
                 axis=ln_axis,
                 name=f"{name}_norm" if name else None,
             )(y)
@@ -280,7 +282,7 @@ def unext_core(
             )(y)
         elif block.norm == "layer":
             ln_axis = 2 if y.shape[1] == 1 else 1 if y.shape[2] == 1 else (1, 2)
-            y = keras.layers.LayerNormalization(
+            y = LayerNormalization(
                 axis=ln_axis,
                 name=f"{name}_norm",
             )(y)
@@ -349,7 +351,7 @@ def unext_core(
                 )(y)
             elif block.norm == "layer":
                 ln_axis = 2 if y.shape[1] == 1 else 1 if y.shape[2] == 1 else (1, 2)
-                y = keras.layers.LayerNormalization(
+                y = LayerNormalization(
                     axis=ln_axis,
                     name=f"{name}_S1_norm",
                 )(y)

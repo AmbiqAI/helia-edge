@@ -88,8 +88,10 @@ export task's separate softmax policy. The model and typed factory have 52 layer
 and 7,310 parameters; weight loading and selected FP32 outputs were checked on
 CPU TensorFlow and Torch. This is compatibility evidence, not task accuracy.
 
-The historical model's dotted variable-layer names prevent direct Torch
-`load_model`; construct the typed model and use `load_weights` instead. Keras
+The historical file does not load directly on either backend: its saved compile
+metrics are registered under an earlier name. Construct the typed model and use
+`load_weights` instead. (Dotted layer names alone no longer block Torch:
+`helia_edge.models.load_model` renames them when it loads a `.keras` file.) Keras
 save/load of the reconstructed model works on both qualified backends. Historical
 SE 1x1 convolutions use same padding while the current helper uses valid; with
 unit stride these have identical spatial behavior. Names and untrained initializer

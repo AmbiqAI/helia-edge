@@ -27,6 +27,8 @@ from helia_edge.models import (
     RegNetParams,
     ResNetModel,
     ResNetParams,
+    TcnModel,
+    TcnParams,
     TsMixerModel,
     TsMixerParams,
     UNetModel,
@@ -60,9 +62,6 @@ def known_bug(issues, raises, condition=True):
 def drop_last(params, field="blocks"):
     return params.model_copy(update={field: getattr(params, field)[:-1]})
 
-
-# Dotted layer names from the shared layer helpers are rejected by Torch (#73).
-DOTTED_NAMES_ON_TORCH = known_bug([73], KeyError, condition=TORCH)
 
 COMPOSER = ComposerParams(layers=[{"name": "dense", "params": {"units": 8}}, {"name": "dense", "params": {"units": 8}}])
 COMPOSER_CONV = ComposerParams(
@@ -143,6 +142,19 @@ REGNET_SQUARE_STRIDED = RegNetParams(input_filters=8, blocks=[{"filters": 8, "gr
 REGNET_Z_SQUARE_STRIDED = REGNET_SQUARE_STRIDED.model_copy(update={"block_style": "z"})
 UNET_BLOCK = {"filters": 8, "depth": 1, "kernel": (1, 3), "pool": (1, 2), "strides": (1, 2)}
 UNET = UNetParams(blocks=[UNET_BLOCK, {**UNET_BLOCK, "filters": 16}])
+UNET_LAYER_NORM = UNetParams(blocks=[{**UNET_BLOCK, "norm": "layer"}, {**UNET_BLOCK, "filters": 16, "norm": "layer"}])
+TCN_BLOCK = {"depth": 1, "branch": 1, "filters": 8, "kernel": (1, 3), "dilation": (1, 1), "dropout": 0, "ex_ratio": 1}
+TCN_LAYER_NORM = TcnParams(
+    input_kernel=(1, 3),
+    input_norm="layer",
+    blocks=[
+        {**TCN_BLOCK, "se_ratio": 0, "norm": "layer"},
+        {**TCN_BLOCK, "dilation": (1, 2), "se_ratio": 0, "norm": "layer"},
+    ],
+    output_kernel=(1, 3),
+    include_top=True,
+    use_logits=True,
+)
 UNEXT = UNextParams(blocks=[UNET_BLOCK, {**UNET_BLOCK, "filters": 16}])
 
 FAMILIES = [
@@ -163,17 +175,9 @@ FAMILIES = [
         ),
         id="composer-conv",
     ),
-    pytest.param(
-        Case(ConformerModel, CONFORMER, ROW, drop_last(CONFORMER)),
-        id="conformer",
-        marks=DOTTED_NAMES_ON_TORCH,
-    ),
+    pytest.param(Case(ConformerModel, CONFORMER, ROW, drop_last(CONFORMER)), id="conformer"),
     pytest.param(Case(ConvMixerModel, CONVMIXER, ROW, CONVMIXER.model_copy(update={"depth": 1})), id="convmixer"),
-    pytest.param(
-        Case(EfficientNetV2Model, EFFICIENTNET, ROW, drop_last(EFFICIENTNET)),
-        id="efficientnetv2",
-        marks=DOTTED_NAMES_ON_TORCH,
-    ),
+    pytest.param(Case(EfficientNetV2Model, EFFICIENTNET, ROW, drop_last(EFFICIENTNET)), id="efficientnetv2"),
     pytest.param(
         Case(MetaFormerModel, METAFORMER, ROW, drop_last(METAFORMER)),
         id="metaformer",
@@ -188,22 +192,14 @@ FAMILIES = [
         id="mobilenetv1",
     ),
     pytest.param(Case(MobileOneModel, MOBILEONE, ROW, drop_last(MOBILEONE)), id="mobileone"),
-    pytest.param(Case(RegNetModel, REGNET, ROW, drop_last(REGNET)), id="regnet", marks=DOTTED_NAMES_ON_TORCH),
-    pytest.param(
-        Case(RegNetModel, REGNET_STRIDED_SAME_WIDTH, ROW),
-        id="regnet-strided-same-width",
-        marks=DOTTED_NAMES_ON_TORCH,
-    ),
+    pytest.param(Case(RegNetModel, REGNET, ROW, drop_last(REGNET)), id="regnet"),
+    pytest.param(Case(RegNetModel, REGNET_STRIDED_SAME_WIDTH, ROW), id="regnet-strided-same-width"),
     pytest.param(Case(ResNetModel, RESNET, ROW, drop_last(RESNET)), id="resnet"),
     pytest.param(Case(ResNetModel, RESNET_STRIDED_SAME_WIDTH, ROW), id="resnet-strided-same-width"),
     pytest.param(
         Case(ResNetModel, RESNET_BOTTLENECK_STRIDED_SAME_WIDTH, ROW), id="resnet-bottleneck-strided-same-width"
     ),
-    pytest.param(
-        Case(RegNetModel, REGNET_Z_STRIDED_SAME_WIDTH, ROW),
-        id="regnet-z-strided-same-width",
-        marks=DOTTED_NAMES_ON_TORCH,
-    ),
+    pytest.param(Case(RegNetModel, REGNET_Z_STRIDED_SAME_WIDTH, ROW), id="regnet-z-strided-same-width"),
     pytest.param(
         Case(TsMixerModel, TSMIXER, SERIES, drop_last(TSMIXER), class_axis=1),
         id="tsmixer",
@@ -213,18 +209,14 @@ FAMILIES = [
         id="tsmixer-default-width",
     ),
     pytest.param(Case(ResNetModel, RESNET_SQUARE_STRIDED, SQUARE), id="resnet-square-strided"),
-    pytest.param(
-        Case(RegNetModel, REGNET_SQUARE_STRIDED, SQUARE), id="regnet-square-strided", marks=DOTTED_NAMES_ON_TORCH
-    ),
-    pytest.param(
-        Case(RegNetModel, REGNET_Z_SQUARE_STRIDED, SQUARE), id="regnet-z-square-strided", marks=DOTTED_NAMES_ON_TORCH
-    ),
+    pytest.param(Case(RegNetModel, REGNET_SQUARE_STRIDED, SQUARE), id="regnet-square-strided"),
+    pytest.param(Case(RegNetModel, REGNET_Z_SQUARE_STRIDED, SQUARE), id="regnet-z-square-strided"),
     pytest.param(Case(UNetModel, UNET, ROW, drop_last(UNET)), id="unet"),
+    pytest.param(Case(UNetModel, UNET_LAYER_NORM, ROW, drop_last(UNET_LAYER_NORM)), id="unet-layer-norm"),
+    pytest.param(Case(TcnModel, TCN_LAYER_NORM, ROW, drop_last(TCN_LAYER_NORM)), id="tcn-layer-norm"),
     pytest.param(
         Case(UNextModel, UNEXT, ROW, drop_last(UNEXT)),
         id="unext",
-        # Layer normalization over a non-last axis fails on Torch (#74).
-        marks=known_bug([74], RuntimeError, condition=TORCH),
     ),
 ]
 
@@ -250,6 +242,7 @@ def test_builds_runs_and_reloads(case, tmp_path):
         reduced = build(case, case.reduced).count_params()
         assert build(case).count_params() > reduced, "the last block (or depth level) was not built"
     model = build(case)
+    assert not [layer.name for layer in model.layers if "." in layer.name], "Torch rejects '.' in layer names"
     if case.layer_counts is not None:
         counts = Counter(type(layer).__name__ for layer in model.layers)
         assert {name: counts[name] for name in case.layer_counts} == case.layer_counts
@@ -295,7 +288,6 @@ def test_tsmixer_default_feed_forward_width_is_the_channel_count():
     assert widths == [SERIES[-1]] * len(TSMIXER_DEFAULT_WIDTH.blocks)
 
 
-@DOTTED_NAMES_ON_TORCH
 def test_conformer_layer_norms_normalize_features():
     model = build(Case(ConformerModel, CONFORMER, ROW))
     axes = [layer.axis for layer in model.layers if isinstance(layer, keras.layers.LayerNormalization)]

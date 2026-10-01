@@ -3,6 +3,9 @@
 
 This module provides classes to build normalization layers.
 
+Classes:
+    LayerNormalization: Keras layer normalization that also runs on the Torch backend for any axes
+
 Functions:
     layer_normalization: Layer normalization
     batch_normalization: Batch normalization
@@ -12,6 +15,49 @@ Please check [Keras Normalization Layers](https://keras.io/api/layers/normalizat
 """
 
 import keras
+import numpy as np
+
+from ..utils.export import helia_export
+
+
+@helia_export(path="helia_edge.layers.LayerNormalization")
+class LayerNormalization(keras.layers.LayerNormalization):
+    """Keras ``LayerNormalization`` that also normalizes non-trailing axes on the Torch backend.
+
+    Keras 3's Torch backend normalizes trailing axes only, so axes such as ``(1, 2)`` of a
+    ``(batch, height, width, channels)`` input fail there. On Torch, this layer moves the
+    normalized axes last, normalizes and moves them back. On other backends it is the Keras layer,
+    with the same weights, configuration and graph.
+
+    Saved models record this class as ``helia_edge>LayerNormalization``: load them with
+    ``helia_edge.models.load_model``, or call ``helia_edge.register_keras_serializables()`` before
+    ``keras.saving.load_model``.
+    """
+
+    def call(self, inputs):
+        if keras.backend.backend() != "torch":
+            return super().call(inputs)
+        rank = len(inputs.shape)
+        axes = [axis % rank for axis in self.axis]
+        trailing = list(range(rank - len(axes), rank))
+        if axes == trailing:
+            return super().call(inputs)
+        perm = [axis for axis in range(rank) if axis not in axes] + axes
+        inverse = [perm.index(axis) for axis in range(rank)]
+        outputs = keras.ops.layer_normalization(
+            keras.ops.transpose(inputs, perm),
+            self.gamma,
+            self.beta,
+            trailing,
+            self.epsilon,
+            rms_scaling=self.rms_scaling,
+        )
+        return keras.ops.cast(keras.ops.transpose(outputs, inverse), self.compute_dtype)
+
+
+def _layer_normalization_class(axis) -> type[keras.layers.LayerNormalization]:
+    """The Keras class for the last axis alone, which every backend supports; otherwise ours."""
+    return keras.layers.LayerNormalization if list(np.atleast_1d(axis)) == [-1] else LayerNormalization
 
 
 def layer_normalization(
@@ -33,7 +79,7 @@ def layer_normalization(
     Returns:
         keras.Layer: Layer
     """
-    name = name + ".ln" if name else None
+    name = name + "_ln" if name else None
 
     if axis is None:
 
@@ -58,7 +104,7 @@ def layer_normalization(
                 _axis = -1
             # END IF
 
-            return keras.layers.LayerNormalization(axis=_axis, name=name, scale=scale)(x)
+            return _layer_normalization_class(_axis)(axis=_axis, name=name, scale=scale)(x)
 
         # END DEF
     else:
@@ -72,7 +118,7 @@ def layer_normalization(
             Returns:
                 tf.Tensor: Output tensor
             """
-            return keras.layers.LayerNormalization(axis=axis, name=name, scale=scale)(x)
+            return _layer_normalization_class(axis)(axis=axis, name=name, scale=scale)(x)
 
         # END DEF
 
