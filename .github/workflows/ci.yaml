@@ -13,7 +13,7 @@ jobs:
       - uses: astral-sh/setup-uv@v5
       - run: uv venv --python 3.12
       - run: uv pip install 'torch==2.14.0' --index-url https://download.pytorch.org/whl/cpu
-      - run: uv pip install '.[tensorflow,torch,litert,grain,plotting,aws]' --group ci
+      - run: uv pip install '.[tensorflow,torch,litert,grain,plotting,aws,onnx]' --group ci
       - run: uv run --no-sync prek run --all-files --hook-stage pre-push
 
   base:
@@ -38,7 +38,7 @@ jobs:
           PY
       - if: matrix.python == '3.12'
         run: uv run --no-sync prek run --all-files --hook-stage pre-commit
-      - run: uv run --no-sync pytest -q tests/test_import_isolation.py tests/test_optional_dependencies.py tests/utils/test_rng.py tests/export/test_export_spec.py tests/export/test_state_records.py tests/export/test_export_recipe.py tests/test_registry.py tests/data/test_data.py tests/test_removed_modules.py
+      - run: uv run --no-sync pytest -q tests/test_import_isolation.py tests/test_optional_dependencies.py tests/utils/test_rng.py tests/export/test_export_spec.py tests/export/test_state_records.py tests/importers/test_mapping.py tests/export/test_export_recipe.py tests/test_registry.py tests/data/test_data.py tests/test_removed_modules.py
 
       - name: Test AWS without plotting or a backend
         env:
@@ -82,7 +82,7 @@ jobs:
         run: uv pip install 'torch==2.14.0' --index-url https://download.pytorch.org/whl/cpu
       - run: uv pip install '.[${{ matrix.backend }},grain]' 'keras==3.15.1' pytest
       - if: matrix.backend == 'tensorflow'
-        run: uv pip install 'ai-edge-litert==2.2.0'
+        run: uv pip install 'ai-edge-litert==2.2.0' 'onnx==1.23.1' 'onnxruntime==1.30.0'
       - name: Run documentation examples
         run: uv run --no-sync pytest -q tests/test_docs_examples.py
       - name: Check backend installation excludes plotting and AWS
@@ -104,7 +104,7 @@ jobs:
           tests/layers/test_preprocessing_integration.py
           tests/export/test_export_spec.py tests/export/test_export_backend.py tests/export/test_export_recipe.py
           tests/test_registry.py tests/data tests/test_removed_modules.py
-          tests/models/test_load_model_names.py tests/layers/test_layer_normalization.py tests/layers/test_streaming_lstm_cell.py
+          tests/models/test_load_model_names.py tests/layers/test_layer_normalization.py tests/layers/test_streaming_lstm_cell.py tests/importers tests/layers/test_stft_magnitude.py tests/models/test_silero_vad.py
       - run: >-
           uv run --no-sync python tests/trainers/mae_parity_fixture.py
           --output '${{ runner.temp }}/mae-evidence.npz'
