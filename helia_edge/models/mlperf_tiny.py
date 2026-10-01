@@ -1,6 +1,6 @@
 """Faithful scale-1 MLPerf Tiny architectures with newly initialized weights.
 
-Pinned topology and licensing: docs/mlperf-tiny.md and models/licenses/.
+Pinned topology and licensing: https://ambiqai.github.io/helia-edge/examples/mlperf-tiny/ and models/licenses/.
 Adapted from MLCommons Tiny (Apache-2.0); anomaly detector originally
 Copyright (c) 2020 Hitachi, Ltd. (MIT). Changes: Keras 3 API, fixed captured
 shapes/configurations, explicit layer names, no training or weight downloads.

@@ -3,7 +3,7 @@
 > Build edge-ready ML systems on top of Keras 3, from training to deployment.
 
 Install `helia-edge[tensorflow]` or `helia-edge[torch]` and select `KERAS_BACKEND`
-before importing Keras. See [backend installation and compatibility](docs/backends.md)
+before importing Keras. See [backend installation and compatibility](https://ambiqai.github.io/helia-edge/getting-started/backends/)
 for the tested matrix, lazy-import migration and custom-model loading.
 
 For visualization or S3 access, add the `plotting` or `aws` extra, respectively.
@@ -26,24 +26,22 @@ The goal is simple: keep the developer experience high while making edge deploym
 
 ### Start here
 
-- **[Getting Started](https://ambiqai.github.io/helia-edge/usage/)**: Install and run your first heliaEDGE workflow
-- **[API Documentation](https://ambiqai.github.io/helia-edge/api/helia_edge/)**: Explore the full API surface
-- **[Guides](https://ambiqai.github.io/helia-edge/guides/)**: Follow practical end-to-end walkthroughs
+- **[Getting Started](https://ambiqai.github.io/helia-edge/getting-started/)**: Install and run your first heliaEDGE workflow
+- **[API Documentation](https://ambiqai.github.io/helia-edge/reference/api/helia_edge/)**: Explore the full API surface
+- **[Guides](https://ambiqai.github.io/helia-edge/examples/)**: Follow practical end-to-end walkthroughs
 
 ## Main Features
 
-* [**Callbacks**](https://ambiqai.github.io/helia-edge/api/helia_edge/callbacks): Training lifecycle and monitoring helpers
-* [**Converters**](https://ambiqai.github.io/helia-edge/api/helia_edge/converters): Export pipelines for deployment targets
-* [**Interpreters**](https://ambiqai.github.io/helia-edge/api/helia_edge/interpreters): Runtime inference interfaces (including TFLite)
-* [**Layers**](https://ambiqai.github.io/helia-edge/api/helia_edge/layers): Edge-centric layers, including data preprocessing components
-* [**Losses**](https://ambiqai.github.io/helia-edge/api/helia_edge/losses): Additional losses for modern training workflows
-* [**Metrics**](https://ambiqai.github.io/helia-edge/api/helia_edge/metrics): Extended evaluation metrics for edge model analysis
-* [**Models**](https://ambiqai.github.io/helia-edge/api/helia_edge/models): Parameterized 1D/2D architectures for flexible scaling
-* [**Optimizers**](https://ambiqai.github.io/helia-edge/api/helia_edge/optimizers): Optimization options beyond core Keras defaults
-* [**Plotting**](https://ambiqai.github.io/helia-edge/api/helia_edge/plotting): Visualization helpers for training and evaluation outputs
-* [**Quantizers**](https://ambiqai.github.io/helia-edge/api/helia_edge/quantizers): Quantization workflows for efficient inference
-* [**Trainers**](https://ambiqai.github.io/helia-edge/api/helia_edge/trainers): Trainer abstractions including self-supervised patterns
-* [**Utils**](https://ambiqai.github.io/helia-edge/api/helia_edge/utils): Practical utilities for common ML/edge tasks
+* [**Callbacks**](https://ambiqai.github.io/helia-edge/reference/api/helia_edge/callbacks): Training lifecycle and monitoring helpers
+* [**Data**](https://ambiqai.github.io/helia-edge/reference/api/helia_edge/data): Grain record pipelines with TensorFlow and Torch adapters
+* [**Export**](https://ambiqai.github.io/helia-edge/reference/api/helia_edge/export): Typed LiteRT export, recipes, manifests and the `helia-edge` command
+* [**Layers**](https://ambiqai.github.io/helia-edge/reference/api/helia_edge/layers): Edge-centric layers, including data preprocessing components
+* [**Losses**](https://ambiqai.github.io/helia-edge/reference/api/helia_edge/losses): Additional losses for modern training workflows
+* [**Metrics**](https://ambiqai.github.io/helia-edge/reference/api/helia_edge/metrics): Extended evaluation metrics for edge model analysis
+* [**Models**](https://ambiqai.github.io/helia-edge/reference/api/helia_edge/models): Parameterized 1D/2D architectures for flexible scaling
+* [**Plotting**](https://ambiqai.github.io/helia-edge/reference/api/helia_edge/plotting): Visualization helpers for training and evaluation outputs
+* [**Trainers**](https://ambiqai.github.io/helia-edge/reference/api/helia_edge/trainers): Trainer abstractions including self-supervised patterns
+* [**Utils**](https://ambiqai.github.io/helia-edge/reference/api/helia_edge/utils): Practical utilities for common ML/edge tasks
 
 ## Built for Developers Shipping to Edge
 

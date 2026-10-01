@@ -68,7 +68,7 @@ def create_interleaved_dataset_from_generator[T, K](
 
     GLOBAL preserves one finite/repeated stream. FINITE partitions terminating,
     partition-independent generators; deterministic mode preserves partition order.
-    num_workers counts generators, not processes. See docs/input-pipeline.md.
+    num_workers counts generators, not processes. See https://ambiqai.github.io/helia-edge/guide/input-pipeline/.
     """
 
     import tensorflow as tf

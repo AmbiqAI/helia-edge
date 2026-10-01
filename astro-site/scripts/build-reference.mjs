@@ -66,7 +66,7 @@ const visit = (m) => { modules.push(m); (m.submodules ?? []).forEach(visit); };
 model.modules.forEach(visit);
 const slug = (s) => s.toLowerCase();
 const route = (m) => `reference/api/${m.path.split('.').map(slug).join('/')}`;
-const groups = {models:'Architectures', callbacks:'Callbacks', converters:'Conversion', export:'Conversion', interpreters:'Inference', losses:'Losses', metrics:'Metrics', plotting:'Plotting', trainers:'Training', utils:'Utilities', layers:'Layers', optimizers:'Package', quantizers:'Package'};
+const groups = {models:'Architectures', callbacks:'Callbacks', converters:'Conversion', export:'Conversion', data:'Data', interpreters:'Inference', losses:'Losses', metrics:'Metrics', plotting:'Plotting', trainers:'Training', utils:'Utilities', layers:'Layers'};
 function category(m) {
   if (m.path.startsWith('helia_edge.layers.preprocessing')) {
     return /random|augment|warp|mix_style|sine_wave/.test(m.path) ? 'Augmentation' : 'Preprocessing';
