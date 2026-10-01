@@ -126,7 +126,7 @@ UNEXT = UNextParams(blocks=[UNET_BLOCK, {**UNET_BLOCK, "filters": 16}])
 
 FAMILIES = [
     pytest.param(Case(ComposerModel, COMPOSER, ROW, drop_last(COMPOSER, "layers")), id="composer-dense"),
-    pytest.param(Case(ComposerModel, COMPOSER_CONV, ROW), id="composer-conv", marks=known_bug([71], TypeError)),
+    pytest.param(Case(ComposerModel, COMPOSER_CONV, ROW), id="composer-conv"),
     pytest.param(
         Case(ConformerModel, CONFORMER, ROW, drop_last(CONFORMER)),
         id="conformer",

@@ -75,15 +75,15 @@ def composer_layer(
     for layer in params.layers:
         match layer.name:
             case "conv2d":
-                y = conv2d(y, **layer.params)
+                y = conv2d(**layer.params)(y)
             case "dense":
                 y = keras.layers.Dense(**layer.params)(y)
             case "relu6":
-                y = relu6(y)
+                y = relu6(**layer.params)(y)
             case "batch_norm":
-                y = batch_normalization(y)
+                y = batch_normalization(**layer.params)(y)
             case "se_block":
-                y = se_layer(y, **layer.params)
+                y = se_layer(**layer.params)(y)
             case "load_model":
                 prev_model = load_model(layer.params["model_file"])
                 trainable = layer.params.get("trainable", True)
