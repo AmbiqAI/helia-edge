@@ -117,8 +117,10 @@ def test_tensorflow_loads_the_file_unchanged():
     model = load_model(MODEL)
     assert any("." in name for name in layer_names(model))
     io = np.load(FIXTURE / "efficientnetv2_io.npz")
+    # Float32 results differ in the last bits across CPU kernel paths, so the outputs saved with the fixture
+    # are matched to the same tolerance as the other fixture comparisons.
     for x, y in zip(io["inputs"], io["outputs"], strict=True):
-        np.testing.assert_array_equal(keras.ops.convert_to_numpy(model(x, training=False)), y)
+        np.testing.assert_allclose(keras.ops.convert_to_numpy(model(x, training=False)), y, rtol=1e-5, atol=1e-6)
 
 
 def test_torch_loads_the_dotted_file_with_the_tensorflow_outputs():
