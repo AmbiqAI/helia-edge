@@ -12,6 +12,7 @@ Classes:
 
 import io
 import tempfile
+import warnings
 from enum import StrEnum
 from pathlib import Path
 
@@ -73,6 +74,10 @@ class TfLiteKerasConverter:
     ):
         """Converts Keras model to TFLite model.
 
+        Deprecated: use ``helia_edge.export.export_model`` with an ``ExportSpec``, and
+        ``helia_edge.export.LiteRTRunner`` to run the result. Constructing this class emits a
+        ``DeprecationWarning``; its behaviour is unchanged.
+
         Args:
             model (keras.Model): Keras model
 
@@ -106,6 +111,12 @@ class TfLiteKerasConverter:
         print(np.allclose(y_pred_tf, y_pred_tfl, atol=1e-3))
         ```
         """
+        warnings.warn(
+            f"{type(self).__name__} is deprecated; use helia_edge.export.export_model with an ExportSpec, "
+            "and helia_edge.export.LiteRTRunner to run the result.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         self.model = model
         self.representative_dataset = None
         self._converter: tf.lite.TFLiteConverter | None = None

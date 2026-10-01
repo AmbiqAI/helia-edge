@@ -8,6 +8,8 @@ Classes:
 
 """
 
+import warnings
+
 import numpy as np
 import numpy.typing as npt
 import tensorflow as tf
@@ -22,6 +24,9 @@ class TfLiteKerasInterpreter:
         signature_key: str | None = None,
     ):
         """TFLite model interpreter that takes care of I/O conversion and prediction.
+
+        Deprecated: use ``helia_edge.export.LiteRTRunner``, which rounds and saturates quantized
+        inputs. Constructing this class emits a ``DeprecationWarning``; its behaviour is unchanged.
 
         Args:
             model_content (str): TFLite model content
@@ -62,6 +67,11 @@ class TfLiteKerasInterpreter:
         print(np.allclose(y_pred_tf, y_pred_tfl, atol=1e-3))
         ```
         """
+        warnings.warn(
+            "TfLiteKerasInterpreter is deprecated; use helia_edge.export.LiteRTRunner.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         self.model_content = model_content
         self.interpreter = tf.lite.Interpreter(model_content=model_content)
         self.interpreter.allocate_tensors()

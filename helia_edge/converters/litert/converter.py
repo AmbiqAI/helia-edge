@@ -29,7 +29,10 @@ def _load_litert_interpreter():
 
 
 class LiteRTKerasConverter(TfLiteKerasConverter):
-    """Converts Keras model to LiteRT model content."""
+    """Converts Keras model to LiteRT model content.
+
+    Deprecated: use ``helia_edge.export.export_model`` and ``helia_edge.export.LiteRTRunner``.
+    """
 
     def convert(
         self,
