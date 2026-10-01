@@ -31,17 +31,23 @@ UNITS, FEATURES = 12, 6
 INT16 = ExportSpec(precision="a16w8", io_dtype="int16", mode="keras")
 
 
-def build(concat_state=False):
-    """A one-step LSTM detector; with ``concat_state`` the hidden state also feeds a concatenation."""
+def build(concat_state=False, tanh_state=False):
+    """A one-step LSTM detector whose head reads the hidden state through a biased Dense layer.
+
+    With ``concat_state`` the hidden state also feeds a concatenation; with ``tanh_state`` the cell state
+    output is written by a tanh.
+    """
     keras.utils.set_random_seed(7)
     x = keras.Input((FEATURES,), batch_size=1, name="signal")
     h, c = state_input(0, (UNITS,), 1), state_input(1, (UNITS,), 1)
     h_next, c_next = StreamingLSTMCell(UNITS, name="lstm")([x, h, c])
     features = keras.layers.Concatenate()([h_next, h]) if concat_state else h_next
     prob = keras.layers.Dense(1, activation="sigmoid", name="prob")(features)
-    model = keras.Model([x, h, c], [prob, state_output(0, h_next), state_output(1, c_next)])
+    c_out = keras.layers.Activation("tanh")(c_next) if tanh_state else c_next
+    model = keras.Model([x, h, c], [prob, state_output(0, h_next), state_output(1, c_out)])
     lstm = model.get_layer("lstm")
     lstm.bias.assign(np.random.default_rng(0).normal(size=lstm.bias.shape).astype(np.float32))
+    model.get_layer("prob").bias.assign(np.array([2.0], np.float32))
     return model
 
 
@@ -98,6 +104,9 @@ def test_state_tensors_are_recorded_by_pair(model, mode):
     assert roles == {(TensorRole.SIGNAL, None), (TensorRole.STATE, 0), (TensorRole.STATE, 1)}
     assert sum(r.role == TensorRole.STATE for r in result.inputs) == 2
     assert sum(r.role == TensorRole.STATE for r in result.outputs) == 2
+    interpreter = litert_interpreter(result.content)
+    assert [r.name for r in result.inputs] == [d["name"] for d in interpreter.get_input_details()]
+    assert [r.name for r in result.outputs] == [d["name"] for d in interpreter.get_output_details()]
     assert state_scales_tied(result.inputs, result.outputs) is None
     runner = LiteRTStreamRunner(result.content)
     assert runner.pairs == (0, 1) and runner.signals == ("signal",)
@@ -169,9 +178,10 @@ def test_only_a_tied_pair_keeps_the_carried_state_value(model, signal, calibrati
     assert drift["raw"] > 0
 
 
-def test_a_scale_difference_over_the_tolerance_is_refused(model, calibration):
+@pytest.mark.parametrize("factor", [1.5, 1 / 1.5])
+def test_a_scale_difference_over_the_tolerance_is_refused(model, calibration, factor):
     with pytest.raises(ValueError, match=r"State pair 0 scales .* more than state_tie_tolerance"):
-        export_model(model, INT16, scaled_state(calibration, 1.5))
+        export_model(model, INT16, scaled_state(calibration, factor))
     result = export_model(model, INT16.model_copy(update={"state_tie_tolerance": 0.5}), scaled_state(calibration, 1.5))
     assert state_scales_tied(result.inputs, result.outputs) is True
 
@@ -181,6 +191,40 @@ def test_a_state_read_by_a_scale_preserving_operator_is_refused(signal):
     calibration = stream_calibration(model, {"signal": signal[:96]})
     with pytest.raises(ValueError, match="CONCATENATION"):
         export_model(model, INT16, scaled_state(calibration, 1.004))
+
+
+def test_a_state_written_by_a_fixed_scale_operator_is_refused(signal):
+    # LiteRT gives a tanh output the fixed scale 1/32768, about 10% from the state input's.
+    model = build(tanh_state=True)
+    calibration = stream_calibration(model, {"signal": signal[:96]})
+    with pytest.raises(ValueError, match="TANH"):
+        export_model(model, INT16.model_copy(update={"state_tie_tolerance": 0.2}), calibration)
+
+
+@pytest.mark.parametrize(("precision", "io_dtype"), [("a16w8", "int16"), ("a8w8", "int8")])
+def test_a_tie_keeps_the_bias_of_the_layers_reading_the_state(model, signal, calibration, precision, io_dtype):
+    spec = ExportSpec(precision=precision, io_dtype=io_dtype, mode="keras", state_tie_tolerance=0.3)
+    want = keras_stream(model, signal[96:], resets=[32])["prob"]
+    errors = {}
+    for factor in (1.0, 1.25):
+        content = export_model(model, spec, scaled_state(calibration, factor)).content
+        runner = LiteRTStreamRunner(content, reference_kernels=True)
+        _, outputs = runner.run({"signal": runner.encode("signal", signal[96:, None])}, resets=[32])
+        errors[factor] = np.abs(runner.decode("prob", outputs["prob"])[:, 0] - want).max()
+    assert errors[1.25] < 2 * errors[1.0] + 1e-3
+
+
+def test_unpaired_or_mismatched_state_is_refused_at_export():
+    x = keras.Input((FEATURES,), batch_size=1, name="signal")
+    h = state_input(0, (UNITS,), 1)
+    unpaired = keras.Model([x, h], keras.layers.Dense(1)(keras.layers.Concatenate()([x, h])))
+    with pytest.raises(ValueError, match="do not pair up"):
+        export_model(unpaired, ExportSpec(precision="fp32", io_dtype="float32", mode="keras"))
+    mismatched = keras.Model([x, h], [keras.layers.Dense(1)(x), state_output(0, keras.layers.Dense(UNITS + 1)(h))])
+    with pytest.raises(ValueError, match="different shapes or types"):
+        export_model(mismatched, ExportSpec(precision="fp32", io_dtype="float32", mode="keras"))
+    content = converted(unpaired, ExportSpec(precision="fp32", io_dtype="float32", mode="keras"), None)
+    assert {r.role for r in tensor_records(content)[0]} == {TensorRole.SIGNAL}
 
 
 def test_float_io_has_no_integer_state_to_tie(model, calibration):
@@ -200,6 +244,9 @@ def test_int8_pairs_are_tied_with_their_zero_points(model, calibration):
     result = export_model(model, int8, data)
     assert state_scales_tied(result.inputs, result.outputs) is True
     assert pair_params(result.inputs, 0) == pair_params(result.outputs, 0) == pair_params(raw_inputs, 0)
+    zero_point = pair_params(result.inputs, 0)[0][1]
+    assert zero_point != 0
+    np.testing.assert_array_equal(LiteRTStreamRunner(result.content).initial_state()["state_in_0"], zero_point)
 
 
 def test_multi_input_calibration_must_name_every_input(model, calibration):
@@ -211,6 +258,18 @@ def test_multi_input_calibration_must_name_every_input(model, calibration):
         export_model(model, INT16, calibration | {"signal": calibration["signal"][:-1]})
     with pytest.raises(ValueError, match="not calibrated"):
         export_model(model, ExportSpec(precision="fp32", io_dtype="float32", mode="keras"), calibration)
+    with pytest.raises(ValueError, match="NaN"):
+        export_model(model, INT16, calibration | {"state_in_0": np.full_like(calibration["state_in_0"], np.nan)})
+
+
+def test_stream_calibration_needs_a_signal_and_fixed_state_shapes():
+    h = state_input(0, (UNITS,), 1)
+    with pytest.raises(ValueError, match="at least one input that is not a state"):
+        stream_calibration(keras.Model(h, state_output(0, h)), {})
+    x, free = keras.Input((FEATURES,), name="signal"), keras.Input((None,), name="state_in_0")
+    model = keras.Model([x, free], [keras.layers.Dense(1)(x), state_output(0, free)])
+    with pytest.raises(ValueError, match="need fixed shapes"):
+        stream_calibration(model, {"signal": np.zeros((2, FEATURES), np.float32)})
 
 
 def test_the_stream_runner_checks_its_inputs(model):
@@ -239,6 +298,14 @@ def test_the_manifest_entry_records_pairs_and_the_tie(model, calibration, tmp_pa
         tmp_path,
     )
     assert float_entry.state_scales_tied is None
+
+
+def litert_interpreter(content):
+    from ai_edge_litert.interpreter import Interpreter
+
+    interpreter = Interpreter(model_content=content)
+    interpreter.allocate_tensors()
+    return interpreter
 
 
 def representable(q, info):

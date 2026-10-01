@@ -150,25 +150,40 @@ def _signature_names(model) -> tuple[dict[int, str], dict[int, str]]:
     return {}, {}
 
 
-def _state_pairs(model) -> dict[int, tuple[int, int]]:
-    """State pair index to (input tensor, output tensor) from the signature names ``state_in_k``/``state_out_k``."""
+def _state_pairs(model, strict: bool = True) -> dict[int, tuple[int, int]]:
+    """State pair index to (input tensor, output tensor) from the signature names ``state_in_k``/``state_out_k``.
+
+    With ``strict``, an unpaired state name or a pair whose tensors differ in shape or type is refused;
+    otherwise only matching pairs are returned.
+    """
     input_names, output_names = _signature_names(model)
     ins = {pair[1]: i for i, name in input_names.items() if (pair := state_pair(name)) and pair[0] == "in"}
     outs = {pair[1]: i for i, name in output_names.items() if (pair := state_pair(name)) and pair[0] == "out"}
-    if ins.keys() != outs.keys():
-        raise ValueError(f"State inputs {sorted(ins)} and state outputs {sorted(outs)} do not pair up")
-    return {k: (ins[k], outs[k]) for k in sorted(ins)}
+    tensors = model.subgraphs[0].tensors
+
+    def matching(k):
+        a, b = tensors[ins[k]], tensors[outs[k]]
+        return a.type == b.type and list(a.shape) == list(b.shape)
+
+    if strict:
+        if ins.keys() != outs.keys():
+            raise ValueError(f"State inputs {sorted(ins)} and state outputs {sorted(outs)} do not pair up")
+        mismatched = [k for k in sorted(ins) if not matching(k)]
+        if mismatched:
+            raise ValueError(f"State pairs {mismatched} have inputs and outputs of different shapes or types")
+    return {k: (ins[k], outs[k]) for k in sorted(ins.keys() & outs.keys()) if matching(k)}
 
 
 def tensor_records(content: bytes) -> tuple[tuple[TensorRecord, ...], tuple[TensorRecord, ...]]:
     """Read the main subgraph's input and output tensors from a ``.tflite`` flatbuffer.
 
     Inputs and outputs are in subgraph order. Tensors whose signature names are ``state_in_k`` and
-    ``state_out_k`` are STATE tensors of pair ``k``; the others are SIGNAL tensors.
+    ``state_out_k``, with equal shapes and types, are STATE tensors of pair ``k``; the others, including
+    unpaired state names of an imported model, are SIGNAL tensors.
     """
     model = schema.ModelT.InitFromObj(schema.Model.GetRootAsModel(bytearray(content), 0))
     subgraph = model.subgraphs[0]
-    pairs = {index: k for k, both in _state_pairs(model).items() for index in both}
+    pairs = {index: k for k, both in _state_pairs(model, strict=False).items() for index in both}
 
     def record(index: int) -> TensorRecord:
         tensor = subgraph.tensors[index]
@@ -213,6 +228,7 @@ def operator_names(content: bytes) -> list[str]:
 # Kernels that derive their requantization from tensor parameters when prepared, so a state tensor they
 # read (or write) may take new parameters. Other kernels, such as RESHAPE, slicing, CONCATENATION and
 # pooling, need equal input and output parameters, and LOGISTIC and TANH have a fixed output scale.
+# The bias of a reader in _BIASED_READERS is quantized with the input scale, so it is requantized too.
 _RESCALING_READERS = frozenset(
     {"ADD", "SUB", "MUL", "FULLY_CONNECTED", "CONV_2D", "DEPTHWISE_CONV_2D", "BATCH_MATMUL", "LOGISTIC", "TANH"}
     | {"QUANTIZE", "DEQUANTIZE"}
@@ -220,7 +236,49 @@ _RESCALING_READERS = frozenset(
 _RESCALING_WRITERS = frozenset(
     {"ADD", "SUB", "MUL", "FULLY_CONNECTED", "CONV_2D", "DEPTHWISE_CONV_2D", "BATCH_MATMUL", "QUANTIZE"}
 )
+_BIASED_READERS = frozenset({"FULLY_CONNECTED", "CONV_2D", "DEPTHWISE_CONV_2D"})
 _INT_RANGES = {schema.TensorType.INT8: np.iinfo(np.int8), schema.TensorType.INT16: np.iinfo(np.int16)}
+_BIAS_TYPES = {schema.TensorType.INT32: np.int32, schema.TensorType.INT64: np.int64}
+
+
+def _requantize_biases(model, index: int, scale: float, k: int) -> None:
+    """Requantize the bias of every FULLY_CONNECTED or convolution reading tensor ``index`` to input ``scale``.
+
+    The converter quantizes such a bias with the input scale times the weight scale of each channel, so a
+    new input scale needs the bias values rescaled to keep their real values.
+    """
+    subgraph = model.subgraphs[0]
+    name = subgraph.tensors[index].name.decode()
+    for op in subgraph.operators:
+        inputs = [int(i) for i in op.inputs]
+        if index not in inputs or _operator_name(model, op) not in _BIASED_READERS:
+            continue
+        if inputs[0] != index or index in inputs[1:]:
+            raise ValueError(f"Cannot tie state pair {k}: {name!r} is a weight or bias of {_operator_name(model, op)}")
+        if len(inputs) < 3 or inputs[2] < 0:
+            continue
+        bias, weights = subgraph.tensors[inputs[2]], subgraph.tensors[inputs[1]]
+        shared = (
+            sum(t.buffer == bias.buffer for t in subgraph.tensors) > 1
+            or sum(inputs[2] in list(other.inputs) for other in subgraph.operators) > 1
+        )
+        if shared or bias.type not in _BIAS_TYPES or weights.quantization is None:
+            raise ValueError(
+                f"Cannot tie state pair {k}: the bias of the operator reading {name!r} cannot be requantized"
+            )
+        dtype = np.dtype(_BIAS_TYPES[bias.type])
+        old_scale = np.asarray(bias.quantization.scale, dtype=np.float64)
+        new_scale = (np.float64(scale) * np.asarray(weights.quantization.scale, dtype=np.float64)).astype(np.float32)
+        buffer = model.buffers[bias.buffer]
+        values = np.frombuffer(bytes(bytearray(buffer.data)), dtype=dtype.newbyteorder("<")).astype(np.float64)
+        if {old_scale.size, new_scale.size} - {1, values.size}:
+            raise ValueError(f"Cannot tie state pair {k}: the bias of the reader of {name!r} has unexpected scales")
+        requantized = np.rint(values * old_scale / new_scale.astype(np.float64))
+        info = np.iinfo(dtype)
+        if requantized.min() < info.min or requantized.max() > info.max:
+            raise ValueError(f"Cannot tie state pair {k}: the requantized bias of the reader of {name!r} overflows")
+        buffer.data = np.frombuffer(requantized.astype(dtype.newbyteorder("<")).tobytes(), dtype=np.uint8)
+        bias.quantization.scale = new_scale
 
 
 def _quantization(tensor) -> tuple[float, int] | None:
@@ -258,19 +316,21 @@ def tie_state_scales(content: bytes, tolerance: float) -> bytes:
     value only if both tensors have the same quantization. For each pair whose parameters differ, both
     tensors take the parameters of the tensor whose range covers the other's (the larger scale of a
     symmetric int16 pair), or else parameters whose range covers both ranges. The kernels reading or
-    writing either tensor recompute their scaling from the new parameters when prepared.
+    writing either tensor recompute their scaling from the new parameters when prepared, and the bias
+    of a FULLY_CONNECTED or convolution reading a state tensor is requantized to its new input scale.
 
     Args:
         content: Calibrated ``.tflite`` flatbuffer.
-        tolerance: Largest relative difference between the tied scale and either original scale.
+        tolerance: Largest difference between the tied scale and either original scale, relative to that
+            original.
 
     Returns:
         bytes: ``content`` itself when every pair is already tied or float; otherwise the rewritten model.
 
     Raises:
         ValueError: If a pair mixes types or float and integer tensors, the tied scale differs from an
-            original scale by more than ``tolerance``, or an operator that reads or writes a state tensor
-            needs its parameters unchanged.
+            original scale by more than ``tolerance``, an operator that reads or writes a state tensor
+            needs its parameters unchanged, or a reader's bias cannot be requantized (shared, or overflowing).
     """
     model = schema.ModelT.InitFromObj(schema.Model.GetRootAsModel(bytearray(content), 0))
     subgraph = model.subgraphs[0]
@@ -286,7 +346,7 @@ def tie_state_scales(content: bytes, tolerance: float) -> bytes:
             continue
         info = _INT_RANGES[tensor_in.type]
         tied = _covering_quantization(q_in, q_out, info)
-        difference = max(abs(tied[0] - scale) / tied[0] for scale in (q_in[0], q_out[0]))
+        difference = max(abs(tied[0] - scale) / scale for scale in (q_in[0], q_out[0]))
         if difference > tolerance:
             raise ValueError(
                 f"State pair {k} scales {q_in[0]:.6g} and {q_out[0]:.6g} tie to {tied[0]:.6g}, a difference of "
@@ -302,7 +362,9 @@ def tie_state_scales(content: bytes, tolerance: float) -> bytes:
                     f"Cannot tie state pair {k}: tensor {subgraph.tensors[index].name.decode()!r} is used by "
                     f"{', '.join(fixed)}, which need its scale and zero point unchanged"
                 )
-        for tensor in (tensor_in, tensor_out):
+        for index, tensor, original in ((index_in, tensor_in, q_in), (index_out, tensor_out, q_out)):
+            if original[0] != tied[0]:
+                _requantize_biases(model, index, tied[0], k)
             tensor.quantization.scale = np.array([tied[0]], dtype=np.float32)
             tensor.quantization.zeroPoint = np.array([tied[1]], dtype=np.int64)
         changed = True
@@ -327,6 +389,8 @@ def export_litert(
             calibration=calibration,
             workdir=workdir,
         ).content
+    # Refuse unpaired or mismatched state tensors, which tensor_records would record as signals
+    _state_pairs(schema.ModelT.InitFromObj(schema.Model.GetRootAsModel(bytearray(content), 0)))
     if spec.precision in CALIBRATED:
         content = tie_state_scales(content, spec.state_tie_tolerance)
     inputs, outputs = tensor_records(content)

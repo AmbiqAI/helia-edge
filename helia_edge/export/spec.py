@@ -3,7 +3,7 @@
 import re
 from enum import StrEnum
 
-from pydantic import BaseModel, ConfigDict, Field, StrictBool, model_validator
+from pydantic import BaseModel, ConfigDict, Field, StrictBool, StrictFloat, model_validator
 
 
 class Precision(StrEnum):
@@ -109,8 +109,8 @@ class ExportSpec(BaseModel):
             falling back to float operators. Defaults to True; it does not affect float precisions.
         state_tie_tolerance: For calibrated precisions with integer I/O, export gives each state pair
             (``state_in_k``, ``state_out_k``) one scale and zero point covering both tensors' ranges, and
-            refuses when that scale differs from either original by more than this fraction. Models
-            without state pairs ignore it.
+            refuses when that scale differs from either original by more than this fraction of it (at
+            most 0.5). Models without state pairs ignore it.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -120,7 +120,7 @@ class ExportSpec(BaseModel):
     io_dtype: IODType
     mode: ConversionMode
     strict: StrictBool = True
-    state_tie_tolerance: float = Field(default=0.01, ge=0.0, lt=1.0)
+    state_tie_tolerance: StrictFloat = Field(default=0.01, ge=0.0, le=0.5)
 
     @model_validator(mode="after")
     def _io_dtype_matches_precision(self) -> "ExportSpec":

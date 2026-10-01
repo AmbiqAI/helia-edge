@@ -54,7 +54,7 @@ def test_unpaired_state_is_refused():
         state_scales_tied([state("a", None, 0.1, 0)], [])
 
 
-@pytest.mark.parametrize("tolerance", [-0.01, 1.0])
+@pytest.mark.parametrize("tolerance", [-0.01, 0.51, False, "0.1"])
 def test_tie_tolerance_is_a_fraction(tolerance):
     with pytest.raises(pydantic.ValidationError):
         ExportSpec(precision="a16w8", io_dtype="int16", mode="keras", state_tie_tolerance=tolerance)

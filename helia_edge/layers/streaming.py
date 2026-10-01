@@ -33,12 +33,15 @@ class StreamingLSTMCell(keras.layers.Layer):
     Args:
         units: Size of the hidden and cell state.
         use_bias: Add ``bias`` to the gates.
+        unit_forget_bias: Initialize the forget gate's bias to one and the others to zero, as
+            ``keras.layers.LSTMCell`` does.
     """
 
-    def __init__(self, units: int, use_bias: bool = True, **kwargs):
+    def __init__(self, units: int, use_bias: bool = True, unit_forget_bias: bool = True, **kwargs):
         super().__init__(**kwargs)
         self.units = units
         self.use_bias = use_bias
+        self.unit_forget_bias = unit_forget_bias
 
     def build(self, input_shape):
         x_shape, h_shape, c_shape = input_shape
@@ -49,7 +52,16 @@ class StreamingLSTMCell(keras.layers.Layer):
         self.recurrent_kernel = self.add_weight(
             name="recurrent_kernel", shape=(units, 4 * units), initializer="orthogonal"
         )
-        self.bias = self.add_weight(name="bias", shape=(4 * units,), initializer="zeros") if self.use_bias else None
+        self.bias = None
+        if self.use_bias:
+
+            def bias_initializer(shape, dtype=None):
+                forget = keras.ops.ones if self.unit_forget_bias else keras.ops.zeros
+                return keras.ops.concatenate(
+                    [keras.ops.zeros((units,), dtype), forget((units,), dtype), keras.ops.zeros((2 * units,), dtype)]
+                )
+
+            self.bias = self.add_weight(name="bias", shape=(4 * units,), initializer=bias_initializer)
 
     def call(self, inputs):
         x, h, c = inputs
@@ -69,7 +81,12 @@ class StreamingLSTMCell(keras.layers.Layer):
         return tuple(h_shape), tuple(c_shape)
 
     def get_config(self):
-        return {**super().get_config(), "units": self.units, "use_bias": self.use_bias}
+        return {
+            **super().get_config(),
+            "units": self.units,
+            "use_bias": self.use_bias,
+            "unit_forget_bias": self.unit_forget_bias,
+        }
 
 
 def state_input(k: int, shape: tuple[int, ...], batch_size: int | None = None) -> keras.KerasTensor:

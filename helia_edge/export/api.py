@@ -93,8 +93,9 @@ def stream_calibration(
         dict[str, npt.NDArray]: Every input name to its float32 samples, as ``export_model`` takes them.
 
     Raises:
-        ValueError: If ``signals`` does not name exactly the inputs that are not states, the signals
-            have different numbers of steps, or a state input has no matching output.
+        ValueError: If the model has no input that is not a state, a state input has no fixed shape or no
+            matching output, ``signals`` does not name exactly the inputs that are not states, or the
+            signals have different numbers of steps.
     """
     import keras
 
@@ -102,6 +103,11 @@ def stream_calibration(
     pairs = [state_pair(name) for name in names]
     states = {name: pair[1] for name, pair in zip(names, pairs, strict=True) if pair and pair[0] == "in"}
     expected = sorted(set(names) - set(states))
+    if not expected:
+        raise ValueError("stream_calibration needs a model with at least one input that is not a state")
+    unknown = [name for name in states if None in model.inputs[names.index(name)].shape[1:]]
+    if unknown:
+        raise ValueError(f"State inputs {unknown} need fixed shapes")
     if sorted(signals) != expected:
         raise ValueError(f"Signals {sorted(signals)} do not match the inputs that are not states {expected}")
     missing = sorted(state_output_name(k) for k in states.values() if state_output_name(k) not in model.output_names)

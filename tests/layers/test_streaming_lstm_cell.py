@@ -76,6 +76,15 @@ def test_weights_have_the_keras_lstm_cell_layout():
     assert [w.name for w in model.get_layer("lstm").weights] == ["kernel", "recurrent_kernel", "bias"]
 
 
+def test_the_forget_gate_bias_starts_at_one_like_keras():
+    model = stepping_model()
+    cell = keras.layers.LSTMCell(UNITS)
+    cell.build((None, FEATURES))
+    np.testing.assert_array_equal(
+        keras.ops.convert_to_numpy(model.get_layer("lstm").bias), keras.ops.convert_to_numpy(cell.bias)
+    )
+
+
 def test_state_shapes_must_match_units():
     x, h, c = keras.Input((FEATURES,)), keras.Input((UNITS + 1,)), keras.Input((UNITS,))
     with pytest.raises(ValueError, match="units=6"):
