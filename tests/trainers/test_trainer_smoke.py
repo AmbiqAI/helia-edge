@@ -78,8 +78,10 @@ def vq_autoencoder(x, y):
 
 
 TRAINERS = [
-    pytest.param(contrastive, id="contrastive", marks=pytest.mark.skipif(not TF, reason="TensorFlow-only trainer")),
-    pytest.param(simclr, id="simclr", marks=pytest.mark.skipif(not TF, reason="TensorFlow-only trainer")),
+    pytest.param(
+        contrastive, id="contrastive", marks=pytest.mark.skipif(not TF, reason="TensorFlow only until the Torch port")
+    ),
+    pytest.param(simclr, id="simclr", marks=pytest.mark.skipif(not TF, reason="TensorFlow only until the Torch port")),
     pytest.param(distiller, id="distiller"),
     pytest.param(gs_autoencoder, id="gs_autoencoder"),
     pytest.param(vq_autoencoder, id="vq_autoencoder"),
@@ -101,6 +103,7 @@ def test_fits_and_evaluates(make):
 
 @pytest.mark.parametrize("name", CONTRASTIVE)
 def test_contrastive_trainers_refuse_other_backends(name):
+    """Current behaviour, pinned until the Torch port replaces it."""
     if TF:
         pytest.skip("Runs on the TensorFlow backend")
     with pytest.raises(ImportError, match=f"helia_edge.trainers.{name} requires tensorflow"):
