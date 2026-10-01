@@ -15,6 +15,7 @@ Please check [Keras Normalization Layers](https://keras.io/api/layers/normalizat
 """
 
 import keras
+import numpy as np
 
 from ..utils.export import helia_export
 
@@ -52,6 +53,11 @@ class LayerNormalization(keras.layers.LayerNormalization):
             rms_scaling=self.rms_scaling,
         )
         return keras.ops.cast(keras.ops.transpose(outputs, inverse), self.compute_dtype)
+
+
+def _layer_normalization_class(axis) -> type[keras.layers.LayerNormalization]:
+    """The Keras class for the last axis alone, which every backend supports; otherwise ours."""
+    return keras.layers.LayerNormalization if list(np.atleast_1d(axis)) == [-1] else LayerNormalization
 
 
 def layer_normalization(
@@ -98,7 +104,7 @@ def layer_normalization(
                 _axis = -1
             # END IF
 
-            return LayerNormalization(axis=_axis, name=name, scale=scale)(x)
+            return _layer_normalization_class(_axis)(axis=_axis, name=name, scale=scale)(x)
 
         # END DEF
     else:
@@ -112,7 +118,7 @@ def layer_normalization(
             Returns:
                 tf.Tensor: Output tensor
             """
-            return LayerNormalization(axis=axis, name=name, scale=scale)(x)
+            return _layer_normalization_class(axis)(axis=axis, name=name, scale=scale)(x)
 
         # END DEF
 
