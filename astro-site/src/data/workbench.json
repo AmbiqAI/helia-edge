@@ -38,10 +38,10 @@
   {
     "label": "Export",
     "title": "Take a measured step toward inference.",
-    "text": "Convert a supported TensorFlow-backed model to LiteRT, inspect its predictions and keep the settings with the artifact.",
+    "text": "Export a supported TensorFlow-backed model to LiteRT, inspect its predictions and keep the settings with the artifact.",
     "tag": "CONVERSION",
     "guide": "export",
-    "code": "from helia_edge.converters.litert import (\n    LiteRTKerasConverter, QuantizationType,\n)\n\nconverter = LiteRTKerasConverter(model)\nconverter.convert(representative_x,\n                  quantization=QuantizationType.INT8)\nconverter.export(\"model.tflite\")",
+    "code": "from helia_edge.export import ExportSpec, export_model\n\nspec = ExportSpec(precision=\"a8w8\", io_dtype=\"int8\",\n                  mode=\"concrete\")\nresult = export_model(model, spec,\n                      calibration=representative_x.astype(\"float32\"))\nprint(result.sha256)",
     "note": "Requires a trained TensorFlow-backed model and representative inputs."
   }
 ]
