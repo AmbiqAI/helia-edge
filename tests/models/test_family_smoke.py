@@ -1,5 +1,6 @@
 """Smoke tests for model families without dedicated tests: build, forward, save/load, LiteRT FP32."""
 
+from collections import Counter
 from dataclasses import dataclass
 from typing import Any
 
@@ -36,6 +37,7 @@ from helia_edge.models import (
 
 SERIES = (64, 4)  # (time, channels)
 ROW = (1, 64, 4)  # (1, time, channels) for families built from 2D layers
+SQUARE = (16, 16, 4)  # 2D input, to stride the first spatial axis
 NUM_CLASSES = 3
 TORCH = keras.backend.backend() == "torch"
 
@@ -47,6 +49,7 @@ class Case:
     shape: tuple[int, ...]
     reduced: Any = None  # the same params with one block (or one level of depth) fewer
     class_axis: int = -1  # TsMixer forecasts num_classes steps along axis 1
+    layer_counts: Any = None  # exact layer-type counts, for families without a block list
 
 
 def known_bug(issues, raises, condition=True):
@@ -71,7 +74,7 @@ COMPOSER_CONV = ComposerParams(
     ]
 )
 CONFORMER = ConformerParams(
-    subsamples=[{"depth": 16}],
+    subsamples=[{"depth": 16}, {"depth": 16}],
     blocks=[{"depth": 16, "num_heads": 2, "kernel_size": 3}, {"depth": 16, "num_heads": 2, "kernel_size": 3}],
 )
 CONVMIXER = ConvMixerParams(filters=8, depth=2, kernel_size=3, patch_size=2)
@@ -133,13 +136,33 @@ RESNET_BOTTLENECK_STRIDED_SAME_WIDTH = ResNetParams(
 )
 REGNET_Z_STRIDED_SAME_WIDTH = REGNET_STRIDED_SAME_WIDTH.model_copy(update={"block_style": "z"})
 TSMIXER = TsMixerParams(blocks=[{"ff_dim": 8}, {"ff_dim": 8}])
+TSMIXER_DEFAULT_WIDTH = TsMixerParams(blocks=[{}, {"dropout": 0.1}])  # ff_dim None uses the channel count
+STRIDE_2_1 = {"kernel_size": 3, "strides": (2, 1)}
+RESNET_SQUARE_STRIDED = ResNetParams(input_filters=8, blocks=[{"filters": 8}, {"filters": 8, **STRIDE_2_1}])
+REGNET_SQUARE_STRIDED = RegNetParams(input_filters=8, blocks=[{"filters": 8, "group_width": 4, **STRIDE_2_1}])
+REGNET_Z_SQUARE_STRIDED = REGNET_SQUARE_STRIDED.model_copy(update={"block_style": "z"})
 UNET_BLOCK = {"filters": 8, "depth": 1, "kernel": (1, 3), "pool": (1, 2), "strides": (1, 2)}
 UNET = UNetParams(blocks=[UNET_BLOCK, {**UNET_BLOCK, "filters": 16}])
 UNEXT = UNextParams(blocks=[UNET_BLOCK, {**UNET_BLOCK, "filters": 16}])
 
 FAMILIES = [
     pytest.param(Case(ComposerModel, COMPOSER, ROW, drop_last(COMPOSER, "layers")), id="composer-dense"),
-    pytest.param(Case(ComposerModel, COMPOSER_CONV, ROW), id="composer-conv"),
+    pytest.param(
+        Case(
+            ComposerModel,
+            COMPOSER_CONV,
+            ROW,
+            # conv2d, batch_norm, relu6 (Activation), se_block (pool, 2 Conv2D, 2 Activation, Multiply), head
+            layer_counts={
+                "Conv2D": 3,
+                "BatchNormalization": 1,
+                "Activation": 3,
+                "GlobalAveragePooling2D": 1,
+                "Multiply": 1,
+            },
+        ),
+        id="composer-conv",
+    ),
     pytest.param(
         Case(ConformerModel, CONFORMER, ROW, drop_last(CONFORMER)),
         id="conformer",
@@ -156,7 +179,12 @@ FAMILIES = [
         id="metaformer",
     ),
     pytest.param(
-        Case(MobileNetV1Model, MobileNetV1Params(input_filters=8), ROW),
+        Case(
+            MobileNetV1Model,
+            MobileNetV1Params(input_filters=8),
+            ROW,
+            layer_counts={"DepthwiseConv2D": 13, "Conv2D": 14, "BatchNormalization": 27},
+        ),
         id="mobilenetv1",
     ),
     pytest.param(Case(MobileOneModel, MOBILEONE, ROW, drop_last(MOBILEONE)), id="mobileone"),
@@ -179,6 +207,17 @@ FAMILIES = [
     pytest.param(
         Case(TsMixerModel, TSMIXER, SERIES, drop_last(TSMIXER), class_axis=1),
         id="tsmixer",
+    ),
+    pytest.param(
+        Case(TsMixerModel, TSMIXER_DEFAULT_WIDTH, SERIES, drop_last(TSMIXER_DEFAULT_WIDTH), class_axis=1),
+        id="tsmixer-default-width",
+    ),
+    pytest.param(Case(ResNetModel, RESNET_SQUARE_STRIDED, SQUARE), id="resnet-square-strided"),
+    pytest.param(
+        Case(RegNetModel, REGNET_SQUARE_STRIDED, SQUARE), id="regnet-square-strided", marks=DOTTED_NAMES_ON_TORCH
+    ),
+    pytest.param(
+        Case(RegNetModel, REGNET_Z_SQUARE_STRIDED, SQUARE), id="regnet-z-square-strided", marks=DOTTED_NAMES_ON_TORCH
     ),
     pytest.param(Case(UNetModel, UNET, ROW, drop_last(UNET)), id="unet"),
     pytest.param(
@@ -211,6 +250,9 @@ def test_builds_runs_and_reloads(case, tmp_path):
         reduced = build(case, case.reduced).count_params()
         assert build(case).count_params() > reduced, "the last block (or depth level) was not built"
     model = build(case)
+    if case.layer_counts is not None:
+        counts = Counter(type(layer).__name__ for layer in model.layers)
+        assert {name: counts[name] for name in case.layer_counts} == case.layer_counts
     assert model.output_shape[0] == 1 and model.output_shape[case.class_axis] == NUM_CLASSES
     x = sample(case.shape)
     y = predict(model, x)
@@ -232,4 +274,22 @@ def test_exports_to_litert_fp32(case):
     model = build(case)
     x = sample(case.shape)
     result = export_model(model, ExportSpec(precision="fp32", io_dtype="float32", mode="concrete"))
-    np.testing.assert_allclose(LiteRTRunner(result.content).predict(x), predict(model, x), rtol=1e-5, atol=1e-5)
+    expected = predict(model, x)
+    scale = np.abs(expected).max()
+    # Relative to the output scale, so outputs that are only numerical noise fail (observed at most 1.2e-6).
+    assert scale > 0 and np.abs(LiteRTRunner(result.content).predict(x) - expected).max() <= 1e-4 * scale
+
+
+def test_mobilenetv1_depthwise_layers_keep_he_normal_and_l2():
+    model = build(Case(MobileNetV1Model, MobileNetV1Params(input_filters=8), ROW))
+    for layer in model.layers:
+        if isinstance(layer, keras.layers.DepthwiseConv2D):
+            config = layer.get_config()
+            assert config["depthwise_initializer"]["class_name"] == "HeNormal"
+            assert config["depthwise_regularizer"]["class_name"] == "L2"
+
+
+def test_tsmixer_default_feed_forward_width_is_the_channel_count():
+    model = build(Case(TsMixerModel, TSMIXER_DEFAULT_WIDTH, SERIES))
+    widths = [layer.units for layer in model.layers if layer.name.endswith("_FL_DENSE")]
+    assert widths == [SERIES[-1]] * len(TSMIXER_DEFAULT_WIDTH.blocks)
