@@ -57,6 +57,7 @@ import numpy as np
 from helia_edge.export import ExportSpec, LiteRTStreamRunner, export_model, stream_calibration
 from helia_edge.layers import StreamingLSTMCell, state_input, state_output
 
+keras.utils.set_random_seed(0)
 x = keras.Input((16,), batch_size=1, name="features")
 h, c = state_input(0, (32,), batch_size=1), state_input(1, (32,), batch_size=1)
 h_next, c_next = StreamingLSTMCell(32)([x, h, c])
@@ -117,7 +118,7 @@ helia-edge export verify exports/manifest.json
 
 ## Add an exporter or architecture
 
-`helia_edge.registry` holds the exporters (keyed `"<format>:<backend>"`) and the architectures that recipes build. Built-in entries are `"module:attr"` strings, imported only when used. Another package adds entries through the `helia_edge.plugins` entry-point group, without changes to heliaEDGE:
+`helia_edge.registry` holds the exporters (keyed `"<format>:<backend>"`) and the architectures that recipes build. An exporter is called as `exporter(model, spec, calibration)` and may receive a model with several inputs, with `calibration` a mapping of input name to samples; an exporter that supports single-input models only should refuse others with a `ValueError`. Built-in entries are `"module:attr"` strings, imported only when used. Another package adds entries through the `helia_edge.plugins` entry-point group, without changes to heliaEDGE:
 
 ```toml
 # pyproject.toml of your package

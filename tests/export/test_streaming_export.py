@@ -230,6 +230,16 @@ def test_unpaired_or_mismatched_state_is_refused_at_export():
     assert {r.role for r in tensor_records(content)[0]} == {TensorRole.SIGNAL}
 
 
+def test_repeated_output_names_are_refused():
+    x = keras.Input((FEATURES,), batch_size=1, name="signal")
+    h, c = state_input(0, (UNITS,), 1), state_input(1, (UNITS,), 1)
+    h_next, c_next = StreamingLSTMCell(UNITS, name="lstm")([x, h, c])
+    model = keras.Model([x, h, c], [state_output(0, h_next), state_output(1, c_next), h_next, c_next])
+    assert model.output_names.count("lstm") == 2
+    with pytest.raises(ValueError, match=r"Output names \['lstm'\] repeat"):
+        export_model(model, ExportSpec(precision="fp32", io_dtype="float32", mode="keras"))
+
+
 def test_float_io_has_no_integer_state_to_tie(model, calibration):
     result = export_model(
         model, ExportSpec(precision="a16w8", io_dtype="float32", mode="keras"), scaled_state(calibration, 1.5)

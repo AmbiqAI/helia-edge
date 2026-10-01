@@ -55,7 +55,8 @@ def convert_litert(
     Raises:
         ValueError: If ``mode`` is CONCRETE and the model has several inputs or state inputs: a concrete
             function converts to a graph without a signature, which name-keyed calibration and state
-            tensors need.
+            tensors need. Also if a model with state inputs repeats an output name, as two outputs of one
+            layer do.
     """
     stateful = any(state_pair(tensor.name) for tensor in model.inputs)
     if mode == ConversionMode.CONCRETE and (stateful or len(model.inputs) > 1):
@@ -64,6 +65,9 @@ def convert_litert(
             "several inputs or state inputs"
         )
     if stateful:
+        duplicates = sorted({name for name in model.output_names if model.output_names.count(name) > 1})
+        if duplicates:
+            raise ValueError(f"Output names {duplicates} repeat; name every output of a streaming model distinctly")
         model = keras.Model(model.inputs, dict(zip(model.output_names, model.outputs, strict=True)), name=model.name)
 
     match mode:
@@ -262,13 +266,14 @@ def _requantize_biases(model, index: int, scale: float, k: int) -> None:
             sum(t.buffer == bias.buffer for t in subgraph.tensors) > 1
             or sum(inputs[2] in list(other.inputs) for other in subgraph.operators) > 1
         )
-        if shared or bias.type not in _BIAS_TYPES or weights.quantization is None:
+        weight_scale = None if weights.quantization is None else weights.quantization.scale
+        if shared or bias.type not in _BIAS_TYPES or weight_scale is None or len(weight_scale) == 0:
             raise ValueError(
                 f"Cannot tie state pair {k}: the bias of the operator reading {name!r} cannot be requantized"
             )
         dtype = np.dtype(_BIAS_TYPES[bias.type])
         old_scale = np.asarray(bias.quantization.scale, dtype=np.float64)
-        new_scale = (np.float64(scale) * np.asarray(weights.quantization.scale, dtype=np.float64)).astype(np.float32)
+        new_scale = (np.float64(scale) * np.asarray(weight_scale, dtype=np.float64)).astype(np.float32)
         buffer = model.buffers[bias.buffer]
         values = np.frombuffer(bytes(bytearray(buffer.data)), dtype=dtype.newbyteorder("<")).astype(np.float64)
         if {old_scale.size, new_scale.size} - {1, values.size}:
