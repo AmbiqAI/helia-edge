@@ -17,7 +17,13 @@ from helia_edge.export import (  # noqa: E402
     export_model,
     stream_calibration,
 )
-from helia_edge.export.litert import convert_litert, operator_names, tensor_records, tie_state_scales  # noqa: E402
+from helia_edge.export.litert import (  # noqa: E402
+    _covering_quantization,
+    convert_litert,
+    operator_names,
+    tensor_records,
+    tie_state_scales,
+)
 from helia_edge.export.result import state_scales_tied  # noqa: E402
 from helia_edge.layers import StreamingLSTMCell, state_input, state_output  # noqa: E402
 
@@ -185,11 +191,15 @@ def test_float_io_has_no_integer_state_to_tie(model, calibration):
 
 
 def test_int8_pairs_are_tied_with_their_zero_points(model, calibration):
-    result = export_model(
-        model, ExportSpec(precision="a8w8", io_dtype="int8", mode="keras"), scaled_state(calibration, 1.004)
-    )
+    int8 = ExportSpec(precision="a8w8", io_dtype="int8", mode="keras", state_tie_tolerance=0.2)
+    # Widening only the negative side of state_in_0 moves its zero point and keeps its range covering state_out_0's.
+    state = calibration["state_in_0"]
+    data = calibration | {"state_in_0": np.where(state < 0, state * np.float32(1.15), state)}
+    raw_inputs, raw_outputs = tensor_records(converted(model, int8, data))
+    assert pair_params(raw_inputs, 0)[0][1] != pair_params(raw_outputs, 0)[0][1]
+    result = export_model(model, int8, data)
     assert state_scales_tied(result.inputs, result.outputs) is True
-    assert pair_params(result.inputs, 0) == pair_params(result.outputs, 0)
+    assert pair_params(result.inputs, 0) == pair_params(result.outputs, 0) == pair_params(raw_inputs, 0)
 
 
 def test_multi_input_calibration_must_name_every_input(model, calibration):
@@ -229,3 +239,46 @@ def test_the_manifest_entry_records_pairs_and_the_tie(model, calibration, tmp_pa
         tmp_path,
     )
     assert float_entry.state_scales_tied is None
+
+
+def representable(q, info):
+    return (info.min - q[1]) * q[0], (info.max - q[1]) * q[0]
+
+
+@pytest.mark.parametrize(
+    ("a", "b"),
+    [
+        ((0.0139787, 54), (0.0140062, 55)),
+        ((0.01, -3), (0.0101, 4)),
+        ((0.02, 127), (0.0199, -128)),
+        ((0.5, 0), (0.25, 0)),
+    ],
+)
+def test_the_tied_int8_range_covers_both_ranges(a, b):
+    info = np.iinfo(np.int8)
+    tied = _covering_quantization(a, b, info)
+    low, high = representable(tied, info)
+    for q in (a, b):
+        q_low, q_high = representable(q, info)
+        assert low <= q_low and high >= q_high
+    assert info.min <= tied[1] <= info.max
+
+
+def test_a_symmetric_int16_pair_ties_to_the_larger_scale():
+    info = np.iinfo(np.int16)
+    assert _covering_quantization((2.5e-5, 0), (2.6e-5, 0), info) == (2.6e-5, 0)
+
+
+def test_int8_pairs_whose_ranges_overlap_are_tied_to_a_range_covering_both(model, calibration):
+    int8 = ExportSpec(precision="a8w8", io_dtype="int8", mode="keras")
+    # Shifting state_in_1 by about one step moves both ends of its range, so neither tensor's range covers the other's.
+    data = calibration | {"state_in_1": calibration["state_in_1"] + np.float32(0.02)}
+    info = np.iinfo(np.int8)
+    raw_inputs, raw_outputs = tensor_records(converted(model, int8, data))
+    raw = pair_params(raw_inputs, 1) + pair_params(raw_outputs, 1)
+    (in_low, in_high), (out_low, out_high) = (representable(q, info) for q in raw)
+    assert (in_low - out_low) * (in_high - out_high) > 0
+    result = export_model(model, int8, data)
+    assert state_scales_tied(result.inputs, result.outputs) is True
+    low, high = representable(pair_params(result.inputs, 1)[0], info)
+    assert low <= min(in_low, out_low) and high >= max(in_high, out_high)

@@ -230,25 +230,47 @@ def _quantization(tensor) -> tuple[float, int] | None:
     return float(q.scale[0]), int(q.zeroPoint[0])
 
 
+def _covering_quantization(a: tuple[float, int], b: tuple[float, int], info: np.iinfo) -> tuple[float, int]:
+    """(scale, zero point) of ``a`` or ``b`` if its range covers the other's, else one covering both ranges."""
+
+    def bounds(q):
+        return (info.min - q[1]) * q[0], (info.max - q[1]) * q[0]
+
+    (low_a, high_a), (low_b, high_b) = bounds(a), bounds(b)
+    if low_a <= low_b and high_a >= high_b:
+        return a
+    if low_b <= low_a and high_b >= high_a:
+        return b
+    low, high = min(low_a, low_b), max(high_a, high_b)
+    # One step of margin lets the integer zero point round up and still cover both ends
+    exact = (high - low) / (int(info.max) - int(info.min) - 1)
+    scale = np.float32(exact)
+    if scale < exact:
+        scale = np.nextafter(scale, np.float32(np.inf))
+    zero = int(np.ceil(info.min - low / float(scale)))
+    return float(scale), zero
+
+
 def tie_state_scales(content: bytes, tolerance: float) -> bytes:
     """Give both tensors of each integer state pair one scale and zero point.
 
     A runtime carries ``state_out_k`` back into ``state_in_k`` as raw integers, which keeps the state's
-    value only if both tensors have the same quantization. For each pair whose parameters differ, the
-    parameters of the tensor whose integer range covers the other's are applied to both. The kernels
-    reading or writing either tensor recompute their scaling from the new parameters when prepared.
+    value only if both tensors have the same quantization. For each pair whose parameters differ, both
+    tensors take the parameters of the tensor whose range covers the other's (the larger scale of a
+    symmetric int16 pair), or else parameters whose range covers both ranges. The kernels reading or
+    writing either tensor recompute their scaling from the new parameters when prepared.
 
     Args:
         content: Calibrated ``.tflite`` flatbuffer.
-        tolerance: Largest relative scale difference, ``|s_in - s_out| / max(s_in, s_out)``, to tie.
+        tolerance: Largest relative difference between the tied scale and either original scale.
 
     Returns:
         bytes: ``content`` itself when every pair is already tied or float; otherwise the rewritten model.
 
     Raises:
-        ValueError: If a pair mixes types or float and integer tensors, its scales differ by more than
-            ``tolerance``, neither tensor's range covers the other's, or an operator that reads or writes a
-            state tensor needs its parameters unchanged.
+        ValueError: If a pair mixes types or float and integer tensors, the tied scale differs from an
+            original scale by more than ``tolerance``, or an operator that reads or writes a state tensor
+            needs its parameters unchanged.
     """
     model = schema.ModelT.InitFromObj(schema.Model.GetRootAsModel(bytearray(content), 0))
     subgraph = model.subgraphs[0]
@@ -262,22 +284,15 @@ def tie_state_scales(content: bytes, tolerance: float) -> bytes:
             raise ValueError(f"State pair {k} must have two integer tensors of one type to tie")
         if q_in == q_out:
             continue
-        difference = abs(q_in[0] - q_out[0]) / max(q_in[0], q_out[0])
+        info = _INT_RANGES[tensor_in.type]
+        tied = _covering_quantization(q_in, q_out, info)
+        difference = max(abs(tied[0] - scale) / tied[0] for scale in (q_in[0], q_out[0]))
         if difference > tolerance:
             raise ValueError(
-                f"State pair {k} scales {q_in[0]:.6g} and {q_out[0]:.6g} differ by {difference:.3%}, more than "
-                f"state_tie_tolerance {tolerance:.3%}; calibrate the state inputs with the states the model produces"
+                f"State pair {k} scales {q_in[0]:.6g} and {q_out[0]:.6g} tie to {tied[0]:.6g}, a difference of "
+                f"{difference:.3%}, more than state_tie_tolerance {tolerance:.3%}; calibrate the state inputs with "
+                "the states the model produces"
             )
-        info = _INT_RANGES[tensor_in.type]
-
-        def covers(q, other):
-            (scale, zero), (other_scale, other_zero) = q, other
-            low, high = (info.min - zero) * scale, (info.max - zero) * scale
-            return low <= (info.min - other_zero) * other_scale and high >= (info.max - other_zero) * other_scale
-
-        tied = q_in if covers(q_in, q_out) else q_out if covers(q_out, q_in) else None
-        if tied is None:
-            raise ValueError(f"State pair {k}: neither {q_in} nor {q_out} (scale, zero point) covers the other's range")
         for index in (index_in, index_out):
             readers = {_operator_name(model, op) for op in subgraph.operators if index in list(op.inputs)}
             writers = {_operator_name(model, op) for op in subgraph.operators if index in list(op.outputs)}
@@ -287,10 +302,9 @@ def tie_state_scales(content: bytes, tolerance: float) -> bytes:
                     f"Cannot tie state pair {k}: tensor {subgraph.tensors[index].name.decode()!r} is used by "
                     f"{', '.join(fixed)}, which need its scale and zero point unchanged"
                 )
-        source = tensor_in if tied == q_in else tensor_out
         for tensor in (tensor_in, tensor_out):
-            tensor.quantization.scale = np.array(source.quantization.scale[:1], dtype=np.float32)
-            tensor.quantization.zeroPoint = np.array(source.quantization.zeroPoint[:1], dtype=np.int64)
+            tensor.quantization.scale = np.array([tied[0]], dtype=np.float32)
+            tensor.quantization.zeroPoint = np.array([tied[1]], dtype=np.int64)
         changed = True
     if not changed:
         return content
@@ -299,7 +313,9 @@ def tie_state_scales(content: bytes, tolerance: float) -> bytes:
     return bytes(builder.Output())
 
 
-def export_litert(model: keras.Model, spec: ExportSpec, calibration: npt.NDArray | None) -> ExportResult:
+def export_litert(
+    model: keras.Model, spec: ExportSpec, calibration: npt.NDArray | Mapping[str, npt.NDArray] | None
+) -> ExportResult:
     """Export with an already validated spec and calibration array."""
     with tempfile.TemporaryDirectory() as workdir:
         content = convert_litert(
