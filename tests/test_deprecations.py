@@ -46,3 +46,5 @@ def test_from_saved_model_warns_once_at_the_caller(tmp_path):
     ]
     assert len(deprecations) == 1
     assert deprecations[0].filename == __file__
+    with pytest.warns(DeprecationWarning, match="TfLiteKerasConverter is deprecated"):
+        TfLiteKerasConverter(small_model())

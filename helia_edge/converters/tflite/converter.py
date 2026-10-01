@@ -12,6 +12,7 @@ Classes:
 
 import io
 import tempfile
+import threading
 import warnings
 from enum import StrEnum
 from pathlib import Path
@@ -34,7 +35,12 @@ def _reject_native_fp16(interpreter) -> None:
         raise ValueError("Native float16 models need an engine with float16 kernels; predict() does not run them.")
 
 
+_quiet = threading.local()
+
+
 def _warn_deprecated(name: str, stacklevel: int) -> None:
+    if getattr(_quiet, "active", False):
+        return
     warnings.warn(
         f"{name} is deprecated; use helia_edge.export.export_model with an ExportSpec, "
         "and helia_edge.export.LiteRTRunner to run the result.",
@@ -138,9 +144,11 @@ class TfLiteKerasConverter:
             TfLiteKerasConverter: Converter
         """
         model = load_model(model_path)
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore", DeprecationWarning)
+        _quiet.active = True
+        try:
             converter = cls(model=model)
+        finally:
+            _quiet.active = False
         _warn_deprecated(cls.__name__, stacklevel=3)
         return converter
 

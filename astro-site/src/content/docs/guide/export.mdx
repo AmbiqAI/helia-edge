@@ -118,7 +118,7 @@ def register(registry):
 | `converter.export(path)` | `Path(path).write_bytes(result.content)` |
 | `converter.export_header(header_path)` | write the bytes to `path`, then `helia_edge.converters.cpp.xxd_c_dump(path, header_path, var_name="model", chunk_len=20, is_header=True)` |
 
-`ExportSpec` has no defaults for `mode` and `io_dtype`; the legacy converters defaulted to `keras` mode and chose the I/O dtype from the precision.
+`ExportSpec` has no defaults for `mode` and `io_dtype`. The legacy converters defaulted to `keras` mode and, without `io_type`, to int8 I/O for `INT8` and float32 I/O for every other precision except `FP16_NATIVE` (float16). For the same bytes, `INT16X8` therefore maps to `a16w8` with `io_dtype="float32"`.
 
 ## Hand off to an Ambiq deployment
 

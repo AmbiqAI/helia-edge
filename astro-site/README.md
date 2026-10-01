@@ -41,4 +41,4 @@ The output check follows local links and symbol anchors, checks representative p
 
 The shared UI package is pinned to a public Git commit over HTTPS. No SSH key or cross-repository secret is needed.
 
-Design mockups under `src/mockups/` are injected only by the dev server at `/helia-edge/mockups/`; they are excluded from production output. The former MkDocs sources remain in `docs/` as migration history and notebook inputs. Edit authored site pages in `src/content/docs/`; do not maintain both prose trees.
+Design mockups under `src/mockups/` are injected only by the dev server at `/helia-edge/mockups/`; they are excluded from production output. Only the notebook sources remain in `docs/guides/`; edit authored site pages in `src/content/docs/`.
