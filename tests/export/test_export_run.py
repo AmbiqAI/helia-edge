@@ -450,3 +450,35 @@ def test_cli_verify_exit_codes_for_invalid_manifests_and_combined_drift(workdir)
     assert (
         both.exit_code == 1 and "environment: python: 0.0.0" in both.output and "drift: fp32: model file" in both.output
     )
+
+
+def test_a_plugin_architecture_is_available_to_recipes(workdir, monkeypatch):
+    from helia_edge import registry
+    from helia_edge.export.architectures import build_tcn
+
+    monkeypatch.setitem(registry.architectures._values, "my_tcn", build_tcn)
+    recipe = {
+        "schema": "helia-edge/export@1",
+        "model": {
+            "kind": "params_seed",
+            "architecture": "my_tcn",
+            "params": TCN,
+            "input_shape": [32, 4],
+            "num_classes": 2,
+            "seed": 1,
+        },
+        "exports": [{"name": "fp32", "precision": "fp32", "io_dtype": "float32", "mode": "keras"}],
+    }
+    write(workdir / "p.yaml", recipe)
+    assert run_recipe(workdir / "p.yaml", workdir / "out").entries[0].spec.precision == "fp32"
+
+
+def test_recipes_refuse_formats_other_than_litert(workdir):
+    recipe = {
+        "schema": "helia-edge/export@1",
+        "model": {"kind": "params_seed", "architecture": "mlperf_tiny", "params": {"architecture": "ad"}, "seed": 1},
+        "exports": [{"name": "x", "format": "onnx", "precision": "fp32", "io_dtype": "float32", "mode": "concrete"}],
+    }
+    write(workdir / "o.yaml", recipe)
+    with pytest.raises(ValueError, match="litert format only"):
+        run_recipe(workdir / "o.yaml", workdir / "out")

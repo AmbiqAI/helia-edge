@@ -256,3 +256,52 @@ def test_legacy_converter_keeps_permissive_io_type_and_defaults(model, calibrati
     assert fp32 == export_model(model, ExportSpec(precision="fp32", io_dtype="float32", mode="concrete")).content
     spec = ExportSpec(precision="a16w8", io_dtype="float32", mode="concrete")  # legacy INT16X8 default IO
     assert int16 == export_model(model, spec, calibration).content
+
+
+def test_a_registered_exporter_is_used(model, monkeypatch):
+    from helia_edge import registry
+
+    calls = []
+
+    def exporter(model_, spec, calibration):
+        calls.append((model_, spec.format, calibration))
+        return "exported"
+
+    monkeypatch.setitem(registry.exporters._values, "custom:tensorflow", exporter)
+    spec = ExportSpec(format="custom", precision="fp32", io_dtype="float32", mode="concrete")
+    assert export_model(model, spec) == "exported" and calls == [(model, "custom", None)]
+
+
+def test_a_format_without_an_exporter_for_this_backend(model, monkeypatch):
+    from helia_edge import registry
+    from helia_edge.export import BackendUnavailable
+
+    monkeypatch.setitem(registry.exporters._values, "custom:torch", lambda *a: None)
+    spec = ExportSpec(format="custom", precision="fp32", io_dtype="float32", mode="concrete")
+    with pytest.raises(BackendUnavailable, match="KERAS_BACKEND=torch"):
+        export_model(model, spec)
+
+
+def test_plugins_load_when_only_this_backend_is_missing(model, monkeypatch):
+    import types
+
+    from helia_edge import registry
+
+    def exporter(model_, spec, calibration):
+        return "from plugin"
+
+    def register(module):
+        module.exporters.add("fmt2:tensorflow", exporter)
+
+    monkeypatch.setitem(registry.exporters._values, "fmt2:torch", lambda *a: None)
+    monkeypatch.setattr(registry, "_plugins_loaded", False)
+    monkeypatch.setattr(
+        registry.importlib.metadata,
+        "entry_points",
+        lambda group: [types.SimpleNamespace(name="p", load=lambda: register)],
+    )
+    try:
+        spec = ExportSpec(format="fmt2", precision="fp32", io_dtype="float32", mode="concrete")
+        assert export_model(model, spec) == "from plugin"
+    finally:
+        registry.exporters._values.pop("fmt2:tensorflow", None)

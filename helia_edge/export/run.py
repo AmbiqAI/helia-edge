@@ -196,6 +196,9 @@ def run_recipe(recipe_path: Path, out_dir: Path, only: Collection[str] | None = 
     if only is not None and set(only) - set(names):
         raise ValueError(f"Unknown export names: {sorted(set(only) - set(names))}; the recipe has {names}")
     selected = [e for e in recipe.exports if only is None or e.name in only]
+    other = sorted({e.format for e in selected} - {"litert"})
+    if other:
+        raise ValueError(f"Recipes export the litert format only; got {other}")
     out_dir.mkdir(parents=True, exist_ok=True)
     reference = None
     if recipe.reference is not None:

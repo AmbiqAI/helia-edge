@@ -134,6 +134,8 @@ include = [
     "tests/trainers/compare_mae_backends.py",
     "tests/export/cross_backend_export.py",
     "helia_edge/cli.py",
+    "helia_edge/registry.py",
+    "helia_edge/trainers/steps.py",
     "helia_edge/export/api.py",
     "helia_edge/export/architectures.py",
     "helia_edge/export/manifest.py",

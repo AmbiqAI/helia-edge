@@ -81,7 +81,7 @@ predictions = LiteRTRunner(result.content).predict(representative_x)
 
 - `mode` and `io_dtype` have no defaults, and an invalid precision/dtype pair is rejected.
 - `a8w8` and `a16w8` need calibration: a non-empty, finite float32 array shaped like the model input, used one sample at a time in stored order. Other precisions refuse calibration data.
-- Export needs the TensorFlow backend and a single-input model. A model trained with the Torch backend is rebuilt from its params and weights in a process started with `KERAS_BACKEND=tensorflow`.
+- Export needs a single-input model and a backend with an exporter for the format; the built-in `litert` exporter needs the TensorFlow backend. A model trained with the Torch backend is rebuilt from its params and weights in a process started with `KERAS_BACKEND=tensorflow`.
 - The legacy converters produce the same bytes for the same settings. `ExportSpec` values match helia-benchmark's precision names; `QuantizationType` values map through `LEGACY_PRECISION`.
 - `LiteRTRunner` runs model bytes with ai-edge-litert, rounding and saturating integer inputs. It runs native float16 graphs where the runtime has float16 kernels for every operator.
 
@@ -121,6 +121,28 @@ helia-edge export verify exports/manifest.json
   - Exit 2 (environment mismatch): the environment differs from the recorded one; nothing is regenerated. `--allow-env-mismatch` regenerates anyway and lists the differences.
   - Otherwise it regenerates every entry and exits 1 if any file's sha256 or size, spec or tensor record differs, and 0 when all match.
   - Exit 3: the manifest is missing or invalid.
+
+## Add an exporter or architecture
+
+`helia_edge.registry` holds the exporters (keyed `"<format>:<backend>"`) and the architectures that recipes build. Built-in entries are `"module:attr"` strings, imported only when used. Another package adds entries through the `helia_edge.plugins` entry-point group, without changes to heliaEDGE:
+
+```toml
+# pyproject.toml of your package
+[project.entry-points."helia_edge.plugins"]
+mypkg = "mypkg.edge:register"
+```
+
+```python
+# mypkg/edge.py
+def register(registry):
+    registry.architectures.add("my_tcn", "mypkg.models:build_my_tcn")
+    registry.exporters.add("litert:torch", "mypkg.export:export_torch_litert")
+```
+
+- **Architecture builders** take `(params, input_shape, num_classes)` and return a Keras model with batch size 1.
+- **Exporters** take `(model, spec, calibration)` and return an `ExportResult`.
+- **Loading:** plugins load once, the first time a key is not found, for example an exporter for a format on the active backend. A plugin that fails does not stop the others; the failures are raised together as `PluginError`. An unknown key raises `NotRegistered`, a `ValueError` that lists what is registered.
+- **Recipes:** they export the `litert` format only, because they write and inspect `.tflite` files. Exporters for other formats are used through `export_model`.
 
 ## Hand off to an Ambiq deployment
 
