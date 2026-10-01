@@ -260,6 +260,19 @@ def test_multi_input_calibration_must_name_every_input(model, calibration):
         export_model(model, ExportSpec(precision="fp32", io_dtype="float32", mode="keras"), calibration)
     with pytest.raises(ValueError, match="NaN"):
         export_model(model, INT16, calibration | {"state_in_0": np.full_like(calibration["state_in_0"], np.nan)})
+    with pytest.raises(ValueError, match="does not match model input"):
+        export_model(model, INT16, calibration | {"state_in_0": calibration["state_in_0"][:, :-1]})
+
+
+@pytest.mark.parametrize(("precision", "io_dtype"), [("a8w8", "int8"), ("a16w8", "int16"), ("fp32", "float32")])
+def test_a_stateless_export_is_the_converter_output(precision, io_dtype):
+    keras.utils.set_random_seed(3)
+    a, b = keras.Input((4,), batch_size=1, name="a"), keras.Input((4,), batch_size=1, name="b")
+    stateless = keras.Model([a, b], keras.layers.Add()([keras.layers.Dense(3)(a), keras.layers.Dense(3)(b)]))
+    spec = ExportSpec(precision=precision, io_dtype=io_dtype, mode="keras")
+    rng = np.random.default_rng(4)
+    data = {n: rng.normal(size=(8, 4)).astype(np.float32) for n in "ab"} if precision != "fp32" else None
+    assert export_model(stateless, spec, data).content == converted(stateless, spec, data)
 
 
 def test_stream_calibration_needs_a_signal_and_fixed_state_shapes():
