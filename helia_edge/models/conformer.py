@@ -424,13 +424,7 @@ def conformer_layer(
     """
     y = x
 
-    y = subsampler(
-        blocks=params.subsamples,
-        kernel_size=params.subsample.kernel_size,
-        strides=params.subsample.strides,
-        num_downsamples=params.subsample.downsamples,
-        name="subsample",
-    )(y)
+    y = subsampler(blocks=params.subsamples, name="subsample")(y)
 
     for i, block in enumerate(params.blocks):
         y = conformer_block(

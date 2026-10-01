@@ -130,8 +130,7 @@ FAMILIES = [
     pytest.param(
         Case(ConformerModel, CONFORMER, ROW, drop_last(CONFORMER)),
         id="conformer",
-        # On Torch, the #73 dotted-name KeyError follows once #66 is fixed.
-        marks=known_bug([66, 73], (AttributeError, KeyError)) if TORCH else known_bug([66], AttributeError),
+        marks=DOTTED_NAMES_ON_TORCH,
     ),
     pytest.param(Case(ConvMixerModel, CONVMIXER, ROW, CONVMIXER.model_copy(update={"depth": 1})), id="convmixer"),
     pytest.param(
