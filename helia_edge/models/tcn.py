@@ -70,6 +70,7 @@ from typing import Any, Literal
 import keras
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from ..layers.normalization import LayerNormalization
 from ..layers.squeeze_excite import se_layer
 
 
@@ -225,7 +226,7 @@ def normalization(norm: str, name: str) -> keras.Layer:
         if norm == "batch":
             return keras.layers.BatchNormalization(axis=-1, name=f"{name}_BN")(x)
         if norm == "layer":
-            return keras.layers.LayerNormalization(axis=(1, 2), name=f"{name}_LN")(x)
+            return LayerNormalization(axis=(1, 2), name=f"{name}_LN")(x)
         return x
 
     return layer

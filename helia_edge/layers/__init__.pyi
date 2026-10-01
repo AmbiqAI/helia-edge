@@ -22,6 +22,7 @@ from .ema_residual_vector_quantizer import EmaResidualVectorQuantizer as EmaResi
 from .gumbel_softmax_bottleneck import GumbelSoftmaxBottleneck as GumbelSoftmaxBottleneck
 from .mbconv import MBConvParams as MBConvParams
 from .mbconv import mbconv_block as mbconv_block
+from .normalization import LayerNormalization as LayerNormalization
 from .normalization import batch_normalization as batch_normalization
 from .normalization import layer_normalization as layer_normalization
 from .patching import MaskedPatchEncoder2D as MaskedPatchEncoder2D

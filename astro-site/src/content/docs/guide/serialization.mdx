@@ -30,6 +30,8 @@ import keras
 model = keras.saving.load_model("model.keras")
 ```
 
+Models whose layer normalization runs over spatial axes (TCN, UNet and UNext with `norm="layer"`, and Conformer) save `helia_edge>LayerNormalization`, so plain `keras.saving.load_model` needs this registration first; `helia_edge.models.load_model` registers automatically. On the Torch backend, `helia_edge.models.load_model` also renames layers whose names contain `.`, which models saved by earlier helia-edge versions use and Torch rejects.
+
 Registration initializes the selected backend. It does not turn a TensorFlow-only component into a portable component. See the [backend guide](/helia-edge/getting-started/backends/#loading-saved-custom-objects) for the tested round-trip boundaries.
 
 ## Reconstruct from configuration and weights

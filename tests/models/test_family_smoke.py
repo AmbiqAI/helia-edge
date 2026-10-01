@@ -27,6 +27,8 @@ from helia_edge.models import (
     RegNetParams,
     ResNetModel,
     ResNetParams,
+    TcnModel,
+    TcnParams,
     TsMixerModel,
     TsMixerParams,
     UNetModel,
@@ -140,6 +142,19 @@ REGNET_SQUARE_STRIDED = RegNetParams(input_filters=8, blocks=[{"filters": 8, "gr
 REGNET_Z_SQUARE_STRIDED = REGNET_SQUARE_STRIDED.model_copy(update={"block_style": "z"})
 UNET_BLOCK = {"filters": 8, "depth": 1, "kernel": (1, 3), "pool": (1, 2), "strides": (1, 2)}
 UNET = UNetParams(blocks=[UNET_BLOCK, {**UNET_BLOCK, "filters": 16}])
+UNET_LAYER_NORM = UNetParams(blocks=[{**UNET_BLOCK, "norm": "layer"}, {**UNET_BLOCK, "filters": 16, "norm": "layer"}])
+TCN_BLOCK = {"depth": 1, "branch": 1, "filters": 8, "kernel": (1, 3), "dilation": (1, 1), "dropout": 0, "ex_ratio": 1}
+TCN_LAYER_NORM = TcnParams(
+    input_kernel=(1, 3),
+    input_norm="layer",
+    blocks=[
+        {**TCN_BLOCK, "se_ratio": 0, "norm": "layer"},
+        {**TCN_BLOCK, "dilation": (1, 2), "se_ratio": 0, "norm": "layer"},
+    ],
+    output_kernel=(1, 3),
+    include_top=True,
+    use_logits=True,
+)
 UNEXT = UNextParams(blocks=[UNET_BLOCK, {**UNET_BLOCK, "filters": 16}])
 
 FAMILIES = [
@@ -197,11 +212,11 @@ FAMILIES = [
     pytest.param(Case(RegNetModel, REGNET_SQUARE_STRIDED, SQUARE), id="regnet-square-strided"),
     pytest.param(Case(RegNetModel, REGNET_Z_SQUARE_STRIDED, SQUARE), id="regnet-z-square-strided"),
     pytest.param(Case(UNetModel, UNET, ROW, drop_last(UNET)), id="unet"),
+    pytest.param(Case(UNetModel, UNET_LAYER_NORM, ROW, drop_last(UNET_LAYER_NORM)), id="unet-layer-norm"),
+    pytest.param(Case(TcnModel, TCN_LAYER_NORM, ROW, drop_last(TCN_LAYER_NORM)), id="tcn-layer-norm"),
     pytest.param(
         Case(UNextModel, UNEXT, ROW, drop_last(UNEXT)),
         id="unext",
-        # Layer normalization over a non-last axis fails on Torch (#74).
-        marks=known_bug([74], RuntimeError, condition=TORCH),
     ),
 ]
 
