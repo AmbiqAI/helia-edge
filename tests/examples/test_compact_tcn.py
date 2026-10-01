@@ -140,7 +140,7 @@ def test_generation_rejects_actual_builder_regression_before_conversion(tmp_path
     def must_not_convert(*args, **kwargs):
         raise RuntimeError("invalid model reached conversion")
 
-    monkeypatch.setattr(fixture, "LiteRTKerasConverter", must_not_convert)
+    monkeypatch.setattr(fixture, "export_model", must_not_convert)
     with pytest.raises(ValueError, match="preset"):
         fixture.generate(tmp_path / mutation)
 
