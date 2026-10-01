@@ -141,7 +141,6 @@ FAMILIES = [
     pytest.param(
         Case(MetaFormerModel, METAFORMER, ROW, drop_last(METAFORMER)),
         id="metaformer",
-        marks=known_bug([67], ValueError),
     ),
     pytest.param(
         Case(MobileNetV1Model, MobileNetV1Params(input_filters=8), ROW),

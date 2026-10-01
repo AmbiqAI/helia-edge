@@ -310,7 +310,6 @@ def metaformer_layer(
     y = x
 
     for b, block in enumerate(params.blocks):
-        print("Adding block", b + 1)
         # Apply patch embedding
         y = patch_embedding(**block.patch_embed)(y)
         for lyr in range(block.layers):
@@ -344,6 +343,8 @@ def metaformer_layer(
         if params.output_activation:
             y = keras.layers.Activation(params.output_activation)(y)
     # END IF
+
+    return y
 
 
 # def ccaa_metaformer(
