@@ -198,11 +198,22 @@ def sample(shape):
     return np.random.default_rng(1).normal(size=(1, *shape)).astype(np.float32)
 
 
+def without_blocks(params):
+    """The same params with an empty block list, or None when the family has no block list."""
+    for field in ("blocks", "layers"):
+        if isinstance(getattr(params, field, None), list):
+            return params.model_copy(update={field: []})
+    return None
+
+
 @pytest.mark.parametrize("model_cls,params,shape", FAMILIES)
 def test_builds_runs_and_reloads(model_cls, params, shape, tmp_path):
     model = build(model_cls, params, shape)
     assert model.output_shape[-1] == NUM_CLASSES
-    assert len(model.layers) > 3, "the family's blocks were not built"
+    empty = without_blocks(params)
+    if empty is not None:
+        assert model.count_params() > build(model_cls, empty, shape).count_params(), "the blocks were not built"
+        model = build(model_cls, params, shape)
     x = sample(shape)
     y = keras.ops.convert_to_numpy(model(x, training=False))
     assert y.shape == tuple(model.output_shape)
