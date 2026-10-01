@@ -1,0 +1,57 @@
+---
+title: Import weights
+description: Load weights trained elsewhere (ONNX, safetensors, PyTorch) into a heliaEDGE Keras model through a checked, declarative mapping pinned to one source file.
+---
+
+`helia_edge.importers` sets every weight of a Keras model from a file trained elsewhere. A `WeightMapping` lists, for each weight, the source tensors and how they become the Keras layout. `import_weights` checks the whole mapping first and assigns nothing unless every check passes.
+
+## Import a pinned model
+
+Silero VAD v6 ships as an architecture with its mapping from the v6.2.2 ONNX file. Download the file yourself; heliaEDGE never downloads sources:
+
+```python
+from helia_edge.importers import import_weights
+from helia_edge.models import SILERO_VAD_V6_ONNX, silero_vad_v6
+
+model = silero_vad_v6()
+report = import_weights(model, SILERO_VAD_V6_ONNX, "silero_vad_16k_op15.onnx")
+print(report.source_sha256, len(report.assignments))
+```
+
+The model is a streaming model (see [Streaming models](/helia-edge/guide/export/#streaming-models)). Each call takes 576 samples at 16 kHz, the last 64 samples of the previous call followed by 512 new ones, and carries its LSTM state as `state_in_0`/`state_in_1` and `state_out_0`/`state_out_1`. Reading ONNX files needs the `onnx` extra (`uv sync --extra onnx`).
+
+## What is checked
+
+- **Source:** the file's sha256 must equal the mapping's pinned `source.sha256`. A file with the same name but other weights is refused: for example, Silero's `silero_vad_16k.safetensors` holds different weights from the v6.2.2 ONNX.
+- **Sources used once:** every tensor in the file is used exactly once, or listed in `unused`. A tensor split into parts must have each part used once.
+- **Weights set once:** every weight of the model is assigned exactly once.
+- **Values:** shapes must match after the transforms, values must be finite, and float weights take float sources.
+
+## Write a mapping
+
+```python
+from helia_edge.importers import GateReorder, SourcePin, Transpose, WeightMapping, WeightRow
+
+mapping = WeightMapping(
+    name="detector_onnx",
+    format="onnx",
+    source=SourcePin(uri="https://example.com/detector.onnx", sha256="<sha256>"),
+    rows=(
+        WeightRow(sources=("conv.weight",), transforms=(Transpose(perm=(2, 1, 0)),), layer="conv", weight="kernel"),
+        WeightRow(sources=("conv.bias",), layer="conv", weight="bias"),
+        WeightRow(
+            sources=("lstm.W",),
+            transforms=(GateReorder(source="iofc", target="ifco"), Transpose(perm=(1, 0))),
+            layer="lstm",
+            weight="kernel",
+        ),
+        WeightRow(sources=("lstm.b_ih", "lstm.b_hh"), combine="sum", layer="lstm", weight="bias"),
+    ),
+)
+```
+
+- **Rows:** a row names the Keras layer (`outer/inner` inside a nested model) and the weight within it, such as `kernel` or `bias`.
+- **Combining sources:** several sources are combined with `sum` or `concat` before the transforms.
+- **Transforms:** `Transpose`, `Reshape`, `GateReorder` (for example ONNX LSTM gates `iofc` to Keras `ifco`; PyTorch's `ifgo` is already the Keras order) and `Split`, which may only come first.
+- **Formats:** `onnx` reads initializers, `safetensors` reads a `.safetensors` file with NumPy, and `torch` reads a flat state dict saved with `torch.save` (loaded with `weights_only=True`). Another package adds formats through `helia_edge.registry.importers`.
+- **Serialization:** mappings are pydantic models, so they serialize to and from JSON.
