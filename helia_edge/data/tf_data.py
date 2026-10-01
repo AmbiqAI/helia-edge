@@ -203,7 +203,15 @@ def to_tf_dataset(dataset: Iterable[Any], output_signature: tf.TensorSpec | tupl
 
     Returns:
         tf.data.Dataset: Built with ``tf.data.Dataset.from_generator``.
+
+    Raises:
+        ImportError: If TensorFlow is not installed (``helia-edge[tensorflow]``).
     """
-    import tensorflow as tf
+    try:
+        import tensorflow as tf
+    except ModuleNotFoundError as exc:
+        if exc.name != "tensorflow":
+            raise
+        raise ImportError("to_tf_dataset requires TensorFlow. Install helia-edge[tensorflow].") from exc
 
     return tf.data.Dataset.from_generator(lambda: iter(dataset), output_signature=output_signature)

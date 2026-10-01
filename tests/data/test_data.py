@@ -24,22 +24,30 @@ assert not {'keras', 'tensorflow', 'torch', 'grain'} & sys.modules.keys()
 """)
 
 
-def test_missing_grain_names_the_extra():
-    run_python("""
+@pytest.mark.parametrize(
+    "module,call,extra",
+    [
+        ("grain", "to_grain([1, 2])", "grain"),
+        ("torch", "to_torch_loader([1, 2])", "torch"),
+        ("tensorflow", "to_tf_dataset([1, 2], None)", "tensorflow"),
+    ],
+)
+def test_a_missing_framework_names_its_extra(module, call, extra):
+    run_python(f"""
 import importlib.abc
 import sys
-class NoGrain(importlib.abc.MetaPathFinder):
+class Absent(importlib.abc.MetaPathFinder):
     def find_spec(self, fullname, path=None, target=None):
-        if fullname.split('.')[0] == 'grain':
-            raise ModuleNotFoundError('absent', name='grain')
-sys.meta_path.insert(0, NoGrain())
-from helia_edge.data import to_grain
+        if fullname.split('.')[0] == {module!r}:
+            raise ModuleNotFoundError('absent', name={module!r})
+sys.meta_path.insert(0, Absent())
+from helia_edge.data import to_grain, to_tf_dataset, to_torch_loader
 try:
-    to_grain([1, 2])
+    {call}
 except ImportError as exc:
-    assert 'helia-edge[grain]' in str(exc), str(exc)
+    assert 'helia-edge[{extra}]' in str(exc), str(exc)
 else:
-    raise AssertionError('to_grain ran without Grain')
+    raise AssertionError('{call} ran without {module}')
 """)
 
 

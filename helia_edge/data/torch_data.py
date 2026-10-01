@@ -40,8 +40,16 @@ def to_torch_loader(dataset: Iterable[Any]) -> "torch.utils.data.DataLoader":
 
     Returns:
         torch.utils.data.DataLoader: With ``batch_size=None``, so elements pass through as they are.
+
+    Raises:
+        ImportError: If Torch is not installed (``helia-edge[torch]``).
     """
-    import torch.utils.data
+    try:
+        import torch.utils.data
+    except ModuleNotFoundError as exc:
+        if exc.name != "torch":
+            raise
+        raise ImportError("to_torch_loader requires Torch. Install helia-edge[torch].") from exc
 
     class _Batches(torch.utils.data.IterableDataset):
         def __iter__(self):

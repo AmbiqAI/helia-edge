@@ -37,9 +37,9 @@ def to_grain(
 
     The order is source, shuffle (a new permutation each epoch), repeat, ``transform``, batch, so
     batches run across epoch boundaries. Record order and transform randomness depend only on
-    ``seed``, not on ``workers``. Every ``iter()`` replays the same elements: to train for several
-    epochs, give all of them to one pass (``num_epochs=N``, or ``num_epochs=None`` with a fixed
-    number of steps per Keras epoch) rather than iterating the dataset once per epoch.
+    ``seed``, not on ``workers``. Every ``iter()`` replays the same elements, so a Keras ``fit``
+    that iterates once per epoch sees the same epoch each time: for Keras training, pass
+    ``num_epochs=None`` and set ``steps_per_epoch``.
 
     Args:
         source: Records addressed by index.

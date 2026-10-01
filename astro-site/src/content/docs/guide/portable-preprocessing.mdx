@@ -83,9 +83,9 @@ There is no global `set_backend` call or private `keras.src` dispatch in this co
 
 Grain is optional: install `helia-edge[grain]`. Prefer Grain batches passed to these
 same layers in the consumer. For per-record worker execution, the executable
-`examples/preprocessing/grain_pipeline.py` uses `helia_edge.data.to_grain`, whose
-per-record generator chooses a seed per record, calls these layers on explicit CPU tensors, and converts outputs
-to arrays. Its `owned_records` helper copies IPC arrays before closing the iterator;
+`examples/preprocessing/grain_pipeline.py` passes a transform to `helia_edge.data.to_grain`.
+The transform draws a layer seed from its per-record generator, calls these layers on
+explicit CPU tensors, and converts outputs to arrays. Its `owned_records` helper copies IPC arrays before closing the iterator;
 that copy is explicit and distinct from the reference-preserving sample facade.
 The example constructs small layers per record for clarity, not maximum throughput.
 It creates no persistent worker RNG whose sequence depends on worker count.
