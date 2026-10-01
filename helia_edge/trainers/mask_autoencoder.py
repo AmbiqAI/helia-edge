@@ -53,7 +53,8 @@ class MaskedAutoencoder(keras.Model):
     """Masked reconstruction with Keras fit() and independently callable objectives.
 
     call() returns (targets, predictions). training controls layer state, not masks.
-    See docs/backends.md for serialization, native-loop use and support limits.
+    See https://ambiqai.github.io/helia-edge/getting-started/backends/ for serialization, native-loop
+    use and support limits.
     """
 
     def __init__(

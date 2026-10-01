@@ -37,7 +37,7 @@ os.environ["KERAS_BACKEND"] = "torch"
 import keras
 ```
 
-Python 3.12–3.14 is covered by the CI matrix. There is no implemented Torch conversion path in the `converters.torch` namespace.
+Python 3.12–3.14 is covered by the CI matrix. LiteRT export needs the TensorFlow backend: rebuild a Torch-trained model from its params and weights in a process started with `KERAS_BACKEND=tensorflow` (see [Export and quantization](/helia-edge/guide/export/)).
 
 </TabItem>
 </Tabs>

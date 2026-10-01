@@ -12,6 +12,8 @@ Classes:
 
 import io
 import tempfile
+import threading
+import warnings
 from enum import StrEnum
 from pathlib import Path
 
@@ -31,6 +33,20 @@ def _reject_native_fp16(interpreter) -> None:
     details = interpreter.get_input_details() + interpreter.get_output_details()
     if any(detail["dtype"] == np.float16 for detail in details):
         raise ValueError("Native float16 models need an engine with float16 kernels; predict() does not run them.")
+
+
+_quiet = threading.local()
+
+
+def _warn_deprecated(name: str, stacklevel: int) -> None:
+    if getattr(_quiet, "active", False):
+        return
+    warnings.warn(
+        f"{name} is deprecated; use helia_edge.export.export_model with an ExportSpec, "
+        "and helia_edge.export.LiteRTRunner to run the result.",
+        DeprecationWarning,
+        stacklevel=stacklevel,
+    )
 
 
 class QuantizationType(StrEnum):
@@ -73,6 +89,10 @@ class TfLiteKerasConverter:
     ):
         """Converts Keras model to TFLite model.
 
+        Deprecated: use ``helia_edge.export.export_model`` with an ``ExportSpec``, and
+        ``helia_edge.export.LiteRTRunner`` to run the result. Constructing this class emits a
+        ``DeprecationWarning``; its behaviour is unchanged.
+
         Args:
             model (keras.Model): Keras model
 
@@ -106,6 +126,7 @@ class TfLiteKerasConverter:
         print(np.allclose(y_pred_tf, y_pred_tfl, atol=1e-3))
         ```
         """
+        _warn_deprecated(type(self).__name__, stacklevel=3)
         self.model = model
         self.representative_dataset = None
         self._converter: tf.lite.TFLiteConverter | None = None
@@ -122,7 +143,14 @@ class TfLiteKerasConverter:
         Returns:
             TfLiteKerasConverter: Converter
         """
-        return cls(model=load_model(model_path))
+        model = load_model(model_path)
+        _quiet.active = True
+        try:
+            converter = cls(model=model)
+        finally:
+            _quiet.active = False
+        _warn_deprecated(cls.__name__, stacklevel=3)
+        return converter
 
     def convert(
         self,

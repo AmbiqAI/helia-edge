@@ -1,9 +1,9 @@
 ---
 title: Export and quantization
-description: Convert a TensorFlow-backed Keras model to LiteRT, inspect predictions and save the model artifact.
+description: Export a TensorFlow-backed Keras model to LiteRT with helia_edge.export, inspect predictions and save the model artifact.
 ---
 
-heliaEDGE's LiteRT/TFLite converters prepare model artifacts for inference. Conversion uses TensorFlow even when another part of your project uses the Torch backend. Run it in the appropriate environment and check the operators and input contract required by your deployment target.
+`helia_edge.export` converts a Keras model to LiteRT and returns the bytes with their identity. Conversion uses TensorFlow even when another part of your project uses the Torch backend. Run it in the appropriate environment and check the operators and input contract required by your deployment target.
 
 ## Install the conversion capability
 
@@ -13,55 +13,15 @@ From the source checkout used by the installation guide:
 uv sync --python 3.12 --extra litert
 ```
 
-Use a TensorFlow-backed Keras model. See [Backend support](/helia-edge/getting-started/backends/) for the supported Python environment. The Torch converter namespace is a placeholder and does not provide a working export path in this source version.
+Use a TensorFlow-backed Keras model. See [Backend support](/helia-edge/getting-started/backends/) for the supported Python environment.
 
-## Convert and inspect
+## Export and inspect
 
-With a trained `model` and a NumPy array `representative_x` matching its input shape:
-
-```python
-from helia_edge.converters.litert import LiteRTKerasConverter, QuantizationType
-
-converter = LiteRTKerasConverter(model)
-content = converter.convert(
-    representative_x,
-    quantization=QuantizationType.INT8,
-)
-converted_predictions = converter.predict(representative_x)
-converter.export("model.tflite")
-```
-
-Choose representative inputs from the distribution the model will encounter. INT8 and INT16X8 conversion require representative data. Compare converted predictions against the original model and evaluate task quality on held-out data before deployment.
-
-<details>
-<summary>Compare precision options and target requirements</summary>
-
-| Format | Use |
-|---|---|
-| FP32 | Establish a floating-point conversion baseline. |
-| FP16 | Store weights as float16; they are dequantized at runtime and compute stays FP32. |
-| FP16_NATIVE | Emit a float16 graph: inputs, weights, activations and outputs are float16. Needs a runtime with float16 kernels for every operator; `tf.lite.Interpreter` cannot run it, and `predict()` rejects it. |
-| INT8 | Quantize with representative data and validate the resulting input/output types. |
-| INT16X8 | Request the converter's 16-bit activation / 8-bit weight path where supported by the model and target. |
-
-A converter accepting a precision option does not establish that every operator, runtime or hardware target supports it. Inspect the exported artifact and validate it with the intended runtime.
-
-</details>
-
-<details>
-<summary>Save bytes or a C header</summary>
-
-`export()` writes the converted content. `export_header()` emits a C byte array when your firmware integration needs one. These methods are inherited from [TfLiteKerasConverter](/helia-edge/reference/api/helia_edge/converters/tflite/converter/); [LiteRTKerasConverter](/helia-edge/reference/api/helia_edge/converters/litert/converter/) supplies LiteRT runtime prediction.
-
-Keep the original trained model, calibration selection, conversion settings and validation results with the exported file. Firmware integration and on-device measurements are separate steps from host conversion.
-
-</details>
-
-## Typed export
-
-`helia_edge.export` states every setting that changes the exported bytes and returns the bytes with their identity:
+`export_model` takes an `ExportSpec` that states every setting that changes the exported bytes. With a trained `model` and a NumPy array `representative_x` matching its input shape:
 
 ```python
+from pathlib import Path
+
 import numpy as np
 from helia_edge.export import ExportSpec, LiteRTRunner, export_model
 
@@ -69,6 +29,7 @@ spec = ExportSpec(precision="a8w8", io_dtype="int8", mode="concrete")
 result = export_model(model, spec, calibration=representative_x.astype(np.float32))
 print(result.sha256, result.inputs[0].scale, result.environment.helia_edge)
 predictions = LiteRTRunner(result.content).predict(representative_x)
+Path("model.tflite").write_bytes(result.content)
 ```
 
 | Precision | Graph | Input/output dtype |
@@ -82,7 +43,8 @@ predictions = LiteRTRunner(result.content).predict(representative_x)
 - `mode` and `io_dtype` have no defaults, and an invalid precision/dtype pair is rejected.
 - `a8w8` and `a16w8` need calibration: a non-empty, finite float32 array shaped like the model input, used one sample at a time in stored order. Other precisions refuse calibration data.
 - Export needs a single-input model and a backend with an exporter for the format; the built-in `litert` exporter needs the TensorFlow backend. A model trained with the Torch backend is rebuilt from its params and weights in a process started with `KERAS_BACKEND=tensorflow`.
-- The legacy converters produce the same bytes for the same settings. `ExportSpec` values match helia-benchmark's precision names; `QuantizationType` values map through `LEGACY_PRECISION`.
+- Choose representative inputs from the distribution the model will encounter. Compare predictions against the original model and evaluate task quality on held-out data before deployment.
+- `ExportSpec` values match helia-benchmark's precision names.
 - `LiteRTRunner` runs model bytes with ai-edge-litert, rounding and saturating integer inputs. It runs native float16 graphs where the runtime has float16 kernels for every operator.
 
 ## Export recipes and the command line
@@ -143,6 +105,20 @@ def register(registry):
 - **Exporters** take `(model, spec, calibration)` and return an `ExportResult`.
 - **Loading:** plugins load once, the first time a key is not found, for example an exporter for a format on the active backend. A plugin that fails does not stop the others; the failures are raised together as `PluginError`. An unknown key raises `NotRegistered`, a `ValueError` that lists what is registered.
 - **Recipes:** they export the `litert` format only, because they write and inspect `.tflite` files. Exporters for other formats are used through `export_model`.
+
+## Legacy converters (deprecated)
+
+`TfLiteKerasConverter`, `LiteRTKerasConverter` and `TfLiteKerasInterpreter` still work but emit a `DeprecationWarning`. They produce the same bytes as `export_model` for the same settings. Move to `export_model` and `LiteRTRunner`:
+
+| Legacy | Replacement |
+|---|---|
+| `LiteRTKerasConverter(model).convert(x, quantization=QuantizationType.INT8, mode=ConversionType.CONCRETE)` | `export_model(model, ExportSpec(precision="a8w8", io_dtype="int8", mode="concrete"), calibration=x.astype(np.float32))` |
+| `QuantizationType.FP32`, `FP16`, `FP16_NATIVE`, `INT8`, `INT16X8` | `fp32`, `fp32-w16`, `fp16`, `a8w8`, `a16w8` (`LEGACY_PRECISION` maps them) |
+| `converter.predict(x)`, `TfLiteKerasInterpreter(...).predict(x)` | `LiteRTRunner(result.content).predict(x)` |
+| `converter.export(path)` | `Path(path).write_bytes(result.content)` |
+| `converter.export_header(header_path)` | write the bytes to `path`, then `helia_edge.converters.cpp.xxd_c_dump(path, header_path, var_name="model", chunk_len=20, is_header=True)` |
+
+`ExportSpec` has no defaults for `mode` and `io_dtype`. The legacy converters defaulted to `keras` mode and, without `io_type`, to int8 I/O for `INT8` and float32 I/O for every other precision except `FP16_NATIVE` (float16). For the same bytes, `INT16X8` therefore maps to `a16w8` with `io_dtype="float32"`.
 
 ## Hand off to an Ambiq deployment
 

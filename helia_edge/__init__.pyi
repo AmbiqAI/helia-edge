@@ -7,9 +7,7 @@ from . import layers as layers
 from . import losses as losses
 from . import metrics as metrics
 from . import models as models
-from . import optimizers as optimizers
 from . import plotting as plotting
-from . import quantizers as quantizers
 from . import registry as registry
 from . import trainers as trainers
 from . import utils as utils

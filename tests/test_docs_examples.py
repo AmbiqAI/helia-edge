@@ -92,3 +92,28 @@ def test_grain_input_pipeline_example():
     namespace = {}
     exec(compile(block.replace("print(", "shapes = ("), "input-pipeline.mdx", "exec"), namespace)
     assert namespace["shapes"] == [(4, 8)] * 5
+
+
+def test_export_examples(tmp_path, monkeypatch):
+    """The export guide and the landing export step run with export_model on TensorFlow."""
+    if os.environ.get("KERAS_BACKEND", "tensorflow") != "tensorflow":
+        pytest.skip("LiteRT export needs the TensorFlow backend")
+    pytest.importorskip("ai_edge_litert")
+    import keras
+    import numpy as np
+
+    monkeypatch.chdir(tmp_path)
+    model = keras.Sequential([keras.Input((8,)), keras.layers.Dense(2)])
+    representative_x = np.random.default_rng(0).normal(size=(16, 8))
+    guide = (ROOT / "astro-site/src/content/docs/guide/export.mdx").read_text()
+    section = guide.split("## Export and inspect", 1)[1].split("\n## ", 1)[0]
+    (block,) = re.findall(r"```python\n(.*?)```", section, re.DOTALL)
+    namespace = {"model": model, "representative_x": representative_x}
+    exec(compile(block, "export.mdx", "exec"), namespace)
+    assert namespace["predictions"].shape == (16, 2)
+    assert (tmp_path / "model.tflite").read_bytes() == namespace["result"].content
+    steps = json.loads((ROOT / "astro-site/src/data/workbench.json").read_text())
+    (export_step,) = [step for step in steps if step["guide"] == "export"]
+    landing = {"model": model, "representative_x": representative_x}
+    exec(compile(export_step["code"], "workbench.json", "exec"), landing)
+    assert landing["result"].sha256 == namespace["result"].sha256
