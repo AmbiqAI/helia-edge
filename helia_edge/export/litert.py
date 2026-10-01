@@ -328,9 +328,11 @@ def tie_state_scales(content: bytes, tolerance: float) -> bytes:
         bytes: ``content`` itself when every pair is already tied or float; otherwise the rewritten model.
 
     Raises:
-        ValueError: If a pair mixes types or float and integer tensors, the tied scale differs from an
-            original scale by more than ``tolerance``, an operator that reads or writes a state tensor
-            needs its parameters unchanged, or a reader's bias cannot be requantized (shared, or overflowing).
+        ValueError: If state names do not pair up or a pair's tensors differ in shape or type, a pair mixes
+            float and integer quantization, the tied scale differs from an original scale by more than
+            ``tolerance``, an operator that reads or writes a state tensor needs its parameters unchanged,
+            or a state tensor is a reader's weight or bias, or a reader's bias cannot be requantized
+            (shared, of an unexpected type or scale count, or overflowing).
     """
     model = schema.ModelT.InitFromObj(schema.Model.GetRootAsModel(bytearray(content), 0))
     subgraph = model.subgraphs[0]
@@ -340,7 +342,7 @@ def tie_state_scales(content: bytes, tolerance: float) -> bytes:
         q_in, q_out = _quantization(tensor_in), _quantization(tensor_out)
         if q_in is None and q_out is None:
             continue
-        if q_in is None or q_out is None or tensor_in.type != tensor_out.type or tensor_in.type not in _INT_RANGES:
+        if q_in is None or q_out is None or tensor_in.type not in _INT_RANGES:
             raise ValueError(f"State pair {k} must have two integer tensors of one type to tie")
         if q_in == q_out:
             continue
