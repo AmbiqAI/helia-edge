@@ -67,7 +67,10 @@ def convert_litert(
     if stateful:
         duplicates = sorted({name for name in model.output_names if model.output_names.count(name) > 1})
         if duplicates:
-            raise ValueError(f"Output names {duplicates} repeat; name every output of a streaming model distinctly")
+            raise ValueError(
+                f"Output names {duplicates} repeat, as two outputs of one layer do; pass each output of a streaming "
+                "model through its own named layer, such as state_output"
+            )
         model = keras.Model(model.inputs, dict(zip(model.output_names, model.outputs, strict=True)), name=model.name)
 
     match mode:
