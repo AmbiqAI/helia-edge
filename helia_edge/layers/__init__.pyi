@@ -8,6 +8,7 @@ from . import patching as patching
 from . import preprocessing as preprocessing
 from . import residual_vector_quantizer as residual_vector_quantizer
 from . import squeeze_excite as squeeze_excite
+from . import streaming as streaming
 from . import vector_quantizer as vector_quantizer
 from .activations import gelu as gelu
 from .activations import glu as glu
@@ -29,4 +30,7 @@ from .patching import MaskedPatchEncoder2D as MaskedPatchEncoder2D
 from .patching import PatchLayer2D as PatchLayer2D
 from .residual_vector_quantizer import ResidualVectorQuantizer as ResidualVectorQuantizer
 from .squeeze_excite import se_layer as se_layer
+from .streaming import StreamingLSTMCell as StreamingLSTMCell
+from .streaming import state_input as state_input
+from .streaming import state_output as state_output
 from .vector_quantizer import VectorQuantizer as VectorQuantizer

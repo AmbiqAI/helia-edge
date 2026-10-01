@@ -7,6 +7,7 @@ from . import run as run
 from . import runner as runner
 from . import spec as spec
 from .api import export_model as export_model
+from .api import stream_calibration as stream_calibration
 from .architectures import BUILTIN_ARCHITECTURES as BUILTIN_ARCHITECTURES
 from .manifest import ExportManifest as ExportManifest
 from .recipe import ExportRecipe as ExportRecipe
@@ -18,6 +19,7 @@ from .run import VerifyReport as VerifyReport
 from .run import run_recipe as run_recipe
 from .run import verify_manifest as verify_manifest
 from .runner import LiteRTRunner as LiteRTRunner
+from .runner import LiteRTStreamRunner as LiteRTStreamRunner
 from .spec import CALIBRATED as CALIBRATED
 from .spec import LEGACY_MODE as LEGACY_MODE
 from .spec import LEGACY_PRECISION as LEGACY_PRECISION

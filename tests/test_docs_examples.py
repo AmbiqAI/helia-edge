@@ -117,3 +117,25 @@ def test_export_examples(tmp_path, monkeypatch):
     landing = {"model": model, "representative_x": representative_x}
     exec(compile(export_step["code"], "workbench.json", "exec"), landing)
     assert landing["result"].sha256 == namespace["result"].sha256
+
+
+def test_streaming_export_example():
+    """The export guide's streaming example runs and keeps the carried state's value."""
+    if os.environ.get("KERAS_BACKEND", "tensorflow") != "tensorflow":
+        pytest.skip("LiteRT export needs the TensorFlow backend")
+    pytest.importorskip("ai_edge_litert")
+    import numpy as np
+
+    guide = (ROOT / "astro-site/src/content/docs/guide/export.mdx").read_text()
+    section = guide.split("## Streaming models", 1)[1].split("\n## ", 1)[0]
+    (block,) = re.findall(r"```python\n(.*?)```", section, re.DOTALL)
+    namespace = {}
+    exec(compile(block, "export.mdx", "exec"), namespace)
+    fed, outputs = namespace["fed"], namespace["outputs"]
+    assert namespace["probabilities"].shape == (50, 1, 1)
+    np.testing.assert_array_equal(fed["state_in_1"][1:], outputs["state_out_1"][:-1])
+    result = namespace["result"]
+    for k in (0, 1):
+        (state_in,) = [t for t in result.inputs if t.pair == k]
+        (state_out,) = [t for t in result.outputs if t.pair == k]
+        assert (state_in.scale, state_in.zero_point) == (state_out.scale, state_out.zero_point)

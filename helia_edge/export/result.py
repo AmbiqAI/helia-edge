@@ -3,6 +3,7 @@
 import importlib.metadata
 import json
 import platform
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -16,7 +17,7 @@ _VERSIONED = ("numpy", "keras", "tensorflow", "ai-edge-litert")
 @dataclass(frozen=True)
 class TensorRecord:
     """One model input or output. Dynamic dimensions are -1. I/O tensors are per-tensor quantized; float
-    tensors have no scale."""
+    tensors have no scale. A state tensor (``role`` STATE) has the index ``pair`` of its state pair."""
 
     name: str
     role: TensorRole
@@ -24,6 +25,35 @@ class TensorRecord:
     dtype: IODType
     scale: float | None
     zero_point: int | None
+    pair: int | None = None
+
+
+def _by_pair(records: Sequence[TensorRecord]) -> dict[int, TensorRecord]:
+    pairs: dict[int, TensorRecord] = {}
+    for record in records:
+        if record.role == TensorRole.STATE:
+            if record.pair is None:
+                raise ValueError(f"State tensor {record.name!r} has no pair")
+            pairs[record.pair] = record
+    return pairs
+
+
+def state_scales_tied(inputs: Sequence[TensorRecord], outputs: Sequence[TensorRecord]) -> bool | None:
+    """Whether every integer state pair has one scale and zero point.
+
+    Returns:
+        bool | None: None when the model has no integer state pair, as for float I/O or a stateless model.
+
+    Raises:
+        ValueError: If a state tensor has no pair index, or a state input or output has no partner.
+    """
+    ins, outs = _by_pair(inputs), _by_pair(outputs)
+    if ins.keys() != outs.keys():
+        raise ValueError(f"State inputs {sorted(ins)} and outputs {sorted(outs)} do not pair up")
+    pairs = [(ins[k], outs[k]) for k in sorted(ins) if ins[k].scale is not None or outs[k].scale is not None]
+    if not pairs:
+        return None
+    return all((a.scale, a.zero_point) == (b.scale, b.zero_point) for a, b in pairs)
 
 
 @dataclass(frozen=True)

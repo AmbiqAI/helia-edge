@@ -1,8 +1,9 @@
 """Typed export specification; importable without Keras or a training backend."""
 
+import re
 from enum import StrEnum
 
-from pydantic import BaseModel, ConfigDict, StrictBool, model_validator
+from pydantic import BaseModel, ConfigDict, Field, StrictBool, model_validator
 
 
 class Precision(StrEnum):
@@ -48,6 +49,25 @@ class TensorRole(StrEnum):
     AUX = "aux"
 
 
+_STATE_NAME = re.compile(r"state_(in|out)_(0|[1-9][0-9]*)")
+
+
+def state_input_name(k: int) -> str:
+    """Name of the input of state pair ``k``."""
+    return f"state_in_{k}"
+
+
+def state_output_name(k: int) -> str:
+    """Name of the output of state pair ``k``."""
+    return f"state_out_{k}"
+
+
+def state_pair(name: str) -> tuple[str, int] | None:
+    """``("in", k)`` or ``("out", k)`` for a state tensor name, otherwise None."""
+    match = _STATE_NAME.fullmatch(name)
+    return None if match is None else (match.group(1), int(match.group(2)))
+
+
 # Legacy converter values map through this table only; values are never case-folded.
 # Keys are QuantizationType values, so QuantizationType members look up directly.
 LEGACY_PRECISION: dict[str, Precision] = {
@@ -87,6 +107,9 @@ class ExportSpec(BaseModel):
         mode: How the model is traced for conversion.
         strict: For calibrated precisions, refuse operators without an integer kernel instead of
             falling back to float operators. Defaults to True; it does not affect float precisions.
+        state_tie_tolerance: For calibrated precisions with integer I/O, the largest relative difference
+            between the scales of a state pair (``state_in_k``, ``state_out_k``) that export ties to one
+            scale and zero point; a larger difference is refused. Models without state pairs ignore it.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -96,6 +119,7 @@ class ExportSpec(BaseModel):
     io_dtype: IODType
     mode: ConversionMode
     strict: StrictBool = True
+    state_tie_tolerance: float = Field(default=0.01, ge=0.0, lt=1.0)
 
     @model_validator(mode="after")
     def _io_dtype_matches_precision(self) -> "ExportSpec":
