@@ -92,6 +92,9 @@ def ts_block(params: TsMixerBlockParams, name: str) -> keras.Layer:
         keras.Layer: Layer
     """
 
+    def dropout(y: keras.KerasTensor, suffix: str) -> keras.KerasTensor:
+        return keras.layers.Dropout(params.dropout, name=f"{name}_{suffix}")(y) if params.dropout else y
+
     def layer(x: keras.KerasTensor) -> keras.KerasTensor:
         # Temporal Linear
         y = norm_layer(params.norm, name=f"{name}_TL")(x)
@@ -99,18 +102,19 @@ def ts_block(params: TsMixerBlockParams, name: str) -> keras.Layer:
         y = keras.ops.transpose(y, axes=[0, 2, 1])  # [Batch, Channel, Input Length]
         y = keras.layers.Dense(y.shape[-1], activation=params.activation, name=f"{name}_TL_DENSE")(y)
         y = keras.ops.transpose(y, axes=[0, 2, 1])  # [Batch, Input Length, Channel]
-        y = keras.layers.Dropout(params.dropout, name=f"{name}_TL_DROP")(y)
+        y = dropout(y, "TL_DROP")
         res = y + x
 
         # Feature Linear
         y = norm_layer(params.norm, name=f"{name}_FL")(res)
-        y = keras.layers.Dense(params.ff_dim, activation=params.activation, name=f"{name}_FL_DENSE")(
+        ff_dim = params.ff_dim or x.shape[-1]
+        y = keras.layers.Dense(ff_dim, activation=params.activation, name=f"{name}_FL_DENSE")(
             y
         )  # [Batch, Input Length, FF_Dim]
-        y = keras.layers.Dropout(params.dropout, name=f"{name}_FL_DROP")(y)
+        y = dropout(y, "FL_DROP")
 
         y = keras.layers.Dense(x.shape[-1], name=f"{name}_RL_DENSE")(y)  # [Batch, Input Length, Channel]
-        y = keras.layers.Dropout(params.dropout, name=f"{name}_RL_DROP")(y)
+        y = dropout(y, "RL_DROP")
         return y + res
 
     return layer
@@ -128,8 +132,8 @@ def tsmixer_layer(inputs: keras.KerasTensor, params: any, num_classes: int) -> k
         keras.KerasTensor: Output tensor
     """
     y = inputs
-    for block in range(params.blocks):
-        y = ts_block(block)(y)
+    for i, block in enumerate(params.blocks):
+        y = ts_block(block, name=f"B{i + 1}")(y)
 
     # if target_slice:
     #     y = y[:, :, target_slice]
@@ -149,7 +153,7 @@ class TsMixerModel:
         """Create layer from parameters"""
         if isinstance(params, dict):
             params = TsMixerParams(**params)
-        return tsmixer_layer(x=inputs, params=params, num_classes=num_classes)
+        return tsmixer_layer(inputs=inputs, params=params, num_classes=num_classes)
 
     @staticmethod
     def model_from_params(inputs: keras.Input, params: TsMixerParams | dict, num_classes: int | None = None):

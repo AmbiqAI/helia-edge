@@ -430,7 +430,7 @@ class UNextModel:
         """Create layer from parameters"""
         if isinstance(params, dict):
             params = UNextParams(**params)
-        return unext_layer(x=inputs, params=params, num_classes=num_classes)
+        return unext_layer(inputs=inputs, params=params, num_classes=num_classes)
 
     @staticmethod
     def model_from_params(inputs: keras.Input, params: UNextParams | dict, num_classes: int | None = None):

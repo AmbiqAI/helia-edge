@@ -48,10 +48,10 @@ def layer_normalization(
             """
             is_channels_first = keras.backend.image_data_format() == "channels_first"
             # If rank is 4 (B, H, W, C), normalize over H, W
-            if x.shape.rank == 4:
+            if len(x.shape) == 4:
                 _axis = [-2, -3] if not is_channels_first else [-1, -2]
             # If rank is 3 (B, T, C), normalize over T
-            elif x.shape.rank == 3:
+            elif len(x.shape) == 3:
                 _axis = -2 if not is_channels_first else -1
             # If rank is 2 (B, C), normalize over C
             else:

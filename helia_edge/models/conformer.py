@@ -175,7 +175,7 @@ def fc_block(
     def layer(x: keras.KerasTensor) -> keras.KerasTensor:
         y = x
 
-        y = layer_normalization(name=f"{name}_ln")(y)
+        y = layer_normalization(name=f"{name}_ln", axis=-1)(y)
 
         y = keras.layers.Dense(
             int(ex_factor * depth),
@@ -241,7 +241,7 @@ def conv_block(
     def layer(x: keras.KerasTensor) -> keras.KerasTensor:
         y = x
 
-        y = layer_normalization(name=f"{name}_ln")(y)
+        y = layer_normalization(name=f"{name}_ln", axis=-1)(y)
 
         y = keras.layers.Conv1D(
             filters=scale_factor * depth,
@@ -315,7 +315,7 @@ def att_block(
 
     def layer(x: keras.KerasTensor) -> keras.KerasTensor:
         y = x
-        y = layer_normalization(name=f"{name}_ln")(y)
+        y = layer_normalization(name=f"{name}_ln", axis=-1)(y)
 
         # Att type: rel, abs, none
         y = keras.layers.MultiHeadAttention(
@@ -399,7 +399,7 @@ def conformer_block(
         )(y)
 
         # Output Layer Norm
-        y = layer_normalization(name=f"{name}_out_ln")(y)
+        y = layer_normalization(name=f"{name}_out_ln", axis=-1)(y)
 
         return y
 
@@ -424,13 +424,7 @@ def conformer_layer(
     """
     y = x
 
-    y = subsampler(
-        blocks=params.subsamples,
-        kernel_size=params.subsample.kernel_size,
-        strides=params.subsample.strides,
-        num_downsamples=params.subsample.downsamples,
-        name="subsample",
-    )(y)
+    y = subsampler(blocks=params.subsamples, name="subsample")(y)
 
     for i, block in enumerate(params.blocks):
         y = conformer_block(
