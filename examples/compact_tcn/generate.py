@@ -15,7 +15,7 @@ import numpy as np
 from ai_edge_litert.interpreter import Interpreter, OpResolverType
 from tensorflow.lite.python import schema_py_generated as schema
 
-from helia_edge.converters.litert import ConversionType, LiteRTKerasConverter, QuantizationType
+from helia_edge.export import ExportSpec, export_model
 from helia_edge.models.tcn import TcnModel, TcnParams
 
 
@@ -338,17 +338,11 @@ def generate(output, calibration_samples=32):
         write_json(output / f"w{width}-config.json", config)
         for precision in ("FP32", "INT8"):
             stem = f"tcn-w{width}-{precision.lower()}"
-            converter = LiteRTKerasConverter(model)
-            try:
-                content = converter.convert(
-                    calibration,
-                    quantization=QuantizationType(precision),
-                    mode=ConversionType.CONCRETE,
-                    strict=True,
-                    io_type="int8" if precision == "INT8" else "float32",
-                )
-            finally:
-                converter.cleanup()
+            if precision == "INT8":
+                spec = ExportSpec(precision="a8w8", io_dtype="int8", mode="concrete")
+                content = export_model(model, spec, calibration).content
+            else:
+                content = export_model(model, ExportSpec(precision="fp32", io_dtype="float32", mode="concrete")).content
             (output / f"{stem}.tflite").write_bytes(content)
             graph = graph_info(content, precision)
             write_json(output / f"{stem}-graph.json", graph)

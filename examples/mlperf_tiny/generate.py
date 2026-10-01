@@ -13,7 +13,7 @@ import keras
 import numpy as np
 from ai_edge_litert.interpreter import Interpreter, OpResolverType
 
-from helia_edge.converters.litert import ConversionType, LiteRTKerasConverter, QuantizationType
+from helia_edge.export import ExportSpec, export_model
 from helia_edge.models.mlperf_tiny import mlperf_tiny_ad, mlperf_tiny_kws, mlperf_tiny_resnet, mlperf_tiny_vww
 
 BUILDERS = {"kws": mlperf_tiny_kws, "vww": mlperf_tiny_vww, "resnet": mlperf_tiny_resnet, "ad": mlperf_tiny_ad}
@@ -58,11 +58,7 @@ def generate(name, output, seed=20260926):
     inputs, expected, amplitude = diagnostic_cases(model)
     model.save(output / "model.keras")
     (output / "config.json").write_text(model.to_json(indent=2) + "\n")
-    converter = LiteRTKerasConverter(model)
-    try:
-        content = converter.convert(inputs, quantization=QuantizationType.FP32, mode=ConversionType.CONCRETE)
-    finally:
-        converter.cleanup()
+    content = export_model(model, ExportSpec(precision="fp32", io_dtype="float32", mode="concrete")).content
     (output / "model.tflite").write_bytes(content)
     interpreter = Interpreter(
         model_content=content, num_threads=1, experimental_op_resolver_type=OpResolverType.BUILTIN_REF
