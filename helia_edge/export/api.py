@@ -43,7 +43,7 @@ def export_model(model, spec: ExportSpec, calibration: npt.NDArray | None = None
     """Export a single-input Keras model.
 
     Args:
-        model: Keras model built on the TensorFlow backend.
+        model: Keras model built on a backend with an exporter for ``spec.format``.
         spec: What to export.
         calibration: float32 samples along axis 0, shaped like the model input, for A8W8 and A16W8
             only. They are used one at a time in stored order.
@@ -58,6 +58,7 @@ def export_model(model, spec: ExportSpec, calibration: npt.NDArray | None = None
             backend that has one (``KERAS_BACKEND=tensorflow`` for the built-in LiteRT exporter).
         ValueError: If the format is unknown, the model has more than one input, or the calibration
             data is invalid.
+        PluginError: If a ``helia_edge.plugins`` entry point fails while plugins load.
     """
     from ..registry import exporters, load_plugins
 

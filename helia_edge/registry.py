@@ -80,6 +80,7 @@ class Registry(Generic[V]):
 
         Raises:
             NotRegistered: If no built-in or plugin registers ``key``.
+            PluginError: If a ``helia_edge.plugins`` entry point fails while plugins load.
         """
         if key not in self:
             load_plugins()

@@ -81,7 +81,7 @@ predictions = LiteRTRunner(result.content).predict(representative_x)
 
 - `mode` and `io_dtype` have no defaults, and an invalid precision/dtype pair is rejected.
 - `a8w8` and `a16w8` need calibration: a non-empty, finite float32 array shaped like the model input, used one sample at a time in stored order. Other precisions refuse calibration data.
-- Export needs the TensorFlow backend and a single-input model. A model trained with the Torch backend is rebuilt from its params and weights in a process started with `KERAS_BACKEND=tensorflow`.
+- Export needs a single-input model and a backend with an exporter for the format; the built-in `litert` exporter needs the TensorFlow backend. A model trained with the Torch backend is rebuilt from its params and weights in a process started with `KERAS_BACKEND=tensorflow`.
 - The legacy converters produce the same bytes for the same settings. `ExportSpec` values match helia-benchmark's precision names; `QuantizationType` values map through `LEGACY_PRECISION`.
 - `LiteRTRunner` runs model bytes with ai-edge-litert, rounding and saturating integer inputs. It runs native float16 graphs where the runtime has float16 kernels for every operator.
 
