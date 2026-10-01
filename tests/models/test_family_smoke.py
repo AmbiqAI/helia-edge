@@ -163,8 +163,8 @@ FAMILIES = [
     pytest.param(
         Case(UNextModel, UNEXT, ROW, drop_last(UNEXT)),
         id="unext",
-        # On Torch, layer normalization over a non-last axis fails once #70 is fixed (#74).
-        marks=known_bug([70, 74], (TypeError, RuntimeError)) if TORCH else known_bug([70], TypeError),
+        # Layer normalization over a non-last axis fails on Torch (#74).
+        marks=known_bug([74], RuntimeError, condition=TORCH),
     ),
 ]
 
