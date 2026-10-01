@@ -15,6 +15,7 @@ def register_keras_serializables() -> None:
         "helia_edge.callbacks.tqdm_progress_bar",
         "helia_edge.layers.ema_residual_vector_quantizer",
         "helia_edge.layers.gumbel_softmax_bottleneck",
+        "helia_edge.layers.normalization",
         "helia_edge.layers.residual_vector_quantizer",
         "helia_edge.layers.vector_quantizer",
         "helia_edge.layers.patching",

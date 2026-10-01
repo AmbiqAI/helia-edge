@@ -50,9 +50,10 @@ def undot_layer_names(config: Any) -> tuple[Any, dict[str, str]]:
     """Rename layers whose names contain ``.`` in a saved Keras model config.
 
     Torch registers each layer as a module attribute, and attribute names cannot contain ``.``.
-    Each ``.`` becomes ``_``. Layer names, connections (``keras_history``) and the model's input
-    and output lists are renamed together; weights are stored by structure, not by name, so they
-    need no change.
+    Each ``.`` becomes ``_``. Layer names, connections (``keras_history``), the model's input
+    and output lists, and the output-name keys of ``compile_config`` (losses, metrics, loss
+    weights) are renamed together; weights are stored by structure, not by name, so they need no
+    change.
 
     Args:
         config: The parsed ``config.json`` of a ``.keras`` file.
@@ -87,6 +88,9 @@ def undot_layer_names(config: Any) -> tuple[Any, dict[str, str]]:
         targets[new] = old
 
     def rename(node: Any, key: str | None = None) -> Any:
+        if isinstance(node, dict) and key in ("input_layers", "output_layers"):
+            # Dict-structured model inputs or outputs: keys are names, values are references.
+            return {mapping.get(k, k): rename_reference(v) for k, v in node.items()}
         if isinstance(node, dict):
             out = {k: rename(v, k) for k, v in node.items()}
             if "class_name" in out and isinstance(out.get("config"), dict) and out["config"].get("name") in mapping:
@@ -109,18 +113,60 @@ def undot_layer_names(config: Any) -> tuple[Any, dict[str, str]]:
             return [rename_reference(value) for value in reference]
         return reference
 
-    return rename(config), mapping
+    def rename_keys(node: Any) -> Any:
+        if isinstance(node, dict):
+            return {mapping.get(k, k): rename_keys(v) for k, v in node.items()}
+        if isinstance(node, list):
+            return [rename_keys(value) for value in node]
+        return node
+
+    renamed = rename(config)
+    if isinstance(renamed, dict) and isinstance(renamed.get("compile_config"), dict):
+        renamed["compile_config"] = rename_keys(renamed["compile_config"])
+    return renamed, mapping
+
+
+def use_helia_layer_normalization(config: Any) -> tuple[Any, int]:
+    """Swap Keras ``LayerNormalization`` entries for ``helia_edge.layers.LayerNormalization``.
+
+    The two classes share configuration and weights. Keras's Torch backend cannot normalize
+    non-trailing axes; the helia_edge class can, so this lets models saved with the Keras class
+    load on Torch.
+
+    Args:
+        config: The parsed ``config.json`` of a ``.keras`` file.
+
+    Returns:
+        tuple: The new config and the number of entries swapped.
+    """
+    count = 0
+
+    def swap(node: Any) -> Any:
+        nonlocal count
+        if isinstance(node, dict):
+            out = {k: swap(v) for k, v in node.items()}
+            if out.get("class_name") == "LayerNormalization" and out.get("module") == "keras.layers":
+                out["module"] = "helia_edge.layers.normalization"
+                out["registered_name"] = "helia_edge>LayerNormalization"
+                count += 1
+            return out
+        if isinstance(node, list):
+            return [swap(value) for value in node]
+        return node
+
+    return swap(config), count
 
 
 def _load_keras_file(path: os.PathLike) -> keras.Model:
-    """Load a local model file; on Torch, ``.keras`` files with dotted layer names are renamed first."""
+    """Load a local model file; on Torch, ``.keras`` configs are adapted first (dotted names, layer norm)."""
     path = Path(path)
     if keras.backend.backend() != "torch" or path.suffix != ".keras":
         return keras.models.load_model(path)
     with zipfile.ZipFile(path) as archive:
         config = json.loads(archive.read("config.json"))
         renamed, mapping = undot_layer_names(config)
-        if not mapping:
+        renamed, swapped = use_helia_layer_normalization(renamed)
+        if not mapping and not swapped:
             return keras.models.load_model(path)
         with tempfile.TemporaryDirectory() as tmpdirname:
             target = Path(tmpdirname) / path.name
@@ -143,7 +189,9 @@ def load_model(model_path: os.PathLike) -> keras.Model:
             https: https://path/to/model.tf
 
     On the Torch backend, layer names containing ``.`` (common in models saved by earlier
-    helia-edge versions) are renamed to use ``_`` before loading; see ``undot_layer_names``.
+    helia-edge versions) are renamed to use ``_``, and Keras ``LayerNormalization`` layers load as
+    ``helia_edge.layers.LayerNormalization``; see ``undot_layer_names`` and
+    ``use_helia_layer_normalization``.
 
     Returns:
         keras.Model: Model

@@ -1,10 +1,12 @@
 """helia_edge.models.load_model on .keras files whose layer names contain '.' (earlier helia-edge naming).
 
-The fixture is a seeded EfficientNetV2 saved by helia-edge main a677c85b on TensorFlow, with its TF outputs;
-tests/fixtures/dotted_names/README.md says how to regenerate it.
+The fixtures were saved by helia-edge main on TensorFlow, with their TF outputs; see
+tests/fixtures/dotted_names/README.md.
 """
 
 import json
+import subprocess
+import sys
 import zipfile
 from pathlib import Path
 
@@ -13,15 +15,21 @@ import pytest
 
 keras = pytest.importorskip("keras")
 
+from helia_edge.layers import LayerNormalization  # noqa: E402
 from helia_edge.models import load_model  # noqa: E402
-from helia_edge.models.utils import undot_layer_names  # noqa: E402
+from helia_edge.models.utils import undot_layer_names, use_helia_layer_normalization  # noqa: E402
 
 FIXTURE = Path(__file__).resolve().parents[1] / "fixtures" / "dotted_names"
 MODEL = FIXTURE / "efficientnetv2.keras"
 
 
-def saved_config():
-    with zipfile.ZipFile(MODEL) as archive:
+TWO_OUTPUTS = FIXTURE / "two_outputs.keras"
+TCN_LAYER_NORM = FIXTURE / "tcn_layer_norm.keras"
+TORCH = keras.backend.backend() == "torch"
+
+
+def saved_config(path=MODEL):
+    with zipfile.ZipFile(path) as archive:
         return json.loads(archive.read("config.json"))
 
 
@@ -54,10 +62,12 @@ def test_renaming_is_consistent_and_deterministic():
     assert config == saved_config(), "the input config must not be modified"
 
 
-@pytest.mark.parametrize("nested", [False, True])
-def test_model_inputs_and_outputs_are_renamed(nested):
+@pytest.mark.parametrize("form", ["flat", "nested", "dict"])
+def test_model_inputs_and_outputs_are_renamed(form):
     def ref(name):
-        return [[name, 0, 0]] if nested else [name, 0, 0]
+        if form == "dict":
+            return {name: [name, 0, 0]}
+        return [[name, 0, 0]] if form == "nested" else [name, 0, 0]
 
     def tensor(name):
         return {"class_name": "__keras_tensor__", "config": {"keras_history": [name, 0, 0]}}
@@ -119,5 +129,50 @@ def test_torch_loads_the_dotted_file_with_the_tensorflow_outputs():
     model = load_model(MODEL)
     assert not any("." in name for name in layer_names(model))
     io = np.load(FIXTURE / "efficientnetv2_io.npz")
+    for x, y in zip(io["inputs"], io["outputs"], strict=True):
+        np.testing.assert_allclose(keras.ops.convert_to_numpy(model(x, training=False)), y, rtol=1e-5, atol=1e-6)
+
+
+def test_compile_config_output_keys_are_renamed():
+    renamed, mapping = undot_layer_names(saved_config(TWO_OUTPUTS))
+    assert {"out.a", "out.b"} <= mapping.keys()
+    compiled = json.dumps(renamed["compile_config"])
+    assert '"out.a"' not in compiled and '"out_a"' in compiled and '"out_b"' in compiled
+
+
+def test_keras_layer_normalization_entries_are_swapped():
+    swapped, count = use_helia_layer_normalization(saved_config(TCN_LAYER_NORM))
+    assert count > 0
+    assert '"module": "keras.layers", "class_name": "LayerNormalization"' not in json.dumps(swapped)
+
+
+def test_registration_finds_the_layer_normalization_class():
+    code = (
+        "import keras, helia_edge; helia_edge.register_keras_serializables(); "
+        "cls = keras.saving.get_registered_object('helia_edge>LayerNormalization'); "
+        "assert cls is not None and cls.__module__ == 'helia_edge.layers.normalization', cls"
+    )
+    result = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, timeout=120)
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_two_output_model_predicts_and_evaluates_on_every_backend():
+    model = load_model(TWO_OUTPUTS)
+    io = np.load(FIXTURE / "two_outputs_io.npz")
+    names = ["out_a", "out_b"] if TORCH else ["out.a", "out.b"]
+    predicted = model.predict(io["inputs"], verbose=0)
+    np.testing.assert_allclose(predicted[names[0]], io["output_a"], rtol=1e-5, atol=1e-6)
+    np.testing.assert_allclose(predicted[names[1]], io["output_b"], rtol=1e-5, atol=1e-6)
+    result = model.evaluate(
+        io["inputs"], {names[0]: io["target_a"], names[1]: io["target_b"]}, verbose=0, return_dict=True
+    )
+    assert np.isfinite(result["loss"])
+
+
+def test_tcn_with_spatial_layer_norm_loads_with_the_tensorflow_outputs():
+    model = load_model(TCN_LAYER_NORM)
+    norms = [layer for layer in model.layers if isinstance(layer, keras.layers.LayerNormalization)]
+    assert norms and all(isinstance(layer, LayerNormalization) for layer in norms) == TORCH
+    io = np.load(FIXTURE / "tcn_layer_norm_io.npz")
     for x, y in zip(io["inputs"], io["outputs"], strict=True):
         np.testing.assert_allclose(keras.ops.convert_to_numpy(model(x, training=False)), y, rtol=1e-5, atol=1e-6)
