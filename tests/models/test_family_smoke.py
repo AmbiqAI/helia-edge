@@ -277,7 +277,7 @@ def test_exports_to_litert_fp32(case):
     expected = predict(model, x)
     scale = np.abs(expected).max()
     # Relative to the output scale, so outputs that are only numerical noise fail (observed at most 1.2e-6).
-    assert scale > 0 and np.abs(LiteRTRunner(result.content).predict(x) - expected).max() <= 1e-4 * scale
+    assert scale > 0 and np.abs(LiteRTRunner(result.content).predict(x) - expected).max() <= 1e-5 * scale
 
 
 def test_mobilenetv1_depthwise_layers_keep_he_normal_and_l2():
@@ -293,3 +293,11 @@ def test_tsmixer_default_feed_forward_width_is_the_channel_count():
     model = build(Case(TsMixerModel, TSMIXER_DEFAULT_WIDTH, SERIES))
     widths = [layer.units for layer in model.layers if layer.name.endswith("_FL_DENSE")]
     assert widths == [SERIES[-1]] * len(TSMIXER_DEFAULT_WIDTH.blocks)
+
+
+@DOTTED_NAMES_ON_TORCH
+def test_conformer_layer_norms_normalize_features():
+    model = build(Case(ConformerModel, CONFORMER, ROW))
+    axes = [layer.axis for layer in model.layers if isinstance(layer, keras.layers.LayerNormalization)]
+    # Five layer norms per block (two feed-forward, attention, convolution, output), each over features.
+    assert axes == [[-1]] * 5 * len(CONFORMER.blocks), axes
