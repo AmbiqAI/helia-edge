@@ -107,9 +107,10 @@ class ExportSpec(BaseModel):
         mode: How the model is traced for conversion.
         strict: For calibrated precisions, refuse operators without an integer kernel instead of
             falling back to float operators. Defaults to True; it does not affect float precisions.
-        state_tie_tolerance: For calibrated precisions with integer I/O, the largest relative difference
-            between the scales of a state pair (``state_in_k``, ``state_out_k``) that export ties to one
-            scale and zero point; a larger difference is refused. Models without state pairs ignore it.
+        state_tie_tolerance: For calibrated precisions with integer I/O, export gives each state pair
+            (``state_in_k``, ``state_out_k``) one scale and zero point covering both tensors' ranges, and
+            refuses when that scale differs from either original by more than this fraction. Models
+            without state pairs ignore it.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
