@@ -81,10 +81,10 @@ Using a Torch-backed object inside a TensorFlow graph is not a supported dispatc
 mode of these portable layers. Use separate backend processes if both are needed.
 There is no global `set_backend` call or private `keras.src` dispatch in this core.
 
-Grain is optional and separately installed. Prefer Grain batches passed to these
+Grain is optional: install `helia-edge[grain]`. Prefer Grain batches passed to these
 same layers in the consumer. For per-record worker execution, the executable
-`examples/preprocessing/grain_pipeline.py` uses Grain `random_map` RNG to choose a
-seed per record, calls these layers on explicit CPU tensors, and converts outputs
+`examples/preprocessing/grain_pipeline.py` uses `helia_edge.data.to_grain`, whose
+per-record generator chooses a seed per record, calls these layers on explicit CPU tensors, and converts outputs
 to arrays. Its `owned_records` helper copies IPC arrays before closing the iterator;
 that copy is explicit and distinct from the reference-preserving sample facade.
 The example constructs small layers per record for clarity, not maximum throughput.
