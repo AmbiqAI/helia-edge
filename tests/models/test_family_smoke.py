@@ -158,7 +158,6 @@ FAMILIES = [
     pytest.param(
         Case(TsMixerModel, TSMIXER, SERIES, drop_last(TSMIXER), class_axis=1),
         id="tsmixer",
-        marks=known_bug([69], TypeError),
     ),
     pytest.param(Case(UNetModel, UNET, ROW, drop_last(UNET)), id="unet"),
     pytest.param(
