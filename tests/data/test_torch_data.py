@@ -1,5 +1,6 @@
 """to_torch_loader passes elements of another loader through in order, as tensors."""
 
+from collections import OrderedDict
 from typing import NamedTuple
 
 import numpy as np
@@ -41,3 +42,9 @@ def test_ndarray_subclasses_are_copied_into_tensors():
     assert isinstance(batch["x"], torch.Tensor)
     shared[...] = -1
     np.testing.assert_array_equal(batch["x"].numpy(), np.arange(6, dtype=np.float32).reshape(2, 3))
+
+
+def test_mapping_types_are_kept():
+    (batch,) = list(to_torch_loader([OrderedDict(b=np.zeros(2), a=np.ones(2))]))
+    assert type(batch) is OrderedDict
+    assert list(batch) == ["b", "a"]

@@ -51,7 +51,13 @@ else:
         ({"batch_size": 0}, "batch_size"),
         ({"num_epochs": 0}, "num_epochs"),
         ({"workers": -1}, "workers"),
+        ({"workers": True}, "workers"),
         ({"worker_buffer_size": 0}, "worker_buffer_size"),
+        ({"batch_size": 2.5}, "batch_size"),
+        ({"num_epochs": 2.0}, "num_epochs"),
+        ({"seed": -1}, "seed"),
+        ({"seed": 2**32}, "seed"),
+        ({"seed": 1.5, "shuffle": True}, "seed"),
     ],
 )
 def test_invalid_arguments_are_refused_before_grain_is_needed(kwargs, message):

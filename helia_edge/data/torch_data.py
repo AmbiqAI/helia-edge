@@ -14,7 +14,11 @@ def _plain_arrays(element: Any) -> Any:
     if isinstance(element, np.ndarray):
         return element if type(element) is np.ndarray else np.array(element)
     if isinstance(element, Mapping):
-        return {key: _plain_arrays(value) for key, value in element.items()}
+        converted = {key: _plain_arrays(value) for key, value in element.items()}
+        try:
+            return type(element)(converted)
+        except TypeError:
+            return converted
     if isinstance(element, tuple) and hasattr(element, "_fields"):
         return type(element)(*(_plain_arrays(value) for value in element))
     if isinstance(element, (list, tuple)):

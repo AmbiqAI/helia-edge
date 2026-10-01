@@ -80,7 +80,7 @@ jobs:
       - run: uv venv --python ${{ matrix.python }}
       - if: matrix.backend == 'torch'
         run: uv pip install 'torch==2.14.0' --index-url https://download.pytorch.org/whl/cpu
-      - run: uv pip install ".[${{ matrix.backend == 'torch' && 'torch,grain' || 'tensorflow' }}]" 'keras==3.15.1' pytest
+      - run: uv pip install '.[${{ matrix.backend }},grain]' 'keras==3.15.1' pytest
       - if: matrix.backend == 'tensorflow'
         run: uv pip install 'ai-edge-litert==2.2.0'
       - name: Run documentation examples

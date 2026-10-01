@@ -44,7 +44,7 @@ def test_each_epoch_is_a_new_permutation_of_every_record():
     order = ids(read(to_grain(records(), seed=7, shuffle=True, num_epochs=3)))
     epochs = [order[0:10], order[10:20], order[20:30]]
     assert all(sorted(epoch) == list(range(10)) for epoch in epochs)
-    assert epochs[0] != epochs[1] or epochs[1] != epochs[2]
+    assert epochs[0] != epochs[1] and epochs[1] != epochs[2]
     assert epochs[0] != list(range(10))
 
 
@@ -61,6 +61,14 @@ def test_the_seed_fixes_order_and_augmentation_and_workers_do_not_change_them():
     assert ids(other) != ids(a)
     by_id = {int(e["id"]): e["x"] for e in a[:10]}
     assert any(not np.array_equal(by_id[int(e["id"])], e["x"]) for e in other[:10])
+
+
+def test_every_pass_replays_the_same_elements():
+    dataset = to_grain(records(), seed=9, shuffle=True, transform=jitter, batch_size=4)
+    first, second = read(dataset), read(dataset)
+    assert ids(first) == ids(second)
+    for a, b in zip(first, second, strict=True):
+        np.testing.assert_array_equal(a["x"], b["x"])
 
 
 def test_the_transform_draws_differ_between_epochs():

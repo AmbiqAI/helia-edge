@@ -24,9 +24,10 @@ dataset = to_grain(records, seed=0, shuffle=True, transform=add_noise, batch_siz
 print([batch["x"].shape for batch in dataset])
 ```
 
-The shapes are five batches of `(4, 8)`: batches run across epoch boundaries, so the 20 records of two epochs fill five batches. With `num_epochs=1` the last batch would be `(2, 8)`; set `drop_remainder=True` to drop a partial last batch. Each epoch is a new permutation.
+The shapes are five batches of `(4, 8)`: batches run across epoch boundaries, so the 20 records of two epochs fill five batches. With `num_epochs=1` the last batch would be `(2, 8)`; set `drop_remainder=True` to drop a partial last batch. Each of the `num_epochs` passes over the records is a new permutation with new transform draws.
 
 - **Determinism.** The record order and every transform draw depend only on `seed`, not on `workers`. A seed is required whenever you shuffle or transform.
+- **Training epochs.** Iterating the dataset again replays the same elements, so a Keras `fit` that reads it once per epoch sees the same order and augmentation every epoch. Give `fit` one stream instead: `num_epochs=None` with `steps_per_epoch=len(records) // batch_size`, so each Keras epoch continues where the last one stopped.
 - **Torch.** `to_torch_loader(dataset)` yields the same batches as tensors, keeping dict and tuple structure. It adds no batching or workers of its own, and it copies arrays out of worker shared memory.
 - **TensorFlow.** `to_tf_dataset(dataset, output_signature)` yields the same batches as a `tf.data.Dataset`. Use `None` for the batch dimension when the last batch can be smaller.
 - **Parallelism.** Put heavy per-record work in the transform and raise `workers`: it then runs in separate processes, outside the training process's GIL, and only finished batches reach the training process. Workers add inter-process overhead, so for light per-record work `workers=0` is faster; measure with your own transform.
