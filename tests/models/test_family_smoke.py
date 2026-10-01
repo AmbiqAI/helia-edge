@@ -242,6 +242,7 @@ def test_builds_runs_and_reloads(case, tmp_path):
         reduced = build(case, case.reduced).count_params()
         assert build(case).count_params() > reduced, "the last block (or depth level) was not built"
     model = build(case)
+    assert not [layer.name for layer in model.layers if "." in layer.name], "Torch rejects '.' in layer names"
     if case.layer_counts is not None:
         counts = Counter(type(layer).__name__ for layer in model.layers)
         assert {name: counts[name] for name in case.layer_counts} == case.layer_counts
