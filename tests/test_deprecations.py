@@ -34,3 +34,15 @@ def test_the_interpreter_warns_and_still_predicts():
     interpreter.compile()
     x = np.random.default_rng(0).normal(size=(3, 4)).astype(np.float32)
     np.testing.assert_allclose(interpreter.predict(x), model.predict(x, verbose=0), atol=1e-5)
+
+
+def test_from_saved_model_warns_once_at_the_caller(tmp_path):
+    path = tmp_path / "model.keras"
+    small_model().save(path)
+    with pytest.warns(DeprecationWarning) as record:
+        TfLiteKerasConverter.from_saved_model(path)
+    deprecations = [
+        w for w in record if issubclass(w.category, DeprecationWarning) and "is deprecated" in str(w.message)
+    ]
+    assert len(deprecations) == 1
+    assert deprecations[0].filename == __file__

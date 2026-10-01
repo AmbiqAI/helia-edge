@@ -112,7 +112,7 @@ def register(registry):
 
 | Legacy | Replacement |
 |---|---|
-| `LiteRTKerasConverter(model).convert(x, quantization=QuantizationType.INT8, mode=ConversionType.CONCRETE)` | `export_model(model, ExportSpec(precision="a8w8", io_dtype="int8", mode="concrete"), calibration=x)` |
+| `LiteRTKerasConverter(model).convert(x, quantization=QuantizationType.INT8, mode=ConversionType.CONCRETE)` | `export_model(model, ExportSpec(precision="a8w8", io_dtype="int8", mode="concrete"), calibration=x.astype(np.float32))` |
 | `QuantizationType.FP32`, `FP16`, `FP16_NATIVE`, `INT8`, `INT16X8` | `fp32`, `fp32-w16`, `fp16`, `a8w8`, `a16w8` (`LEGACY_PRECISION` maps them) |
 | `converter.predict(x)`, `TfLiteKerasInterpreter(...).predict(x)` | `LiteRTRunner(result.content).predict(x)` |
 | `converter.export(path)` | `Path(path).write_bytes(result.content)` |

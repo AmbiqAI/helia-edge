@@ -34,6 +34,15 @@ def _reject_native_fp16(interpreter) -> None:
         raise ValueError("Native float16 models need an engine with float16 kernels; predict() does not run them.")
 
 
+def _warn_deprecated(name: str, stacklevel: int) -> None:
+    warnings.warn(
+        f"{name} is deprecated; use helia_edge.export.export_model with an ExportSpec, "
+        "and helia_edge.export.LiteRTRunner to run the result.",
+        DeprecationWarning,
+        stacklevel=stacklevel,
+    )
+
+
 class QuantizationType(StrEnum):
     """Supported quantization formats
 
@@ -111,12 +120,7 @@ class TfLiteKerasConverter:
         print(np.allclose(y_pred_tf, y_pred_tfl, atol=1e-3))
         ```
         """
-        warnings.warn(
-            f"{type(self).__name__} is deprecated; use helia_edge.export.export_model with an ExportSpec, "
-            "and helia_edge.export.LiteRTRunner to run the result.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
+        _warn_deprecated(type(self).__name__, stacklevel=3)
         self.model = model
         self.representative_dataset = None
         self._converter: tf.lite.TFLiteConverter | None = None
@@ -133,7 +137,12 @@ class TfLiteKerasConverter:
         Returns:
             TfLiteKerasConverter: Converter
         """
-        return cls(model=load_model(model_path))
+        model = load_model(model_path)
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", DeprecationWarning)
+            converter = cls(model=model)
+        _warn_deprecated(cls.__name__, stacklevel=3)
+        return converter
 
     def convert(
         self,
