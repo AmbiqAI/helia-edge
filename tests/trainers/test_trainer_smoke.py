@@ -33,7 +33,7 @@ def contrastive(x, y):
     trainer.compile(
         encoder_optimizer=keras.optimizers.Adam(1e-3), encoder_loss=helia.losses.simclr.SimCLRLoss(temperature=0.1)
     )
-    return trainer, (x,), {"loss"}
+    return trainer, (x,), {"loss"}, trainer.encoder
 
 
 def simclr(x, y):
@@ -41,7 +41,7 @@ def simclr(x, y):
     trainer.compile(
         encoder_optimizer=keras.optimizers.Adam(1e-3), encoder_loss=helia.losses.simclr.SimCLRLoss(temperature=0.1)
     )
-    return trainer, (x,), {"loss"}
+    return trainer, (x,), {"loss"}, trainer.encoder
 
 
 def distiller(x, y):
@@ -52,7 +52,7 @@ def distiller(x, y):
         student_loss_fn=keras.losses.SparseCategoricalCrossentropy(from_logits=True),
         distillation_loss_fn=keras.losses.KLDivergence(),
     )
-    return trainer, (x, y), {"loss", "sparse_categorical_accuracy"}
+    return trainer, (x, y), {"loss", "sparse_categorical_accuracy"}, trainer.student
 
 
 def autoencoder_parts():
@@ -66,7 +66,7 @@ def gs_autoencoder(x, y):
     gs = GumbelSoftmaxBottleneck(num_embeddings=6, embedding_dim=8)
     trainer = helia.trainers.GSAutoencoder(encoder=encoder, gs=gs, decoder=decoder)
     trainer.compile(optimizer=keras.optimizers.Adam(1e-3), loss=keras.losses.MeanSquaredError())
-    return trainer, (x, x), {"loss", "gs_perplexity", "gs_usage", "gs_bits_per_index", "gs_temperature"}
+    return trainer, (x, x), {"loss", "gs_perplexity", "gs_usage", "gs_bits_per_index", "gs_temperature"}, encoder
 
 
 def vq_autoencoder(x, y):
@@ -74,7 +74,7 @@ def vq_autoencoder(x, y):
     vq = VectorQuantizer(num_embeddings=6, embedding_dim=8)
     trainer = helia.trainers.VQAutoencoder(encoder=encoder, vq=vq, decoder=decoder)
     trainer.compile(optimizer=keras.optimizers.Adam(1e-3), loss=keras.losses.MeanSquaredError())
-    return trainer, (x, x), {"loss", "vq_perplexity", "vq_usage", "vq_bits_per_index"}
+    return trainer, (x, x), {"loss", "vq_perplexity", "vq_usage", "vq_bits_per_index"}, encoder
 
 
 TRAINERS = [
@@ -92,8 +92,11 @@ TRAINERS = [
 def test_fits_and_evaluates(make):
     keras.backend.clear_session()
     keras.utils.set_random_seed(0)
-    trainer, inputs, metrics = make(*data())
+    trainer, inputs, metrics, trained = make(*data())
+    before = [np.array(w) for w in trained.get_weights()]
     history = trainer.fit(*inputs, batch_size=4, epochs=1, verbose=0)
+    after = trained.get_weights()
+    assert any(not np.array_equal(b, a) for b, a in zip(before, after, strict=True)), "fit did not update the weights"
     assert set(history.history) == metrics
     assert all(np.isfinite(values[-1]) for values in history.history.values())
     result = trainer.evaluate(*inputs, batch_size=4, verbose=0, return_dict=True)
