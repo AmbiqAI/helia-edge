@@ -38,7 +38,7 @@ def conv2d(
     Returns:
         keras.Layer: Functional 2D conv layer
     """
-    name = name + ".conv" if name else None
+    name = name + "_conv" if name else None
     return keras.layers.Conv2D(
         filters,
         kernel_size=kernel_size,
@@ -73,7 +73,7 @@ def conv1d(
     Returns:
         keras.Layer: Functional 1D conv layer
     """
-    name = name + ".conv" if name else None
+    name = name + "_conv" if name else None
     return keras.layers.Conv2D(
         filters,
         kernel_size=(1, kernel_size),

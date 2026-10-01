@@ -124,7 +124,7 @@ def test_generation_rejects_actual_builder_regression_before_conversion(tmp_path
         options = layer.get_config()
         if mutation == "se_pool" and layer.name == "B1_SE_pool":
             return keras.layers.GlobalMaxPooling2D(keepdims=True, name=layer.name)
-        if mutation == "se_multiply" and layer.name == "B1_SE_ex.mul":
+        if mutation == "se_multiply" and layer.name == "B1_SE_ex_mul":
             return keras.layers.Lambda(lambda x: x[0], name=layer.name)
         if mutation == "residual" and layer.name == "B2_ADD":
             return keras.layers.Lambda(lambda x: x[0], name=layer.name)

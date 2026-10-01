@@ -33,7 +33,7 @@ def layer_normalization(
     Returns:
         keras.Layer: Layer
     """
-    name = name + ".ln" if name else None
+    name = name + "_ln" if name else None
 
     if axis is None:
 
