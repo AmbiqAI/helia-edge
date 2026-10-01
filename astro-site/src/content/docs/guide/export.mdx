@@ -42,10 +42,42 @@ Path("model.tflite").write_bytes(result.content)
 
 - `mode` and `io_dtype` have no defaults, and an invalid precision/dtype pair is rejected.
 - `a8w8` and `a16w8` need calibration: a non-empty, finite float32 array shaped like the model input, used one sample at a time in stored order. Other precisions refuse calibration data.
-- Export needs a single-input model and a backend with an exporter for the format; the built-in `litert` exporter needs the TensorFlow backend. A model trained with the Torch backend is rebuilt from its params and weights in a process started with `KERAS_BACKEND=tensorflow`.
+- Export needs a backend with an exporter for the format; the built-in `litert` exporter needs the TensorFlow backend. A model with several inputs takes calibration as a mapping of input name to samples and the `keras` or `saved_model` mode (see [Streaming models](#streaming-models)). A model trained with the Torch backend is rebuilt from its params and weights in a process started with `KERAS_BACKEND=tensorflow`.
 - Choose representative inputs from the distribution the model will encounter. Compare predictions against the original model and evaluate task quality on held-out data before deployment.
 - `ExportSpec` values match helia-benchmark's precision names.
 - `LiteRTRunner` runs model bytes with ai-edge-litert, rounding and saturating integer inputs. It runs native float16 graphs where the runtime has float16 kernels for every operator.
+
+## Streaming models
+
+A streaming model processes one step per call and carries its recurrent state as explicit inputs and outputs. Name each state pair with `state_input(k, ...)` and `state_output(k, ...)`: the runtime feeds `state_out_k` back as `state_in_k` and feeds zeros at the start of an independent sequence. `StreamingLSTMCell` is one LSTM step with the weight layout of `keras.layers.LSTMCell`.
+
+```python
+import keras
+import numpy as np
+from helia_edge.export import ExportSpec, LiteRTStreamRunner, export_model, stream_calibration
+from helia_edge.layers import StreamingLSTMCell, state_input, state_output
+
+keras.utils.set_random_seed(0)
+x = keras.Input((16,), batch_size=1, name="features")
+h, c = state_input(0, (32,), batch_size=1), state_input(1, (32,), batch_size=1)
+h_next, c_next = StreamingLSTMCell(32)([x, h, c])
+prob = keras.layers.Dense(1, activation="sigmoid", name="prob")(h_next)
+model = keras.Model([x, h, c], [prob, state_output(0, h_next), state_output(1, c_next)])
+
+features = np.random.default_rng(0).normal(size=(200, 16)).astype(np.float32)
+calibration = stream_calibration(model, {"features": features})
+result = export_model(model, ExportSpec(precision="a16w8", io_dtype="int16", mode="keras"), calibration)
+runner = LiteRTStreamRunner(result.content)
+fed, outputs = runner.run({"features": runner.encode("features", features[:50, None])})
+probabilities = runner.decode("prob", outputs["prob"])
+```
+
+- **Mode:** use `keras` or `saved_model`. `concrete` converts single-input models only, because its graph has no signature to name inputs and states.
+- **Records:** `result.inputs` and `result.outputs` list tensors in the model's subgraph order. State tensors have role `state` and the index `pair` of their pair; the converter may reorder inputs, so address them by name.
+- **Calibration:** `stream_calibration` runs the Keras model over the signal inputs and returns every input, the state inputs filled with the states the model produces (zero at the start and at the steps in `resets`).
+- **Tied state:** with integer I/O (`a8w8` with `int8`, `a16w8` with `int16`), the converter calibrates `state_in_k` and `state_out_k` separately. Export then gives each pair one scale and zero point whose range covers both tensors' ranges (for `int16`, the larger scale), so a raw `state_out_k` keeps its value as the next `state_in_k`; the bias of a fully connected or convolution layer that reads a state is requantized with it. It refuses when the tied scale differs from either original by more than `ExportSpec.state_tie_tolerance` of it (default 1%, at most 50%), or when an operator that needs the state tensor's parameters unchanged (such as a concatenation, or a tanh writing the state) reads or writes it. State inputs and outputs must pair up with equal shapes and types, and every output needs its own name (two outputs of one layer share it). The manifest records `state_scales_tied`.
+- **Running:** `LiteRTStreamRunner` runs a stream on raw tensors, carrying the state unchanged; it returns every input as fed and every output, stacked by step. `LiteRTRunner` stays single-input.
+- Export recipes do not take streaming models yet.
 
 ## Export recipes and the command line
 
@@ -86,7 +118,7 @@ helia-edge export verify exports/manifest.json
 
 ## Add an exporter or architecture
 
-`helia_edge.registry` holds the exporters (keyed `"<format>:<backend>"`) and the architectures that recipes build. Built-in entries are `"module:attr"` strings, imported only when used. Another package adds entries through the `helia_edge.plugins` entry-point group, without changes to heliaEDGE:
+`helia_edge.registry` holds the exporters (keyed `"<format>:<backend>"`) and the architectures that recipes build. An exporter is called as `exporter(model, spec, calibration)` and may receive a model with several inputs, with `calibration` a mapping of input name to samples; an exporter that supports single-input models only should refuse others with a `ValueError`. Built-in entries are `"module:attr"` strings, imported only when used. Another package adds entries through the `helia_edge.plugins` entry-point group, without changes to heliaEDGE:
 
 ```toml
 # pyproject.toml of your package

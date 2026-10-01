@@ -23,7 +23,8 @@ class FileRecord(BaseModel):
 
 
 class TensorEntry(BaseModel):
-    """A model input or output; dynamic dimensions are -1."""
+    """A model input or output; dynamic dimensions are -1. A state tensor has the index ``pair`` of its
+    state pair (``state_in_k`` and ``state_out_k``)."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -33,6 +34,7 @@ class TensorEntry(BaseModel):
     dtype: IODType
     scale: float | None
     zero_point: int | None
+    pair: int | None = None
 
     @classmethod
     def from_record(cls, record: TensorRecord) -> "TensorEntry":
@@ -72,7 +74,11 @@ class EnvironmentEntry(BaseModel):
 
 
 class ManifestEntry(BaseModel):
-    """One exported (or imported) model. ``spec`` is None for a ``tflite_import`` recipe."""
+    """One exported (or imported) model. ``spec`` is None for a ``tflite_import`` recipe.
+
+    ``state_scales_tied`` is True when every integer state pair has one scale and zero point, so a raw
+    ``state_out_k`` fed back as ``state_in_k`` keeps its value; None without integer state pairs.
+    """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -82,6 +88,7 @@ class ManifestEntry(BaseModel):
     inputs: tuple[TensorEntry, ...]
     outputs: tuple[TensorEntry, ...]
     reference: ReferenceRecord | None = None
+    state_scales_tied: bool | None = None
 
 
 class ExportManifest(BaseModel):

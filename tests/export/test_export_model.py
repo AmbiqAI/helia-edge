@@ -223,10 +223,27 @@ def test_malformed_calibration_is_rejected(model, data, message):
         export_model(model, ExportSpec(precision="a8w8", io_dtype="int8", mode="concrete"), data)
 
 
-def test_multi_input_models_are_refused():
-    a, b = keras.Input((4,), batch_size=1), keras.Input((4,), batch_size=1)
+@pytest.mark.parametrize("mode", ["keras", "saved_model"])
+def test_multi_input_models_export_with_calibration_by_name(mode):
+    a, b = keras.Input((4,), batch_size=1, name="a"), keras.Input((4,), batch_size=1, name="b")
+    model = keras.Model([a, b], keras.layers.Add()([keras.layers.Dense(2)(a), keras.layers.Dense(2)(b)]))
+    float_result = export_model(model, ExportSpec(precision="fp32", io_dtype="float32", mode=mode))
+    assert len(float_result.inputs) == 2 and {r.role for r in float_result.inputs} == {TensorRole.SIGNAL}
+    rng = np.random.default_rng(2)
+    data = {"a": rng.normal(size=(8, 4)).astype(np.float32), "b": 10 * rng.normal(size=(8, 4)).astype(np.float32)}
+    result = export_model(model, ExportSpec(precision="a8w8", io_dtype="int8", mode=mode), data)
+    scales = {r.name: r.scale for r in result.inputs}
+    (scale_a,) = [v for k, v in scales.items() if k.endswith("_a:0")]
+    (scale_b,) = [v for k, v in scales.items() if k.endswith("_b:0")]
+    assert 5 < scale_b / scale_a < 20
+    with pytest.raises(ValueError, match="mapping of input name"):
+        export_model(model, ExportSpec(precision="a8w8", io_dtype="int8", mode=mode), data["a"])
+
+
+def test_concrete_mode_refuses_multi_input_models():
+    a, b = keras.Input((4,), batch_size=1, name="a"), keras.Input((4,), batch_size=1, name="b")
     model = keras.Model([a, b], keras.layers.Add()([a, b]))
-    with pytest.raises(ValueError, match="single-input"):
+    with pytest.raises(ValueError, match="'concrete' converts single-input models only"):
         export_model(model, ExportSpec(precision="fp32", io_dtype="float32", mode="concrete"))
 
 

@@ -29,7 +29,7 @@ from .recipe import (
     UrlSource,
     load_recipe,
 )
-from .result import environment_record
+from .result import environment_record, state_scales_tied
 from .spec import CALIBRATED, ExportSpec
 
 
@@ -171,6 +171,7 @@ def _entry(name: str, spec: ExportSpec | None, content: bytes, reference: np.nda
         inputs=tuple(TensorEntry.from_record(r) for r in inputs),
         outputs=tuple(TensorEntry.from_record(r) for r in outputs),
         reference=reference_record,
+        state_scales_tied=state_scales_tied(inputs, outputs),
     )
 
 

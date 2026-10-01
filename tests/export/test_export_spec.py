@@ -92,5 +92,12 @@ def test_spec_is_frozen_strict_and_round_trips():
     with pytest.raises(pydantic.ValidationError):
         spec.strict = False
     data = spec.model_dump(mode="json")
-    assert data == {"format": "litert", "precision": "a8w8", "io_dtype": "int8", "mode": "concrete", "strict": True}
+    assert data == {
+        "format": "litert",
+        "precision": "a8w8",
+        "io_dtype": "int8",
+        "mode": "concrete",
+        "strict": True,
+        "state_tie_tolerance": 0.01,
+    }
     assert ExportSpec.model_validate(data) == spec
