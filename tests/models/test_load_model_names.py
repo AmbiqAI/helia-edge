@@ -176,3 +176,19 @@ def test_tcn_with_spatial_layer_norm_loads_with_the_tensorflow_outputs():
     io = np.load(FIXTURE / "tcn_layer_norm_io.npz")
     for x, y in zip(io["inputs"], io["outputs"], strict=True):
         np.testing.assert_allclose(keras.ops.convert_to_numpy(model(x, training=False)), y, rtol=1e-5, atol=1e-6)
+
+
+@pytest.mark.parametrize(
+    "axis,shape,swapped",
+    [([-1], [1, 1, 16, 4], 0), ([3], [1, 1, 16, 4], 0), ([1, 2], [1, 1, 16, 4], 1), ([2], [1, 1, 16, 4], 1)],
+)
+def test_only_non_trailing_layer_norms_are_swapped(axis, shape, swapped):
+    entry = {
+        "module": "keras.layers",
+        "class_name": "LayerNormalization",
+        "config": {"name": "n", "axis": axis},
+        "build_config": {"input_shape": shape},
+    }
+    out, count = use_helia_layer_normalization({"config": {"layers": [entry]}})
+    assert count == swapped
+    assert (out["config"]["layers"][0]["module"] == "helia_edge.layers.normalization") == bool(swapped)

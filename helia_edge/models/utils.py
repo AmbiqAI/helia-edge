@@ -50,6 +50,8 @@ def undot_layer_names(config: Any) -> tuple[Any, dict[str, str]]:
     """Rename layers whose names contain ``.`` in a saved Keras model config.
 
     Torch registers each layer as a module attribute, and attribute names cannot contain ``.``.
+    Every layer-like entry is renamed, including the model itself and any named loss or metric
+    objects, so a name in any of them can trigger the collision check.
     Each ``.`` becomes ``_``. Layer names, connections (``keras_history``), the model's input
     and output lists, and the output-name keys of ``compile_config`` (losses, metrics, loss
     weights) are renamed together; weights are stored by structure, not by name, so they need no
@@ -126,12 +128,21 @@ def undot_layer_names(config: Any) -> tuple[Any, dict[str, str]]:
     return renamed, mapping
 
 
+def _normalizes_last_axis_only(entry: dict) -> bool:
+    """Whether a saved LayerNormalization entry normalizes only the last axis, which Torch supports."""
+    axis = entry.get("config", {}).get("axis")
+    axes = axis if isinstance(axis, list) else [axis]
+    shape = (entry.get("build_config") or {}).get("input_shape")
+    rank = len(shape) if isinstance(shape, list) else None
+    return len(axes) == 1 and (axes[0] == -1 or (rank is not None and axes[0] == rank - 1))
+
+
 def use_helia_layer_normalization(config: Any) -> tuple[Any, int]:
     """Swap Keras ``LayerNormalization`` entries for ``helia_edge.layers.LayerNormalization``.
 
     The two classes share configuration and weights. Keras's Torch backend cannot normalize
     non-trailing axes; the helia_edge class can, so this lets models saved with the Keras class
-    load on Torch.
+    load on Torch. Entries that normalize the last axis alone keep the Keras class.
 
     Args:
         config: The parsed ``config.json`` of a ``.keras`` file.
@@ -145,7 +156,11 @@ def use_helia_layer_normalization(config: Any) -> tuple[Any, int]:
         nonlocal count
         if isinstance(node, dict):
             out = {k: swap(v) for k, v in node.items()}
-            if out.get("class_name") == "LayerNormalization" and out.get("module") == "keras.layers":
+            if (
+                out.get("class_name") == "LayerNormalization"
+                and out.get("module") == "keras.layers"
+                and not _normalizes_last_axis_only(out)
+            ):
                 out["module"] = "helia_edge.layers.normalization"
                 out["registered_name"] = "helia_edge>LayerNormalization"
                 count += 1
@@ -188,10 +203,11 @@ def load_model(model_path: os.PathLike) -> keras.Model:
             S3: s3:bucket/prefix/model.tf
             https: https://path/to/model.tf
 
-    On the Torch backend, layer names containing ``.`` (common in models saved by earlier
-    helia-edge versions) are renamed to use ``_``, and Keras ``LayerNormalization`` layers load as
+    On the Torch backend, ``.keras`` files are adapted before loading: names containing ``.``
+    (common in models saved by earlier helia-edge versions) are renamed to use ``_``, and Keras
+    ``LayerNormalization`` layers over non-trailing axes load as
     ``helia_edge.layers.LayerNormalization``; see ``undot_layer_names`` and
-    ``use_helia_layer_normalization``.
+    ``use_helia_layer_normalization``. Other formats load unchanged.
 
     Returns:
         keras.Model: Model

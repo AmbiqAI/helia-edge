@@ -51,3 +51,12 @@ def test_weights_and_config_match_the_keras_layer(tmp_path):
     model.save(tmp_path / "m.keras")
     reloaded = keras.models.load_model(tmp_path / "m.keras")
     assert type(reloaded.layers[-1]) is LayerNormalization
+
+
+@pytest.mark.parametrize("axis,expected", [(-1, keras.layers.LayerNormalization), ((1, 2), LayerNormalization)])
+def test_the_helper_keeps_the_keras_class_for_the_last_axis(axis, expected):
+    from helia_edge.layers import layer_normalization
+
+    inputs = keras.Input((1, 16, 4), batch_size=1)
+    layer = keras.Model(inputs, layer_normalization(name="n", axis=axis)(inputs)).layers[-1]
+    assert type(layer) is expected

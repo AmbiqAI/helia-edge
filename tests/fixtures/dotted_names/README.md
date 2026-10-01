@@ -5,8 +5,8 @@ TensorFlow backend. Its layer names contain `.` (for example `neck.conv` and `st
 as models saved by earlier helia-edge versions do. `efficientnetv2_io.npz` holds two inputs and the
 TensorFlow outputs.
 
-Regenerate with the script recorded in the pull request that added it (`make_dotted_fixture.py`), run with
-`KERAS_BACKEND=tensorflow` and `PYTHONPATH` pointing at a checkout of `a677c85b`.
+Regenerate with `make_dotted_fixture.py` in this directory, run with `KERAS_BACKEND=tensorflow` and
+`PYTHONPATH` pointing at a checkout of `a677c85b`.
 
 | File | SHA-256 |
 | --- | --- |
@@ -16,8 +16,8 @@ Regenerate with the script recorded in the pull request that added it (`make_dot
 `two_outputs.keras` (outputs `out.a` and `out.b`, compiled with dict-keyed loss, metrics and loss
 weights) and `tcn_layer_norm.keras` (a seeded TCN with `norm="layer"`, saved with Keras's
 `LayerNormalization` over spatial axes) were saved by main `cb530275` on TensorFlow, with their
-`*_io.npz` inputs, targets and outputs. Regenerate with `make_main_fixtures.py` from the same pull
-request.
+`*_io.npz` inputs, targets and outputs. Regenerate with `make_main_fixtures.py` in this directory, run
+the same way at `cb530275`.
 
 | File | SHA-256 |
 | --- | --- |
