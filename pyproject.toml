@@ -49,6 +49,9 @@ torch = [
     "h5py>=3.15.1; python_version >= '3.14'",
     "torch>=2.14,<2.15",
 ]
+grain = [
+    "grain>=0.2.18,<0.3",
+]
 metal = [
     "tensorflow-metal>=1.2.0; sys_platform == 'darwin'",
 ]
@@ -124,6 +127,7 @@ include = [
     "helia_edge/_serialization.py",
     "helia_edge/_typing.py",
     "helia_edge/utils/preprocessing.py",
+    "helia_edge/data/*.py",
     "helia_edge/utils/sampling.py",
     "helia_edge/utils/rng.py",
     "helia_edge/utils/export.py",

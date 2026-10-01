@@ -1,18 +1,25 @@
 """Optional integration: real Grain workers call the portable EDGE layers."""
 
 import importlib.util
+import os
 import sys
+from pathlib import Path
 
 import keras
 import numpy as np
 import pytest
 
+EXAMPLE_DIR = Path(__file__).resolve().parents[2] / "examples" / "preprocessing"
 
-def test_grain_worker_rng_and_auxiliary_leaves():
+
+def test_grain_worker_rng_and_auxiliary_leaves(monkeypatch):
     pytest.importorskip("grain")
     if keras.backend.backend() != "torch":
         pytest.skip("Qualified CPU Torch/Grain path")
-    from examples.preprocessing.grain_pipeline import owned_records
+    # Grain workers import the example's transform by module name, so they need its directory too.
+    monkeypatch.syspath_prepend(str(EXAMPLE_DIR))
+    monkeypatch.setenv("PYTHONPATH", os.pathsep.join(filter(None, [str(EXAMPLE_DIR), os.environ.get("PYTHONPATH")])))
+    from grain_pipeline import owned_records
 
     x = np.arange(16, dtype=np.float32).reshape(8, 2)
     records = [

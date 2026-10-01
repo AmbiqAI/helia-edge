@@ -1,6 +1,6 @@
 """Optional Grain CPU example; set KERAS_BACKEND=torch before importing Keras.
 
-Install Grain separately. The pipeline owns per-record randomness and IPC output
+Install helia-edge[grain]. The pipeline owns per-record randomness and IPC output
 lifetimes; EDGE owns the same transforms used outside Grain.
 """
 
@@ -22,12 +22,9 @@ def preprocess_record(record, rng):
 
 def dataset(records, *, seed=123, workers=0):
     """Build an optional Grain iterator without importing TensorFlow."""
-    import grain
+    from helia_edge.data import to_grain
 
-    result = grain.MapDataset.source(records).random_map(preprocess_record, seed=seed).to_iter_dataset()
-    if workers:
-        result = result.mp_prefetch(grain.MultiprocessingOptions(num_workers=workers, per_worker_buffer_size=1))
-    return result
+    return to_grain(records, seed=seed, transform=preprocess_record, workers=workers)
 
 
 def owned_records(records, *, seed=123, workers=0):

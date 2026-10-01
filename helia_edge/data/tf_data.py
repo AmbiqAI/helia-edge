@@ -1,0 +1,217 @@
+"""TensorFlow ``tf.data`` adapters: generators, arrays and batches from other loaders."""
+
+from __future__ import annotations
+
+from collections.abc import Callable, Iterable, Iterator
+from numbers import Integral
+from typing import TYPE_CHECKING, Any
+
+import numpy.typing as npt
+
+from ..utils.sampling import StreamMode
+
+if TYPE_CHECKING:
+    import keras
+    import tensorflow as tf
+
+
+def convert_inputs_to_tf_dataset(x=None, y=None, sample_weight=None, batch_size=None):
+    """Convert inputs to tf.data.Dataset."""
+
+    import tensorflow as tf
+
+    # Unpack if passed as tuple
+    if isinstance(x, tuple):
+        tupled = x
+        x = tupled[0]
+        y = tupled[1] if len(tupled) > 1 else None
+        sample_weight = tupled[2] if len(tupled) > 2 else None
+
+    if sample_weight is not None:
+        raise ValueError("Contrastive trainers do not yet support `sample_weight`.")
+
+    if isinstance(x, tf.data.Dataset):
+        if y is not None or batch_size is not None:
+            raise ValueError(
+                "When `x` is a `tf.data.Dataset`, please do not "
+                "provide a value for `y` or `batch_size`. "
+                "Got `y={y}`, `batch_size={batch_size}`."
+            )
+        return x
+
+    # batch_size defaults to 32, as it does in fit().
+    batch_size = batch_size or 32
+    # Parse inputs
+    inputs = x
+    if y is not None:
+        inputs = (x, y)
+
+    # Construct tf.data.Dataset
+    dataset = tf.data.Dataset.from_tensor_slices(inputs)
+    if batch_size is not None:
+        dataset = dataset.batch(batch_size)
+    return dataset
+
+
+def create_interleaved_dataset_from_generator[T, K](
+    data_generator: Callable[[Iterator[T]], Iterable[K]],
+    id_generator: Callable[[list[T]], Iterator[T]],
+    ids: list[T],
+    spec: tf.TensorSpec | tuple[tf.TensorSpec, ...] | dict[str, tf.TensorSpec],
+    preprocess: Callable[[K], K] | None = None,
+    num_workers: int = 4,
+    *,
+    stream_mode: StreamMode | str = StreamMode.GLOBAL,
+    deterministic: bool = True,
+) -> tf.data.Dataset:
+    """Adapt caller-owned schedules to tf.data without changing sample weights.
+
+    GLOBAL preserves one finite/repeated stream. FINITE partitions terminating,
+    partition-independent generators; deterministic mode preserves partition order.
+    num_workers counts generators, not processes. See docs/input-pipeline.md.
+    """
+
+    import tensorflow as tf
+
+    if isinstance(num_workers, bool) or not isinstance(num_workers, Integral) or num_workers < 1:
+        raise ValueError("num_workers must be a positive integer")
+    try:
+        stream_mode = StreamMode(stream_mode)
+    except ValueError as exc:
+        raise ValueError(f"stream_mode must be one of {list(StreamMode)}") from exc
+    # Snapshot IDs so caller mutation cannot change later epoch enumeration.
+    ids = list(ids)
+
+    def split_generator(split_ids: list[T]) -> tf.data.Dataset:
+        def ds_gen() -> Iterator[K]:
+            split_id_generator = id_generator(list(split_ids))
+            samples = iter(data_generator(split_id_generator))
+            return map(preprocess, samples) if preprocess is not None else samples
+
+        return tf.data.Dataset.from_generator(
+            ds_gen,
+            output_signature=spec,
+        )
+
+    if not ids:
+        return tf.data.Dataset.from_generator(lambda: iter(()), output_signature=spec)
+    if stream_mode == StreamMode.GLOBAL:
+        return split_generator(ids)
+
+    num_workers = min(num_workers, len(ids))
+    size, remainder = divmod(len(ids), num_workers)
+    ds_splits = []
+    start = 0
+    for i in range(num_workers):
+        end = start + size + (i < remainder)
+        ds_splits.append(split_generator(ids[start:end]))
+        start = end
+
+    if deterministic:
+        ds = ds_splits[0]
+        for split in ds_splits[1:]:
+            ds = ds.concatenate(split)
+        return ds
+
+    return tf.data.Dataset.from_tensor_slices(ds_splits).interleave(
+        lambda x: x,
+        cycle_length=num_workers,
+        deterministic=False,
+        num_parallel_calls=tf.data.AUTOTUNE,
+    )
+
+
+def create_dataset_from_data(x: npt.NDArray, y: npt.NDArray, spec: tuple[tf.TensorSpec, ...]) -> tf.data.Dataset:
+    """Helper function to create dataset from static data
+
+    Args:
+        x (npt.NDArray): Numpy data
+        y (npt.NDArray): Numpy labels
+
+    Returns:
+        tf.data.Dataset: Dataset
+    """
+    import tensorflow as tf
+
+    return tf.data.Dataset.zip((tf.data.Dataset.from_tensor_slices(x), tf.data.Dataset.from_tensor_slices(y)))
+
+
+def get_output_signature(
+    outputs: keras.KerasTensor | npt.NDArray | tuple[keras.KerasTensor | npt.NDArray],
+) -> tf.TensorSpec | tuple[tf.TensorSpec, ...]:
+    """Get output signature from sample outputs
+
+    Args:
+        outputs: Outputs. A tensor or tuple of tensors. Either KerasTensor, tf.Tensor, or numpy array.
+
+    Returns:
+        tf.TensorSpec: Tensor spec
+    """
+    import keras
+    import tensorflow as tf
+
+    if isinstance(outputs, tuple):
+        sig = []
+        for output in outputs:
+            output = keras.ops.convert_to_tensor(output)
+            sig.append(tf.TensorSpec(shape=output.shape, dtype=output.dtype))
+        sig = tuple(sig)
+    else:
+        output = keras.ops.convert_to_tensor(outputs)
+        sig = tf.TensorSpec(shape=output.shape, dtype=output.dtype)
+    return sig
+
+
+def get_output_signature_from_fn(
+    fn: Callable[..., keras.KerasTensor], *args
+) -> tf.TensorSpec | tuple[tf.TensorSpec, ...]:
+    """Get output signature from a function
+
+    Args:
+        fn (Callable[..., tf.Tensor]): Function
+
+    Returns:
+        tf.TensorSpec: Tensor spec
+    """
+    return get_output_signature(outputs=fn(*args))
+
+
+def get_output_signature_from_gen(
+    gen: Callable[..., Iterator[Any]], *args: Any
+) -> tf.TensorSpec | tuple[tf.TensorSpec, ...]:
+    """Get output signature from a generator
+
+    Args:
+        gen: Generator factory
+
+    Returns:
+        tf.TensorSpec: Tensor spec
+    """
+    return get_output_signature(outputs=next(gen(*args)))
+
+
+def to_tf_dataset(dataset: Iterable[Any], output_signature: tf.TensorSpec | tuple | dict[str, Any]) -> tf.data.Dataset:
+    """Wrap a re-iterable of NumPy batches, such as a Grain dataset, as a ``tf.data.Dataset``.
+
+    Elements pass through in order, one ``iter(dataset)`` per pass of the returned dataset;
+    nothing is batched, shuffled or read in parallel here. Do that in ``dataset``.
+
+    Args:
+        dataset: Re-iterable whose ``iter()`` starts from the first element.
+        output_signature: ``tf.TensorSpec`` structure matching one element. Use ``None`` for a
+            batch dimension that varies, such as a smaller last batch.
+
+    Returns:
+        tf.data.Dataset: Built with ``tf.data.Dataset.from_generator``.
+
+    Raises:
+        ImportError: If TensorFlow is not installed (``helia-edge[tensorflow]``).
+    """
+    try:
+        import tensorflow as tf
+    except ModuleNotFoundError as exc:
+        if exc.name != "tensorflow":
+            raise
+        raise ImportError("to_tf_dataset requires TensorFlow. Install helia-edge[tensorflow].") from exc
+
+    return tf.data.Dataset.from_generator(lambda: iter(dataset), output_signature=output_signature)

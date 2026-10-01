@@ -16,6 +16,9 @@ Keras 3 add-on for training and exporting models to Ambiq edge targets. Full gui
 - Extensions register in `helia_edge.registry` (exporters, architectures) or through the `helia_edge.plugins`
   entry-point group; custom train steps use `helia_edge.trainers.gradient_step` (MaskedAutoencoder does; the
   contrastive trainers are TensorFlow-only).
+- Data: `helia_edge.data.to_grain` (extra `grain`) reads indexed records; `to_tf_dataset` and `to_torch_loader`
+  wrap its batches. The tf.data generator helpers live in `helia_edge.data.tf_data` (re-exported by
+  `helia_edge.utils`).
 - Backend tests: set `KERAS_BACKEND` (`tensorflow` or `torch`) before importing Keras; see the
   `backend` job in `.github/workflows/ci.yaml` for each backend's test set.
 

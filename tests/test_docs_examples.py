@@ -51,6 +51,7 @@ def test_generator_walkthrough():
     import numpy as np
 
     source = (ROOT / "astro-site/src/content/docs/guide/input-pipeline.mdx").read_text()
+    source = source.split("## Build a finite dataset", 1)[1]
     blocks = re.findall(r"```python\n(.*?)```", source, re.DOTALL)
     assert len(blocks) == 3
     namespace = {}
@@ -80,3 +81,14 @@ def test_preprocessing_progression():
     np.testing.assert_allclose(inference, 0.5, rtol=1e-5)
     assert inference.shape == training.shape == (2, 128, 1)
     assert not np.array_equal(inference, training)
+
+
+def test_grain_input_pipeline_example():
+    """The Grain example in the input-pipeline guide prints the documented batch shapes."""
+    pytest.importorskip("grain")
+    source = (ROOT / "astro-site/src/content/docs/guide/input-pipeline.mdx").read_text()
+    section = source.split("## Read records with Grain", 1)[1]
+    (block,) = re.findall(r"```python\n(.*?)```", section.split("\n## ", 1)[0], re.DOTALL)
+    namespace = {}
+    exec(compile(block.replace("print(", "shapes = ("), "input-pipeline.mdx", "exec"), namespace)
+    assert namespace["shapes"] == [(4, 8)] * 5

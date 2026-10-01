@@ -1,11 +1,36 @@
 ---
-title: "Generator sampling"
-description: Build TensorFlow datasets from Python readers and choose explicit global or finite sampling schedules.
+title: "Input pipelines"
+description: Read records with Grain for TensorFlow or Torch training, or build TensorFlow datasets from Python readers with explicit sampling schedules.
 ---
 
 import Button from '@ambiqai/helia-ui/astro/Button';
 
-Adapt a Python reader to a TensorFlow dataset while keeping control of which records are read and how often. These helpers require the TensorFlow backend; they do not construct Torch data loaders.
+`helia_edge.data` reads indexed records with Grain and hands the batches to either backend: `to_tf_dataset` for TensorFlow, `to_torch_loader` for Torch. The generator helpers further down adapt a Python reader to a TensorFlow dataset while keeping control of which records are read and how often; they need the TensorFlow backend.
+
+## Read records with Grain
+
+Install `helia-edge[grain]`. Any object with `len()` and integer indexing is a source, including a list. The transform runs per record, in the worker processes when `workers` is above zero, and receives a random generator derived from the seed:
+
+```python
+import numpy as np
+from helia_edge.data import to_grain
+
+records = [{"x": np.full((8,), index, dtype=np.float32), "y": np.int32(index % 2)} for index in range(10)]
+
+def add_noise(record, rng):
+    return {"x": record["x"] + rng.normal(size=8).astype(np.float32), "y": record["y"]}
+
+dataset = to_grain(records, seed=0, shuffle=True, transform=add_noise, batch_size=4, num_epochs=2)
+print([batch["x"].shape for batch in dataset])
+```
+
+The shapes are five batches of `(4, 8)`: batches run across epoch boundaries, so the 20 records of two epochs fill five batches. With `num_epochs=1` the last batch would be `(2, 8)`; set `drop_remainder=True` to drop a partial last batch. Each of the `num_epochs` passes over the records is a new permutation with new transform draws.
+
+- **Determinism.** The record order and every transform draw depend only on `seed`, not on `workers`. A seed is required whenever you shuffle or transform.
+- **Training epochs.** Iterating the dataset again replays the same elements, so a Keras `fit` that reads it once per epoch sees the same order and augmentation every epoch. Give `fit` one stream instead: `num_epochs=None` with `steps_per_epoch=len(records) // batch_size`, so each Keras epoch continues where the last one stopped.
+- **Torch.** `to_torch_loader(dataset)` yields the same batches as tensors, keeping dict and tuple structure. It adds no batching or workers of its own, and it copies arrays out of worker shared memory.
+- **TensorFlow.** `to_tf_dataset(dataset, output_signature)` yields the same batches as a `tf.data.Dataset`. Use `None` for the batch dimension when the last batch can be smaller.
+- **Parallelism.** Put heavy per-record work in the transform and raise `workers`: it then runs in separate processes, outside the training process's GIL, and only finished batches reach the training process. Workers add inter-process overhead, so for light per-record work `workers=0` is faster; measure with your own transform.
 
 ## Build a finite dataset
 
@@ -120,4 +145,4 @@ supplied weights, so adopting this fix changes those weighted experiments.
 
 ## Continue with a complete workflow
 
-<div className="edge-actions"><Button variant="secondary" href="/helia-edge/reference/api/helia_edge/utils/preprocessing/">Dataset helper API</Button><Button variant="secondary" href="../preprocessing/">Choose transforms</Button><Button variant="secondary" href="/helia-edge/examples/train-cifar-model/">CIFAR-10 training notebook</Button></div>
+<div className="edge-actions"><Button variant="secondary" href="/helia-edge/reference/api/helia_edge/data/">Data API</Button><Button variant="secondary" href="../preprocessing/">Choose transforms</Button><Button variant="secondary" href="/helia-edge/examples/train-cifar-model/">CIFAR-10 training notebook</Button></div>

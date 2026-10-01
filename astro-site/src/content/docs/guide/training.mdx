@@ -25,7 +25,7 @@ model.compile(
 
 This assumes the walkthrough's `(batch, 240, 2)` output and integer targets shaped `(batch, 240)`. Use a different objective for window classification, regression or one-hot targets.
 
-For generator-based data, the input-pipeline helpers create TensorFlow datasets. They do not provide a Torch data-loader abstraction.
+For record-based data, `helia_edge.data` reads records with Grain and hands the batches to a TensorFlow dataset or a Torch data loader. The generator helpers create TensorFlow datasets only.
 
 <div className="edge-actions">
   <Button variant="secondary" size="sm" href="/helia-edge/examples/train-cifar-model/">CIFAR-10 training notebook</Button>
