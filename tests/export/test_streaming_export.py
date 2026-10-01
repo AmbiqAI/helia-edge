@@ -182,7 +182,10 @@ def test_only_a_tied_pair_keeps_the_carried_state_value(model, signal, calibrati
 def test_a_scale_difference_over_the_tolerance_is_refused(model, calibration, factor):
     with pytest.raises(ValueError, match=r"State pair 0 scales .* more than state_tie_tolerance"):
         export_model(model, INT16, scaled_state(calibration, factor))
-    result = export_model(model, INT16.model_copy(update={"state_tie_tolerance": 0.5}), scaled_state(calibration, 1.5))
+    accepted = 1.3 if factor > 1 else 1 / 1.3
+    result = export_model(
+        model, INT16.model_copy(update={"state_tie_tolerance": 0.5}), scaled_state(calibration, accepted)
+    )
     assert state_scales_tied(result.inputs, result.outputs) is True
 
 
