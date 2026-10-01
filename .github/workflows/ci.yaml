@@ -98,7 +98,7 @@ jobs:
           tests/models/test_mlperf_tiny.py tests/models/test_typed_architectures.py
           tests/models/test_miniresnet.py tests/models/test_miniresnet_config_import.py
           tests/models/test_fastenhancer.py tests/models/test_fastenhancer_params.py
-          tests/models/test_cornet.py tests/models/test_timeppg.py
+          tests/models/test_cornet.py tests/models/test_timeppg.py tests/models/test_family_smoke.py
           tests/layers/test_portable_preprocessing.py tests/layers/test_unified_augmentation.py
           tests/layers/test_augmentation_inventory.py tests/layers/test_portable_grain.py
           tests/layers/test_preprocessing_integration.py
