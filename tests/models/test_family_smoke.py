@@ -119,6 +119,19 @@ RESNET = ResNetParams(
         {"filters": 16, "depth": 1, "kernel_size": (1, 3), "strides": (1, 2), "bottleneck": True},
     ],
 )
+RESNET_STRIDED_SAME_WIDTH = ResNetParams(
+    input_filters=8,
+    input_kernel_size=(1, 3),
+    input_strides=(1, 2),
+    blocks=[{"filters": 8, "kernel_size": (1, 3)}, {"filters": 8, "kernel_size": (1, 3), "strides": (1, 2)}],
+)
+RESNET_BOTTLENECK_STRIDED_SAME_WIDTH = ResNetParams(
+    **{
+        **RESNET_STRIDED_SAME_WIDTH.model_dump(),
+        "blocks": [{**b.model_dump(), "bottleneck": True} for b in RESNET_STRIDED_SAME_WIDTH.blocks],
+    }
+)
+REGNET_Z_STRIDED_SAME_WIDTH = REGNET_STRIDED_SAME_WIDTH.model_copy(update={"block_style": "z"})
 TSMIXER = TsMixerParams(blocks=[{"ff_dim": 8}, {"ff_dim": 8}])
 UNET_BLOCK = {"filters": 8, "depth": 1, "kernel": (1, 3), "pool": (1, 2), "strides": (1, 2)}
 UNET = UNetParams(blocks=[UNET_BLOCK, {**UNET_BLOCK, "filters": 16}])
@@ -151,10 +164,18 @@ FAMILIES = [
     pytest.param(
         Case(RegNetModel, REGNET_STRIDED_SAME_WIDTH, ROW),
         id="regnet-strided-same-width",
-        # On Torch the #73 KeyError comes first; with #73 fixed, the #72 ValueError remains.
-        marks=known_bug([72, 73], (ValueError, KeyError)) if TORCH else known_bug([72], ValueError),
+        marks=DOTTED_NAMES_ON_TORCH,
     ),
     pytest.param(Case(ResNetModel, RESNET, ROW, drop_last(RESNET)), id="resnet"),
+    pytest.param(Case(ResNetModel, RESNET_STRIDED_SAME_WIDTH, ROW), id="resnet-strided-same-width"),
+    pytest.param(
+        Case(ResNetModel, RESNET_BOTTLENECK_STRIDED_SAME_WIDTH, ROW), id="resnet-bottleneck-strided-same-width"
+    ),
+    pytest.param(
+        Case(RegNetModel, REGNET_Z_STRIDED_SAME_WIDTH, ROW),
+        id="regnet-z-strided-same-width",
+        marks=DOTTED_NAMES_ON_TORCH,
+    ),
     pytest.param(
         Case(TsMixerModel, TSMIXER, SERIES, drop_last(TSMIXER), class_axis=1),
         id="tsmixer",

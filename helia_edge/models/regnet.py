@@ -109,7 +109,9 @@ def yblock(
     def layer(x: keras.KerasTensor) -> keras.KerasTensor:
         input_filters = x.shape[-1]
         groups = output_filters // group_width
-        use_skip = (input_filters != output_filters) or (strides != 1 if isinstance(strides, int) else strides[0] != 1)
+        use_skip = (input_filters != output_filters) or (
+            strides != 1 if isinstance(strides, int) else any(s != 1 for s in strides)
+        )
 
         name_ex = f"{name}_exp" if name else None
         y = conv2d(output_filters, kernel_size=(1, 1), name=name_ex)(x)
@@ -173,7 +175,9 @@ def zblock(
     def layer(x: keras.KerasTensor) -> keras.KerasTensor:
         input_filters = x.shape[-1]
         groups = input_filters // group_width
-        use_add = input_filters == output_filters and (strides == 1 if isinstance(strides, int) else strides[0] == 1)
+        use_add = input_filters == output_filters and (
+            strides == 1 if isinstance(strides, int) else all(s == 1 for s in strides)
+        )
         expand_ratio = 2
 
         name_ex = f"{name}_exp" if name else None

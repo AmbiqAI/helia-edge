@@ -98,7 +98,7 @@ def generate_bottleneck_block(
 
     def layer(x: keras.KerasTensor) -> keras.KerasTensor:
         num_chan = x.shape[-1]
-        projection = num_chan != filters * expansion or (strides > 1 if isinstance(strides, int) else strides[0] > 1)
+        projection = num_chan != filters * expansion or (strides > 1 if isinstance(strides, int) else max(strides) > 1)
 
         bx = conv2d(filters, 1, 1)(x)
         bx = batch_normalization()(bx)
@@ -140,7 +140,7 @@ def generate_residual_block(
 
     def layer(x: keras.KerasTensor) -> keras.KerasTensor:
         num_chan = x.shape[-1]
-        projection = num_chan != filters or (strides > 1 if isinstance(strides, int) else strides[0] > 1)
+        projection = num_chan != filters or (strides > 1 if isinstance(strides, int) else max(strides) > 1)
         bx = conv2d(filters, kernel_size, strides)(x)
         bx = batch_normalization()(bx)
         bx = keras.layers.Activation(activation)(bx)
