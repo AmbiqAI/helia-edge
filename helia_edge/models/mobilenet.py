@@ -75,8 +75,8 @@ def mobilenetv1_layer(
         kernel_size=3,
         strides=1,
         padding="same",
-        kernel_initializer="he_normal",
-        kernel_regularizer=keras.regularizers.l2(1e-4),
+        depthwise_initializer="he_normal",
+        depthwise_regularizer=keras.regularizers.l2(1e-4),
     )(y)
     y = keras.layers.BatchNormalization()(y)
     y = keras.layers.Activation("relu")(y)
@@ -98,8 +98,8 @@ def mobilenetv1_layer(
         kernel_size=3,
         strides=2,
         padding="same",
-        kernel_initializer="he_normal",
-        kernel_regularizer=keras.regularizers.l2(1e-4),
+        depthwise_initializer="he_normal",
+        depthwise_regularizer=keras.regularizers.l2(1e-4),
     )(y)
     y = keras.layers.BatchNormalization()(y)
     y = keras.layers.Activation("relu")(y)
@@ -121,8 +121,8 @@ def mobilenetv1_layer(
         kernel_size=3,
         strides=1,
         padding="same",
-        kernel_initializer="he_normal",
-        kernel_regularizer=keras.regularizers.l2(1e-4),
+        depthwise_initializer="he_normal",
+        depthwise_regularizer=keras.regularizers.l2(1e-4),
     )(y)
     y = keras.layers.BatchNormalization()(y)
     y = keras.layers.Activation("relu")(y)
@@ -143,8 +143,8 @@ def mobilenetv1_layer(
         kernel_size=3,
         strides=2,
         padding="same",
-        kernel_initializer="he_normal",
-        kernel_regularizer=keras.regularizers.l2(1e-4),
+        depthwise_initializer="he_normal",
+        depthwise_regularizer=keras.regularizers.l2(1e-4),
     )(y)
     y = keras.layers.BatchNormalization()(y)
     y = keras.layers.Activation("relu")(y)
@@ -166,8 +166,8 @@ def mobilenetv1_layer(
         kernel_size=3,
         strides=1,
         padding="same",
-        kernel_initializer="he_normal",
-        kernel_regularizer=keras.regularizers.l2(1e-4),
+        depthwise_initializer="he_normal",
+        depthwise_regularizer=keras.regularizers.l2(1e-4),
     )(y)
     y = keras.layers.BatchNormalization()(y)
     y = keras.layers.Activation("relu")(y)
@@ -188,8 +188,8 @@ def mobilenetv1_layer(
         kernel_size=3,
         strides=2,
         padding="same",
-        kernel_initializer="he_normal",
-        kernel_regularizer=keras.regularizers.l2(1e-4),
+        depthwise_initializer="he_normal",
+        depthwise_regularizer=keras.regularizers.l2(1e-4),
     )(y)
     y = keras.layers.BatchNormalization()(y)
     y = keras.layers.Activation("relu")(y)
@@ -212,8 +212,8 @@ def mobilenetv1_layer(
             kernel_size=3,
             strides=1,
             padding="same",
-            kernel_initializer="he_normal",
-            kernel_regularizer=keras.regularizers.l2(1e-4),
+            depthwise_initializer="he_normal",
+            depthwise_regularizer=keras.regularizers.l2(1e-4),
         )(y)
         y = keras.layers.BatchNormalization()(y)
         y = keras.layers.Activation("relu")(y)
@@ -234,8 +234,8 @@ def mobilenetv1_layer(
         kernel_size=3,
         strides=2,
         padding="same",
-        kernel_initializer="he_normal",
-        kernel_regularizer=keras.regularizers.l2(1e-4),
+        depthwise_initializer="he_normal",
+        depthwise_regularizer=keras.regularizers.l2(1e-4),
     )(y)
     y = keras.layers.BatchNormalization()(y)
     y = keras.layers.Activation("relu")(y)
@@ -257,8 +257,8 @@ def mobilenetv1_layer(
         kernel_size=3,
         strides=1,
         padding="same",
-        kernel_initializer="he_normal",
-        kernel_regularizer=keras.regularizers.l2(1e-4),
+        depthwise_initializer="he_normal",
+        depthwise_regularizer=keras.regularizers.l2(1e-4),
     )(y)
     y = keras.layers.BatchNormalization()(y)
     y = keras.layers.Activation("relu")(y)

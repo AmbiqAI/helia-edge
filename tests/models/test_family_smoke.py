@@ -147,7 +147,6 @@ FAMILIES = [
     pytest.param(
         Case(MobileNetV1Model, MobileNetV1Params(input_filters=8), ROW),
         id="mobilenetv1",
-        marks=known_bug([68], ValueError),
     ),
     pytest.param(Case(MobileOneModel, MOBILEONE, ROW, drop_last(MOBILEONE)), id="mobileone"),
     pytest.param(Case(RegNetModel, REGNET, ROW, drop_last(REGNET)), id="regnet", marks=DOTTED_NAMES_ON_TORCH),
