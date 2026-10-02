@@ -3,6 +3,7 @@
 import hashlib
 import importlib.util
 import json
+import zipfile
 
 import keras
 import numpy as np
@@ -108,6 +109,13 @@ def test_a_streaming_recipe_writes_sequence_goldens(workdir):
             assert (carried[[0, 10]] == zero).all()
     assert manifest.entries[1].state_scales_tied is True
     assert ExportManifest.read(workdir / "out" / "manifest.json") == manifest
+
+
+def test_goldens_are_stored_uncompressed(workdir):
+    manifest = run_recipe(write(workdir / "r.json", stream_recipe(workdir)), workdir / "out")
+    for entry in manifest.entries:
+        with zipfile.ZipFile(workdir / "out" / entry.reference.golden.file.path) as archive:
+            assert {info.compress_type for info in archive.infolist()} == {zipfile.ZIP_STORED}
 
 
 def test_the_signal_rows_are_the_reference_as_fed(workdir):
