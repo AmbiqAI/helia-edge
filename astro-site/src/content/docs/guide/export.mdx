@@ -75,9 +75,9 @@ probabilities = runner.decode("prob", outputs["prob"])
 - **Mode:** use `keras` or `saved_model`. `concrete` converts single-input models only, because its graph has no signature to name inputs and states.
 - **Records:** `result.inputs` and `result.outputs` list tensors in the model's subgraph order. State tensors have role `state` and the index `pair` of their pair; the converter may reorder inputs, so address them by name.
 - **Calibration:** `stream_calibration` runs the Keras model over the signal inputs and returns every input, the state inputs filled with the states the model produces (zero at the start and at the steps in `resets`).
-- **Tied state:** with integer I/O (`a8w8` with `int8`, `a16w8` with `int16`), the converter calibrates `state_in_k` and `state_out_k` separately. Export then gives each pair one scale and zero point whose range covers both tensors' ranges (for `int16`, the larger scale), so a raw `state_out_k` keeps its value as the next `state_in_k`; the bias of a fully connected or convolution layer that reads a state is requantized with it. It refuses when the tied scale differs from either original by more than `ExportSpec.state_tie_tolerance` of it (default 1%, at most 50%), or when an operator that needs the state tensor's parameters unchanged (such as a concatenation, or a tanh writing the state) reads or writes it. State inputs and outputs must pair up with equal shapes and types, and every output needs its own name (two outputs of one layer share it). The manifest records `state_scales_tied`.
+- **Tied state:** with integer I/O (`a8w8` with `int8`, `a16w8` with `int16`), the converter calibrates `state_in_k` and `state_out_k` separately. Export then gives each pair one scale and zero point whose range covers both tensors' ranges (for `int16`, the larger scale), so a raw `state_out_k` keeps its value as the next `state_in_k`; the bias of a fully connected or convolution layer that reads a state is requantized with it. It refuses when the tied scale differs from either original by more than `ExportSpec.state_tie_tolerance` of it (default 1%, at most 50%), or when an operator that needs the state tensor's parameters unchanged (such as a concatenation, or a tanh writing the state) reads or writes it; a reshape passes the tied parameters on to its output. State inputs and outputs must pair up with equal shapes and types, and every output needs its own name (two outputs of one layer share it). The manifest records `state_scales_tied`.
 - **Running:** `LiteRTStreamRunner` runs a stream on raw tensors, carrying the state unchanged; it returns every input as fed and every output, stacked by step. `LiteRTRunner` stays single-input.
-- Export recipes do not take streaming models yet.
+- Export recipes take streaming models with one signal input; see [Export recipes](#export-recipes-and-the-command-line).
 
 ## Export recipes and the command line
 
@@ -102,12 +102,17 @@ helia-edge export verify exports/manifest.json
 ```
 
 - **Model kinds:**
-  - `params_seed`: an architecture from `BUILTIN_ARCHITECTURES` (`tcn`, `mlperf_tiny`, `miniresnet_v1`, `timeppg`, `cornet`), built from params with a seeded initialization;
+  - `params_seed`: an architecture from `BUILTIN_ARCHITECTURES` (`tcn`, `mlperf_tiny`, `miniresnet_v1`, `timeppg`, `cornet`, `vad_silero_v6`), built from params with a seeded initialization;
   - `params_weights`: the same architectures, with trained weights loaded;
+  - `params_import`: the same architectures, with weights imported from a file trained elsewhere through a named mapping in `helia_edge.registry.weight_mappings` (see [Import weights](/helia-edge/guide/import-weights/)); the file's sha256 must be the one the mapping is pinned to;
   - `keras_file`: a saved `.keras` model;
   - `tflite_import`: an existing `.tflite` file, taken as is.
 - **Sources:** `path` sources resolve relative to the recipe. `url` sources are downloaded once into `~/.cache/helia-edge/sources` (set `HELIA_EDGE_CACHE` to move it). A source whose sha256 differs is refused.
 - **Calibration and reference data:** calibration uses the first `samples` rows in stored order (more rows than stored is an error). Reference inputs are run with LiteRT's reference kernels; the inputs as fed and the outputs are saved as `.npy` files next to each model.
+- **Streaming models:** for a model with state pairs and one signal input, calibration and reference rows are consecutive calls of the signal input.
+  - Calibration feeds the states the model produces (`stream_calibration`), zero at the start and at the steps in `resets`.
+  - The reference becomes a `helia-model-zoo/golden@2` sequence golden (`reference/golden.npz`): `input_i`/`output_i` in subgraph order, raw values stacked by step, each `state_out_k` carried into the next `state_in_k` and reset at `resets` (steps after 0).
+  - The manifest's `reference.golden` records its file, steps, resets and source; the model zoo's `golden.check` validates it.
 - **Batch size and session:** models are exported with batch size 1. Each is built in a fresh Keras session, because auto-generated layer names become tensor names in the exported bytes.
 - **Manifest:** `manifest.json` (`schema: helia-edge/manifest@1`) records the recipe's sha256, the environment (helia-edge version, plus its commit when installed from a git URL; Python; platform; NumPy, Keras, TensorFlow and ai-edge-litert versions), and each file's sha256. `run` writes into `--out` without removing files from earlier runs; only the entries in the manifest are verified. `helia-edge export schema --kind recipe|manifest` prints the JSON Schemas.
 - **`export verify`:** checks in this order:

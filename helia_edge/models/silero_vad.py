@@ -15,18 +15,24 @@ import keras
 from ..importers.mapping import Reshape, SourcePin, Transpose, WeightMapping, WeightRow
 from ..layers.spectral import StftMagnitude
 from ..layers.streaming import StreamingLSTMCell, state_input, state_output
+from .silero_vad_params import SileroVadParams
 
 SAMPLES = 576
 """Samples per call: 64 of context and 512 new ones."""
 UNITS = 128
 
 
-def silero_vad_v6(name: str = "silero_vad_v6") -> keras.Model:
+def silero_vad_v6(params: SileroVadParams | str | None = None) -> keras.Model:
     """Build the Silero VAD v6 16 kHz streaming model, untrained, with batch size 1.
 
     Inputs are ``audio`` (1, 576) float32 in [-1, 1] and the state ``state_in_0`` and ``state_in_1``
     (1, 128). Outputs are ``prob`` (1, 1) and ``state_out_0`` and ``state_out_1``.
+
+    Args:
+        params: The model's parameters, or just its name; the defaults when None.
     """
+    params = SileroVadParams(name=params) if isinstance(params, str) else params or SileroVadParams()
+    name = params.name
     audio = keras.Input((SAMPLES,), batch_size=1, name="audio")
     h, c = state_input(0, (UNITS,), batch_size=1), state_input(1, (UNITS,), batch_size=1)
     x = StftMagnitude(frame_length=256, frame_step=128, bins=129, padding=(0, 64), name="stft")(audio)

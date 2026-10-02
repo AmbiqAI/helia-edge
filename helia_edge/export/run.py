@@ -6,7 +6,7 @@ import tempfile
 from collections.abc import Collection
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal, cast
 
 import numpy as np
 
@@ -15,6 +15,8 @@ from .manifest import (
     EnvironmentEntry,
     ExportManifest,
     FileRecord,
+    GoldenRecord,
+    GoldenSource,
     ManifestEntry,
     ReferenceRecord,
     TensorEntry,
@@ -22,6 +24,7 @@ from .manifest import (
 from .recipe import (
     ArraySource,
     KerasFile,
+    ParamsImport,
     ParamsSeed,
     ParamsWeights,
     PathSource,
@@ -30,7 +33,7 @@ from .recipe import (
     load_recipe,
 )
 from .result import environment_record, state_scales_tied
-from .spec import CALIBRATED, ExportSpec
+from .spec import CALIBRATED, ExportSpec, state_pair
 
 
 class SourceError(ValueError):
@@ -97,18 +100,47 @@ def load_array(source: ArraySource, base_dir: Path, samples: int | None = None) 
 
 
 def _batch1(model):
-    """Rebuild a single-input functional model whose batch dimension is not fixed to 1."""
+    """Rebuild a single-input functional model whose batch dimension is not fixed to 1.
+
+    A model with several inputs, such as a streaming model, must already have batch size 1.
+    """
     import keras
 
     if len(model.inputs) != 1:
-        raise ValueError(f"Recipes support single-input models; this model has {len(model.inputs)} inputs")
+        if not any(state_pair(tensor.name) for tensor in model.inputs):
+            raise ValueError(
+                f"Recipes support single-input models and streaming models with state_in_k inputs; this model has "
+                f"{len(model.inputs)} inputs"
+            )
+        if all(tensor.shape[0] == 1 for tensor in model.inputs):
+            return model
+        raise ValueError(f"A recipe model with {len(model.inputs)} inputs must have batch size 1 on every input")
     if model.input_shape[0] == 1:
         return model
     inputs = keras.Input(model.input_shape[1:], batch_size=1)
     return keras.Model(inputs, model(inputs), name=model.name)
 
 
-def build_model(source: ParamsSeed | ParamsWeights | KerasFile, base_dir: Path):
+def _signal_input(model) -> str | None:
+    """The one input that is not a state input of a streaming model, or None for a stateless model."""
+    names = [tensor.name for tensor in model.inputs]
+    signals = [name for name in names if state_pair(name) is None]
+    if len(signals) == len(names):
+        return None
+    if len(signals) != 1:
+        raise ValueError(f"A recipe streaming model needs exactly one input that is not a state; got {signals}")
+    return signals[0]
+
+
+def _check_resets(resets, steps: int, stateful: bool, what: str) -> None:
+    if resets and not stateful:
+        raise ValueError(f"{what} resets apply to streaming models only")
+    if list(resets) != sorted(set(resets)) or (resets and resets[-1] >= steps):
+        bound = f"increasing steps between 1 and {steps - 1}" if steps > 1 else "absent for a single step"
+        raise ValueError(f"{what} resets {list(resets)} must be {bound}")
+
+
+def build_model(source: ParamsSeed | ParamsWeights | ParamsImport | KerasFile, base_dir: Path):
     """Build or load the recipe's Keras model with batch size 1, in a fresh Keras session.
 
     Auto-generated layer names become tensor names in the exported bytes and come from
@@ -127,6 +159,18 @@ def build_model(source: ParamsSeed | ParamsWeights | KerasFile, base_dir: Path):
     elif isinstance(source, ParamsWeights):
         model = resolve_architecture(source.architecture)(source.params, source.input_shape, source.num_classes)
         model.load_weights(fetch(source.weights, base_dir))
+    elif isinstance(source, ParamsImport):
+        from ..importers import import_weights
+        from ..registry import weight_mappings
+
+        mapping = weight_mappings.get(source.mapping)
+        if source.weights.sha256 != mapping.source.sha256:
+            raise SourceError(
+                f"Weights sha256 {source.weights.sha256} is not the file mapping {source.mapping!r} is pinned to "
+                f"({mapping.source.sha256}, {mapping.source.uri})"
+            )
+        model = resolve_architecture(source.architecture)(source.params, source.input_shape, source.num_classes)
+        import_weights(model, mapping, fetch(source.weights, base_dir))
     else:
         from .. import register_keras_serializables
 
@@ -149,13 +193,58 @@ def _npy(array: np.ndarray) -> bytes:
     return buffer.getvalue()
 
 
-def _entry(name: str, spec: ExportSpec | None, content: bytes, reference: np.ndarray | None, out: Path):
+def _golden(content: bytes, frames: np.ndarray, resets, source: GoldenSource, path: Path, out: Path) -> GoldenRecord:
+    """Write a golden@2 sequence for a streaming model: ``frames`` are consecutive calls of its signal input."""
+    import io
+
+    from .runner import LiteRTStreamRunner
+
+    runner = LiteRTStreamRunner(content, reference_kernels=True)
+    if len(runner.signals) != 1:
+        raise ValueError(
+            f"A streaming reference needs exactly one input that is not a state; got {list(runner.signals)}"
+        )
+    (signal,) = runner.signals
+    encoded = runner.encode(signal, frames.reshape(len(frames), *runner.inputs[signal]["shape"]))
+    fed, produced = runner.run({signal: encoded}, resets)
+    by_index = {details["index"]: name for name, details in runner.inputs.items()}
+    out_by_index = {details["index"]: name for name, details in runner.outputs.items()}
+    order_in = [by_index[d["index"]] for d in runner.interpreter.get_input_details()]
+    order_out = [out_by_index[d["index"]] for d in runner.interpreter.get_output_details()]
+    arrays = {f"input_{i}": fed[name] for i, name in enumerate(order_in)}
+    arrays |= {f"output_{i}": produced[name] for i, name in enumerate(order_out)}
+    buffer = io.BytesIO()
+    np.savez(buffer, **cast(dict[str, Any], arrays))  # plain savez: zlib versions cannot change the bytes
+    return GoldenRecord(
+        file=_write(path, buffer.getvalue(), out),
+        kind="sequence",
+        steps=len(frames),
+        resets=tuple(resets),
+        source=source,
+    )
+
+
+def _entry(
+    name: str,
+    spec: ExportSpec | None,
+    content: bytes,
+    reference: np.ndarray | None,
+    out: Path,
+    resets: tuple[int, ...] = (),
+    source: GoldenSource | None = None,
+):
     from .litert import tensor_records
 
     model = _write(out / name / "model.tflite", content, out)
     inputs, outputs = tensor_records(content)
+    stateful = any(r.pair is not None for r in inputs)
     reference_record = None
-    if reference is not None:
+    if reference is not None and stateful:
+        if source is None:
+            raise ValueError("A streaming reference needs its source")
+        golden = _golden(content, reference, resets, source, out / name / "reference" / "golden.npz", out)
+        reference_record = ReferenceRecord(golden=golden)
+    elif reference is not None:
         from .runner import LiteRTRunner
 
         runner = LiteRTRunner(content, reference_kernels=True)
@@ -201,22 +290,41 @@ def run_recipe(recipe_path: Path, out_dir: Path, only: Collection[str] | None = 
     if other:
         raise ValueError(f"Recipes export the litert format only; got {other}")
     out_dir.mkdir(parents=True, exist_ok=True)
-    reference = None
+    reference, resets, source = None, (), None
     if recipe.reference is not None:
         reference = load_array(recipe.reference.source, base, recipe.reference.samples)
+        resets = recipe.reference.resets
+        file = recipe.reference.source.file
+        location = f"path:{file.path}" if isinstance(file, PathSource) else file.url
+        key = f"#{recipe.reference.source.key}" if recipe.reference.source.key else ""
+        source = GoldenSource(uri=location + key, sha256=file.sha256)
 
     if isinstance(recipe.model, TfliteImport):
-        entries = [_entry("import", None, fetch(recipe.model.file, base).read_bytes(), reference, out_dir)]
+        from .litert import tensor_records
+
+        content = fetch(recipe.model.file, base).read_bytes()
+        if reference is not None:
+            stateful = any(record.pair is not None for record in tensor_records(content)[0])
+            _check_resets(resets, len(reference), stateful, "Reference")
+        entries = [_entry("import", None, content, reference, out_dir, resets, source)]
     else:
         model = build_model(recipe.model, base)
+        signal = _signal_input(model)
+        if reference is not None:
+            _check_resets(resets, len(reference), signal is not None, "Reference")
         calibration = None
         if recipe.calibration is not None:
             calibration = load_array(recipe.calibration.source, base, recipe.calibration.samples)
+            _check_resets(recipe.calibration.resets, len(calibration), signal is not None, "Calibration")
+            if signal is not None:
+                from .api import stream_calibration
+
+                calibration = stream_calibration(model, {signal: calibration}, recipe.calibration.resets)
         entries = []
         for entry in selected:
             spec = ExportSpec(**entry.model_dump(exclude={"name"}))
             result = export_model(model, spec, calibration if spec.precision in CALIBRATED else None)
-            entries.append(_entry(entry.name, spec, result.content, reference, out_dir))
+            entries.append(_entry(entry.name, spec, result.content, reference, out_dir, resets, source))
 
     manifest = ExportManifest(
         schema=MANIFEST_SCHEMA,
@@ -255,8 +363,11 @@ def _environment_differences(recorded: EnvironmentEntry, current: EnvironmentEnt
 
 def _files(entry: ManifestEntry) -> list[tuple[str, FileRecord]]:
     files = [("model", entry.model)]
-    if entry.reference is not None:
-        files += [("reference inputs", entry.reference.inputs), ("reference outputs", entry.reference.outputs)]
+    reference = entry.reference
+    if reference is not None and reference.inputs is not None and reference.outputs is not None:
+        files += [("reference inputs", reference.inputs), ("reference outputs", reference.outputs)]
+    if reference is not None and reference.golden is not None:
+        files.append(("golden", reference.golden.file))
     return files
 
 
@@ -305,6 +416,13 @@ def verify_manifest(manifest_path: Path, allow_env_mismatch: bool = False) -> Ve
         for field_name in ("spec", "inputs", "outputs"):
             if getattr(entry, field_name) != getattr(again, field_name):
                 differences.append(f"{entry.name}: recorded {field_name} differs from the regenerated one")
+        golden, regenerated_golden = (e.reference.golden if e.reference else None for e in (entry, again))
+        if (golden is None) != (regenerated_golden is None) or (
+            golden is not None
+            and regenerated_golden is not None
+            and golden.model_dump(exclude={"file"}) != regenerated_golden.model_dump(exclude={"file"})
+        ):
+            differences.append(f"{entry.name}: recorded golden differs from the regenerated one")
         if (entry.reference is None) != (again.reference is None):
             differences.append(f"{entry.name}: reference presence changed")
     return VerifyReport("drift" if differences else "ok", differences, environment)

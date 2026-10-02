@@ -144,3 +144,8 @@ importers: Registry[Callable[..., Any]] = Registry(
     },
 )
 """``format -> reader(path) -> {tensor name: numpy array}`` for ``helia_edge.importers.import_weights``."""
+
+weight_mappings: Registry[Any] = Registry(
+    "weight mapping", {"silero_vad_v6_onnx": "helia_edge.models.silero_vad:SILERO_VAD_V6_ONNX"}
+)
+"""``name -> WeightMapping`` that export recipes import with a ``params_import`` model source."""

@@ -12,6 +12,7 @@ from . import mobileone as mobileone
 from . import regnet as regnet
 from . import resnet as resnet
 from . import silero_vad as silero_vad
+from . import silero_vad_params as silero_vad_params
 from . import tcn as tcn
 from . import timeppg as timeppg
 from . import tsmixer as tsmixer
@@ -68,6 +69,7 @@ from .resnet import ResNetParams as ResNetParams
 from .resnet import resnet_layer as resnet_layer
 from .silero_vad import SILERO_VAD_V6_ONNX as SILERO_VAD_V6_ONNX
 from .silero_vad import silero_vad_v6 as silero_vad_v6
+from .silero_vad_params import SileroVadParams as SileroVadParams
 from .tcn import TcnBlockParams as TcnBlockParams
 from .tcn import TcnModel as TcnModel
 from .tcn import TcnParams as TcnParams

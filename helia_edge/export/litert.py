@@ -238,12 +238,53 @@ def operator_names(content: bytes) -> list[str]:
 # The bias of a reader in _BIASED_READERS is quantized with the input scale, so it is requantized too.
 _RESCALING_READERS = frozenset(
     {"ADD", "SUB", "MUL", "FULLY_CONNECTED", "CONV_2D", "DEPTHWISE_CONV_2D", "BATCH_MATMUL", "LOGISTIC", "TANH"}
-    | {"QUANTIZE", "DEQUANTIZE"}
+    | {"RELU", "QUANTIZE", "DEQUANTIZE"}
 )
 _RESCALING_WRITERS = frozenset(
-    {"ADD", "SUB", "MUL", "FULLY_CONNECTED", "CONV_2D", "DEPTHWISE_CONV_2D", "BATCH_MATMUL", "QUANTIZE"}
+    {"ADD", "SUB", "MUL", "FULLY_CONNECTED", "CONV_2D", "DEPTHWISE_CONV_2D", "BATCH_MATMUL", "RELU", "QUANTIZE"}
 )
 _BIASED_READERS = frozenset({"FULLY_CONNECTED", "CONV_2D", "DEPTHWISE_CONV_2D"})
+# Kernels that copy their input's bytes, so their output keeps the input's quantization: a tie carries
+# through them to their outputs, and on to those outputs' readers.
+_PASSTHROUGH = frozenset({"RESHAPE", "SQUEEZE"})
+
+
+def _tie_group(model, index: int, k: int) -> list[int]:
+    """``index`` and the outputs of passthrough readers reached from it, which all take the tied parameters.
+
+    Raises:
+        ValueError: If a tensor in the group is read or written by an operator that needs its parameters
+            unchanged, or a passthrough output's parameters differ from its input's.
+    """
+    subgraph = model.subgraphs[0]
+    group, pending = [], [index]
+    while pending:
+        current = pending.pop()
+        group.append(current)
+        name = subgraph.tensors[current].name.decode()
+        writers = {_operator_name(model, op) for op in subgraph.operators if current in list(op.outputs)}
+        if current == index and writers - _RESCALING_WRITERS:
+            raise ValueError(
+                f"Cannot tie state pair {k}: tensor {name!r} is written by {', '.join(sorted(writers - _RESCALING_WRITERS))}, "
+                "which needs its scale and zero point unchanged"
+            )
+        for op in subgraph.operators:
+            if current not in list(op.inputs):
+                continue
+            kind = _operator_name(model, op)
+            if kind in _PASSTHROUGH and list(op.inputs)[0] == current:
+                output = int(op.outputs[0])
+                if _quantization(subgraph.tensors[output]) != _quantization(subgraph.tensors[current]):
+                    raise ValueError(f"Cannot tie state pair {k}: {kind} after {name!r} changes its quantization")
+                pending.append(output)
+            elif kind not in _RESCALING_READERS:
+                raise ValueError(
+                    f"Cannot tie state pair {k}: tensor {name!r} is used by {kind}, which needs its scale and zero "
+                    "point unchanged"
+                )
+    return group
+
+
 _INT_RANGES = {schema.TensorType.INT8: np.iinfo(np.int8), schema.TensorType.INT16: np.iinfo(np.int16)}
 _BIAS_TYPES = {schema.TensorType.INT32: np.int32, schema.TensorType.INT64: np.int64}
 
@@ -325,7 +366,9 @@ def tie_state_scales(content: bytes, tolerance: float) -> bytes:
     tensors take the parameters of the tensor whose range covers the other's (the larger scale of a
     symmetric int16 pair), or else parameters whose range covers both ranges. The kernels reading or
     writing either tensor recompute their scaling from the new parameters when prepared, and the bias
-    of a FULLY_CONNECTED or convolution reading a state tensor is requantized to its new input scale.
+    of a FULLY_CONNECTED or convolution reading a state tensor is requantized to its new input scale. A
+    RESHAPE or SQUEEZE reading a state tensor copies its bytes, so its output takes the same parameters,
+    and its own readers are checked and requantized in turn.
 
     Args:
         content: Calibrated ``.tflite`` flatbuffer.
@@ -363,20 +406,14 @@ def tie_state_scales(content: bytes, tolerance: float) -> bytes:
                 f"{difference:.3%}, more than state_tie_tolerance {tolerance:.3%}; calibrate the state inputs with "
                 "the states the model produces"
             )
-        for index in (index_in, index_out):
-            readers = {_operator_name(model, op) for op in subgraph.operators if index in list(op.inputs)}
-            writers = {_operator_name(model, op) for op in subgraph.operators if index in list(op.outputs)}
-            fixed = sorted((readers - _RESCALING_READERS) | (writers - _RESCALING_WRITERS))
-            if fixed:
-                raise ValueError(
-                    f"Cannot tie state pair {k}: tensor {subgraph.tensors[index].name.decode()!r} is used by "
-                    f"{', '.join(fixed)}, which need its scale and zero point unchanged"
-                )
-        for index, tensor, original in ((index_in, tensor_in, q_in), (index_out, tensor_out, q_out)):
-            if original[0] != tied[0]:
-                _requantize_biases(model, index, tied[0], k)
-            tensor.quantization.scale = np.array([tied[0]], dtype=np.float32)
-            tensor.quantization.zeroPoint = np.array([tied[1]], dtype=np.int64)
+        groups = [(_tie_group(model, index, k), original) for index, original in ((index_in, q_in), (index_out, q_out))]
+        for group, original in groups:
+            for index in group:
+                if original[0] != tied[0]:
+                    _requantize_biases(model, index, tied[0], k)
+                tensor = subgraph.tensors[index]
+                tensor.quantization.scale = np.array([tied[0]], dtype=np.float32)
+                tensor.quantization.zeroPoint = np.array([tied[1]], dtype=np.int64)
         changed = True
     if not changed:
         return content

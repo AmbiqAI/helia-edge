@@ -3,7 +3,7 @@
 from pathlib import Path
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from .recipe import NAME, SHA256
 from .result import EnvironmentRecord, TensorRecord
@@ -41,14 +41,55 @@ class TensorEntry(BaseModel):
         return cls(**vars(record))
 
 
-class ReferenceRecord(BaseModel):
-    """Reference inputs as fed to the model and its outputs from LiteRT's reference kernels."""
+GOLDEN_SCHEMA = "helia-model-zoo/golden@2"
+
+
+class GoldenSource(BaseModel):
+    """Where a golden's inputs came from: the recipe's reference array file."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
-    inputs: FileRecord
-    outputs: FileRecord
+    uri: str
+    sha256: SHA256
+
+
+class GoldenRecord(BaseModel):
+    """A ``helia-model-zoo/golden@2`` NPZ (``input_i``/``output_i`` in subgraph order, raw values).
+
+    A ``sequence`` golden stacks ``steps`` calls along a leading axis, with each state output fed back as
+    the next state input, and the state reset at the steps in ``resets``.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid", populate_by_name=True)
+
+    file: FileRecord
+    schema_: Literal["helia-model-zoo/golden@2"] = Field(default=GOLDEN_SCHEMA, alias="schema")
+    kind: Literal["sequence"]
+    steps: int = Field(gt=0)
+    resets: tuple[int, ...] = ()
+    source: GoldenSource
     resolver: Literal["builtin_ref"] = "builtin_ref"
+
+
+class ReferenceRecord(BaseModel):
+    """Reference inputs as fed to the model and its outputs from LiteRT's reference kernels.
+
+    A stateless model has ``inputs`` and ``outputs`` ``.npy`` files; a streaming model has a ``golden``.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    inputs: FileRecord | None = None
+    outputs: FileRecord | None = None
+    golden: GoldenRecord | None = None
+    resolver: Literal["builtin_ref"] = "builtin_ref"
+
+    @model_validator(mode="after")
+    def _one_form(self) -> "ReferenceRecord":
+        arrays = self.inputs is not None and self.outputs is not None
+        if arrays == (self.golden is not None) or (self.inputs is None) != (self.outputs is None):
+            raise ValueError("A reference has either inputs and outputs files or a golden")
+        return self
 
 
 class EnvironmentEntry(BaseModel):

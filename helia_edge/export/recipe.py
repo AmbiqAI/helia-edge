@@ -71,6 +71,24 @@ class ParamsWeights(BaseModel):
     weights: FileSource
 
 
+class ParamsImport(BaseModel):
+    """Build an architecture from params, then import weights from a file trained elsewhere.
+
+    ``mapping`` names a ``WeightMapping`` in ``helia_edge.registry.weight_mappings``; ``weights`` must be
+    the file that mapping is pinned to (same sha256).
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    kind: Literal["params_import"]
+    architecture: str
+    params: dict[str, Any]
+    input_shape: tuple[int, ...] | None = None
+    num_classes: int | None = None
+    mapping: str
+    weights: FileSource
+
+
 class KerasFile(BaseModel):
     """Load a saved ``.keras`` model."""
 
@@ -89,25 +107,41 @@ class TfliteImport(BaseModel):
     file: FileSource
 
 
-ModelSource = Annotated[ParamsSeed | ParamsWeights | KerasFile | TfliteImport, Field(discriminator="kind")]
+ModelSource = Annotated[
+    ParamsSeed | ParamsWeights | ParamsImport | KerasFile | TfliteImport, Field(discriminator="kind")
+]
+
+Resets = Annotated[tuple[Annotated[int, Field(ge=1)], ...], Field(description="Steps at which the state resets")]
 
 
 class CalibrationSpec(BaseModel):
-    """Calibration samples: the first ``samples`` rows in stored order, or all rows when None."""
+    """Calibration samples: the first ``samples`` rows in stored order, or all rows when None.
+
+    For a streaming model (state inputs ``state_in_k``), the rows are consecutive calls of its one signal
+    input; the state inputs are calibrated with the states the model produces from them
+    (``helia_edge.export.stream_calibration``), zero at the start and at the steps in ``resets``.
+    """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     source: ArraySource
     samples: Annotated[int, Field(gt=0)] | None = None
+    resets: Resets = ()
 
 
 class ReferenceSpec(BaseModel):
-    """Reference inputs; outputs are computed with LiteRT's reference kernels."""
+    """Reference inputs; outputs are computed with LiteRT's reference kernels.
+
+    For a streaming model, the rows are consecutive calls of its one signal input, and each export gets
+    a ``helia-model-zoo/golden@2`` sequence golden with the state carried and reset at the steps in
+    ``resets``.
+    """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     source: ArraySource
     samples: Annotated[int, Field(gt=0)] | None = None
+    resets: Resets = ()
 
 
 class ExportEntry(ExportSpec):

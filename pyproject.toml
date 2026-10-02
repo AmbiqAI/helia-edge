@@ -85,9 +85,11 @@ ci = [
 typing = [
     "ty==0.0.82",
 ]
-# Reference runtime for importer parity tests; CI installs it in the TensorFlow backend job only
+# Reference runtime for importer parity tests and the model zoo's golden check; CI installs them in the
+# TensorFlow backend job only
 parity = [
     "onnxruntime==1.30.0; python_version < '3.14'",
+    "helia-model-zoo[litert] @ git+https://github.com/AmbiqAI/helia-model-zoo@95ee61892333650a702e4c8f21e062b24cca9f31; python_version < '3.14'",
 ]
 
 [build-system]
