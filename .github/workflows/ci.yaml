@@ -82,6 +82,8 @@ jobs:
         run: uv pip install 'torch==2.14.0' --index-url https://download.pytorch.org/whl/cpu
       - run: uv pip install '.[${{ matrix.backend }},grain]' 'keras==3.15.1' pytest
       - if: matrix.backend == 'tensorflow'
+        env:
+          GIT_LFS_SKIP_SMUDGE: "1"  # the zoo repository's model files are not needed to check goldens
         run: >-
           uv pip install 'ai-edge-litert==2.2.0' 'onnx==1.23.1' 'onnxruntime==1.30.0'
           'helia-model-zoo[litert] @ git+https://github.com/AmbiqAI/helia-model-zoo@95ee61892333650a702e4c8f21e062b24cca9f31'

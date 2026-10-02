@@ -64,7 +64,8 @@ The pre-commit stage needs only the `ci` group. The pre-push stage needs both
 backends to resolve annotations, so run it from the full environment above; CI
 installs CPU-only Torch for it. ruff, ty and prek are pinned exactly in the `ci`
 group, which `dev` includes. pre-commit reads the same configuration if prek is
-unavailable.
+unavailable. The `dev` group's `parity` tools install `helia-model-zoo` from git; set
+`GIT_LFS_SKIP_SMUDGE=1` when syncing to skip the zoo's model files, which those tests do not need.
 
 Runtime isolation is tested separately. Base, plotting-only, AWS-only and backend
 environments each run their applicable tests; combined environments cover model
