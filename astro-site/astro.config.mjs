@@ -23,7 +23,7 @@ export default defineConfig({
         { label: 'Getting started', href: `${base}/getting-started/`, sidebar: [page('Install heliaEDGE','getting-started'),page('Build your first model','getting-started/first-model'),page('Backend support','getting-started/backends')] },
         { label: 'User guide', href: `${base}/guide/`, sidebar: [
           page('Overview','guide'),
-          {label:'Build models',items:[page('Choose an architecture','guide/architectures'),page('Typed configuration','guide/typed-architectures')]},
+          {label:'Build models',items:[page('Choose an architecture','guide/architectures'),page('Typed configuration','guide/typed-architectures'),page('Import weights','guide/import-weights')]},
           {label:'Prepare data',items:[page('Preprocessing and augmentation','guide/preprocessing'),page('Portable signal preprocessing','guide/portable-preprocessing'),page('Input pipelines','guide/input-pipeline'),page('Preprocessing contracts','guide/preprocessing-contracts')]},
           {label:'Train and evaluate',items:[page('Training and callbacks','guide/training'),page('Masked autoencoders','guide/masked-autoencoders'),page('Metrics and evaluation','guide/evaluation')]},
           {label:'Save and deploy',items:[page('Save and load models','guide/serialization'),page('Export and quantization','guide/export')]},

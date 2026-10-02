@@ -7,6 +7,7 @@ from . import normalization as normalization
 from . import patching as patching
 from . import preprocessing as preprocessing
 from . import residual_vector_quantizer as residual_vector_quantizer
+from . import spectral as spectral
 from . import squeeze_excite as squeeze_excite
 from . import streaming as streaming
 from . import vector_quantizer as vector_quantizer
@@ -29,6 +30,7 @@ from .normalization import layer_normalization as layer_normalization
 from .patching import MaskedPatchEncoder2D as MaskedPatchEncoder2D
 from .patching import PatchLayer2D as PatchLayer2D
 from .residual_vector_quantizer import ResidualVectorQuantizer as ResidualVectorQuantizer
+from .spectral import StftMagnitude as StftMagnitude
 from .squeeze_excite import se_layer as se_layer
 from .streaming import StreamingLSTMCell as StreamingLSTMCell
 from .streaming import state_input as state_input

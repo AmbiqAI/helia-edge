@@ -31,6 +31,31 @@ assert not {'keras', 'tensorflow', 'torch'} & sys.modules.keys()
 """)
 
 
+def test_importers_do_not_import_frameworks_or_onnx():
+    run_python("""
+import sys
+from helia_edge.importers import Transpose, WeightMapping, WeightRow, import_weights
+from helia_edge.registry import importers
+assert callable(import_weights) and callable(importers.get('safetensors'))
+assert WeightRow(sources=('w',), transforms=(Transpose(perm=(1, 0)),), layer='l', weight='kernel').layer == 'l'
+assert not {'keras', 'tensorflow', 'torch', 'onnx', 'onnxruntime'} & sys.modules.keys()
+""")
+
+
+def test_onnx_reader_names_its_extra():
+    if importlib.util.find_spec("onnx") is not None:
+        pytest.skip("This check belongs in an environment without onnx")
+    run_python("""
+from helia_edge.importers.readers import read_onnx
+try:
+    read_onnx('model.onnx')
+except ImportError as exc:
+    assert 'helia-edge[onnx]' in str(exc), str(exc)
+else:
+    raise AssertionError('read_onnx without onnx should raise ImportError')
+""")
+
+
 def test_missing_backend_guidance():
     if importlib.util.find_spec("keras") is not None:
         pytest.skip("This check belongs in the base-only environment")
