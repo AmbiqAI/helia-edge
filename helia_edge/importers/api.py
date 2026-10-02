@@ -28,14 +28,32 @@ def _file_sha256(path: Path) -> str:
 
 
 def _weight(model, layer: str, weight: str):
+    """The weight ``weight`` (a name, or a path such as ``query/kernel`` inside a composite layer) of ``layer``."""
     target = model
     for name in layer.split("/"):
+        if not hasattr(target, "get_layer"):
+            raise ValueError(f"Layer path {layer!r}: {target.name!r} has no sublayers; name its weight as a path")
         target = target.get_layer(name)
-    matches = [w for w in target.weights if w.name == weight]
+    by_path = [w for w in target.weights if w.path.endswith("/" + weight)] if "/" in weight else []
+    matches = by_path or [w for w in target.weights if w.name == weight]
     if len(matches) != 1:
-        names = [w.name for w in target.weights]
-        raise ValueError(f"Layer {layer!r} has {len(matches)} weights named {weight!r}; its weights are {names}")
+        paths = [w.path for w in target.weights]
+        raise ValueError(f"Layer {layer!r} has {len(matches)} weights matching {weight!r}; its weights are {paths}")
     return matches[0]
+
+
+def _numpy_dtype(dtype) -> np.dtype:
+    """NumPy dtype to check and assign a Keras weight's value in; float32 for a float type NumPy does not
+    treat as float, such as bfloat16 (the variable casts on assignment)."""
+    try:
+        numpy_dtype = np.dtype(dtype)
+    except TypeError:
+        numpy_dtype = None
+    if numpy_dtype is not None and numpy_dtype.kind in "fiub":
+        return numpy_dtype
+    if "float" in str(dtype):
+        return np.dtype(np.float32)
+    raise ValueError(f"Unsupported weight dtype {dtype}")
 
 
 def import_weights(model, mapping: WeightMapping, path: Path | str) -> ImportReport:
@@ -45,8 +63,8 @@ def import_weights(model, mapping: WeightMapping, path: Path | str) -> ImportRep
 
     - the file's sha256 is the mapping's pinned ``source.sha256``;
     - every source tensor is used exactly once (each part once when split), or listed as ``unused``;
-    - every weight of ``model`` is assigned exactly once, with its shape, from a finite source of a
-      matching kind (float to float).
+    - every weight of ``model`` is assigned exactly once, with its shape, from a source of a matching
+      kind (float to float), finite once cast to the weight's dtype.
 
     Args:
         model: A built Keras model.
@@ -57,7 +75,8 @@ def import_weights(model, mapping: WeightMapping, path: Path | str) -> ImportRep
         ImportReport: The assignments and the source sha256.
 
     Raises:
-        ValueError: If any check fails; the message lists every problem found.
+        ValueError: If the file does not match its pin or changes while it is read; otherwise if any
+            other check fails, with every problem found listed in the message.
     """
     from ..registry import importers
 
@@ -68,6 +87,8 @@ def import_weights(model, mapping: WeightMapping, path: Path | str) -> ImportRep
             f"{path} has sha256 {sha256}; mapping {mapping.name!r} is for {mapping.source.sha256} ({mapping.source.uri})"
         )
     tensors = importers.get(mapping.format)(path)
+    if _file_sha256(path) != sha256:
+        raise ValueError(f"{path} changed while it was read")
 
     problems = []
     unknown = sorted({name for row in mapping.rows for name in row.sources} - set(tensors))
@@ -105,8 +126,9 @@ def import_weights(model, mapping: WeightMapping, path: Path | str) -> ImportRep
         if id(weight) in assigned:
             problems.append(f"{row.layer}/{row.weight} is the same weight as another row's")
             continue
+        dtype = _numpy_dtype(weight.dtype)
         kinds = {np.asarray(tensors[name]).dtype.kind for name in row.sources}
-        if (kinds != {"f"}) if np.dtype(weight.dtype).kind == "f" else ("f" in kinds):
+        if (kinds != {"f"}) if dtype.kind == "f" else ("f" in kinds):
             problems.append(f"{row.layer}/{row.weight}: source kinds {sorted(kinds)} for a {weight.dtype} weight")
             continue
         try:
@@ -119,8 +141,10 @@ def import_weights(model, mapping: WeightMapping, path: Path | str) -> ImportRep
                 f"{row.layer}/{row.weight}: mapped shape {value.shape} for weight shape {tuple(weight.shape)}"
             )
             continue
+        with np.errstate(over="ignore"):  # an overflow becomes inf, refused below
+            value = value.astype(dtype)
         if value.dtype.kind == "f" and not np.isfinite(value).all():
-            problems.append(f"{row.layer}/{row.weight}: the mapped value is not finite")
+            problems.append(f"{row.layer}/{row.weight}: the mapped value is not finite as {dtype}")
             continue
         assigned[id(weight)] = (row, weight)
         values[id(weight)] = value
@@ -132,7 +156,7 @@ def import_weights(model, mapping: WeightMapping, path: Path | str) -> ImportRep
         raise ValueError(f"Mapping {mapping.name!r} cannot import {path.name}:\n- " + "\n- ".join(problems))
 
     for key, (_, weight) in assigned.items():
-        weight.assign(values[key].astype(weight.dtype))
+        weight.assign(values[key])
     return ImportReport(
         mapping=mapping.name,
         source_sha256=sha256,

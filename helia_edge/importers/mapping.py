@@ -84,7 +84,22 @@ class Split(BaseModel):
         return np.split(x, self.parts, axis=self.axis)[self.index]
 
 
-Transform = Annotated[Transpose | Reshape | GateReorder | Split, Field(discriminator="kind")]
+class SumParts(BaseModel):
+    """Add ``parts`` equal parts along ``axis``, for example an ONNX LSTM's input and recurrent biases."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    kind: Literal["sum_parts"] = "sum_parts"
+    axis: int
+    parts: int = Field(ge=2)
+
+    def apply(self, x: npt.NDArray) -> npt.NDArray:
+        if x.shape[self.axis] % self.parts:
+            raise ValueError(f"Axis {self.axis} of shape {x.shape} does not split into {self.parts} parts")
+        return np.sum(np.split(x, self.parts, axis=self.axis), axis=0)
+
+
+Transform = Annotated[Transpose | Reshape | GateReorder | Split | SumParts, Field(discriminator="kind")]
 
 
 class WeightRow(BaseModel):
@@ -97,7 +112,8 @@ class WeightRow(BaseModel):
         transforms: Applied in order to the (combined) source. A ``Split`` may only come first and
             only with one source.
         layer: Name of the Keras layer holding the weight (``outer/inner`` for a nested model).
-        weight: Name of the weight within the layer, such as ``kernel`` or ``bias``.
+        weight: Name of the weight within the layer, such as ``kernel`` or ``bias``, or its path inside a
+            composite layer, such as ``query/kernel`` in a ``MultiHeadAttention``.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")

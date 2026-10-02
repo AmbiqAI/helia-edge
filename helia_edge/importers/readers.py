@@ -25,13 +25,24 @@ _SAFETENSORS_DTYPES = {
 
 
 def read_onnx(path: Path) -> dict[str, npt.NDArray]:
-    """The initializers of an ``.onnx`` model, by name."""
+    """The initializers of a self-contained ``.onnx`` model, by name.
+
+    Raises:
+        ValueError: If an initializer is stored in a separate data file, which the source's sha256 does
+            not cover.
+    """
     try:
         import onnx
         from onnx import numpy_helper
+        from onnx.external_data_helper import uses_external_data
     except ModuleNotFoundError as exc:
         raise ImportError("Reading ONNX files needs the optional dependency 'onnx'. Install helia-edge[onnx].") from exc
     model = onnx.load(str(path), load_external_data=False)
+    external = [tensor.name for tensor in model.graph.initializer if uses_external_data(tensor)]
+    if external:
+        raise ValueError(
+            f"{path} stores initializers {external} in separate data files; import a self-contained .onnx file"
+        )
     return {tensor.name: numpy_helper.to_array(tensor) for tensor in model.graph.initializer}
 
 
@@ -61,4 +72,10 @@ def read_torch(path: Path) -> dict[str, npt.NDArray]:
     state = torch.load(str(path), map_location="cpu", weights_only=True)
     if not isinstance(state, dict) or not all(isinstance(v, torch.Tensor) for v in state.values()):
         raise ValueError(f"{path} is not a flat state dict of tensors")
-    return {name: value.detach().cpu().numpy() for name, value in state.items()}
+    tensors = {}
+    for name, value in state.items():
+        try:
+            tensors[name] = value.detach().cpu().numpy()
+        except TypeError as exc:
+            raise ValueError(f"Tensor {name!r} has dtype {value.dtype}, which NumPy cannot hold") from exc
+    return tensors

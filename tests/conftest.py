@@ -13,7 +13,12 @@ def write_safetensors():
 
     def write(path, tensors):
         header, offset, blobs = {}, 0, []
-        codes = {np.dtype(np.float32): "F32", np.dtype(np.float16): "F16", np.dtype(np.int64): "I64"}
+        codes = {
+            np.dtype(np.float64): "F64",
+            np.dtype(np.float32): "F32",
+            np.dtype(np.float16): "F16",
+            np.dtype(np.int64): "I64",
+        }
         for name, value in tensors.items():
             blob = np.ascontiguousarray(value).astype(value.dtype.newbyteorder("<")).tobytes()
             header[name] = {

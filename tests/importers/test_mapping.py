@@ -4,7 +4,7 @@ import numpy as np
 import pydantic
 import pytest
 
-from helia_edge.importers import GateReorder, Reshape, SourcePin, Split, Transpose, WeightMapping, WeightRow
+from helia_edge.importers import GateReorder, Reshape, SourcePin, Split, SumParts, Transpose, WeightMapping, WeightRow
 from helia_edge.importers.readers import read_safetensors
 from helia_edge.registry import importers
 
@@ -16,6 +16,9 @@ def test_transforms_match_numpy():
     np.testing.assert_array_equal(Transpose(perm=(2, 0, 1)).apply(x), np.transpose(x, (2, 0, 1)))
     np.testing.assert_array_equal(Reshape(shape=(6, 4)).apply(x), x.reshape(6, 4))
     np.testing.assert_array_equal(Split(axis=2, parts=2, index=1).apply(x), x[:, :, 2:])
+    np.testing.assert_array_equal(SumParts(axis=2, parts=2).apply(x), x[:, :, :2] + x[:, :, 2:])
+    with pytest.raises(ValueError, match="does not split into 3 parts"):
+        SumParts(axis=2, parts=3).apply(x)
 
 
 def test_gate_reorder_moves_whole_gate_blocks():
@@ -74,6 +77,7 @@ def test_mappings_round_trip_through_json():
             weight="kernel",
         ),
         WeightRow(sources=("p",), transforms=(Split(axis=0, parts=2, index=1),), layer="dense", weight="bias"),
+        WeightRow(sources=("b",), transforms=(SumParts(axis=0, parts=2),), layer="lstm", weight="bias"),
     )
     mapping = WeightMapping(name="m", format="onnx", source=PIN, rows=rows, unused=("extra",))
     assert WeightMapping.model_validate_json(mapping.model_dump_json()) == mapping
