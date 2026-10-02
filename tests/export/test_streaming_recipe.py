@@ -226,18 +226,29 @@ def test_params_import_builds_and_imports_the_pinned_weights(workdir, write_safe
         run_recipe(write(workdir / "r3.json", stream_recipe(workdir, model=unknown)), workdir / "out3")
 
 
-def test_multi_input_models_need_batch_size_one(workdir):
-    a, b = keras.Input((4,), name="a"), keras.Input((4,), name="b")
+def test_multi_input_models_must_stream_with_batch_size_one(workdir):
+    a, b = keras.Input((4,), batch_size=1, name="a"), keras.Input((4,), batch_size=1, name="b")
     keras.Model([a, b], keras.layers.Add()([a, b])).save(workdir / "two.keras")
-    recipe = {
-        "schema": "helia-edge/export@1",
-        "model": {
-            "kind": "keras_file",
-            "file": {"kind": "path", "path": "two.keras", "sha256": sha(workdir / "two.keras")},
-        },
-        "exports": [EXPORTS[0]],
-    }
-    with pytest.raises(ValueError, match="batch size 1 on every input"):
+    x, h = keras.Input((FEATURES,), name="signal"), keras.Input((UNITS,), name="state_in_0")
+    stream = keras.Model([x, h], [keras.layers.Dense(1)(x), state_output(0, keras.layers.Dense(UNITS)(h))])
+    stream.save(workdir / "stream.keras")
+    for name, message in (
+        ("two.keras", "single-input models and streaming models"),
+        ("stream.keras", "batch size 1 on every input"),
+    ):
+        recipe = {
+            "schema": "helia-edge/export@1",
+            "model": {"kind": "keras_file", "file": {"kind": "path", "path": name, "sha256": sha(workdir / name)}},
+            "exports": [EXPORTS[0]],
+        }
+        with pytest.raises(ValueError, match=message):
+            run_recipe(write(workdir / "r.json", recipe), workdir / "out")
+
+
+def test_a_reference_of_one_step_takes_no_resets(workdir):
+    np.save(workdir / "one.npy", np.zeros((1, FEATURES), np.float32))
+    recipe = stream_recipe(workdir) | {"reference": {"source": array_source(workdir / "one.npy"), "resets": [1]}}
+    with pytest.raises(ValueError, match="absent for a single step"):
         run_recipe(write(workdir / "r.json", recipe), workdir / "out")
 
 

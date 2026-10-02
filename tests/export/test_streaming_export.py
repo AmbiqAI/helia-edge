@@ -413,7 +413,14 @@ def test_a_tie_carries_through_a_reshape_to_its_reader(signal):
         graph = parsed.subgraphs[0]
         state_out = {r.pair: r for r in tensor_records(content)[1] if r.pair is not None}[0]
         (index,) = [i for i in graph.outputs if graph.tensors[i].name.decode() == state_out.name]
-        reshaped = [op.outputs[0] for op in graph.operators if list(op.inputs)[0] == index and op.outputs is not None]
+        names = {v: k for k, v in vars(schema.BuiltinOperator).items() if isinstance(v, int)}
+        reshape = [
+            op
+            for op in graph.operators
+            if names[parsed.operatorCodes[op.opcodeIndex].builtinCode] == "RESHAPE" and list(op.inputs)[0] == index
+        ]
+        assert reshape
+        reshaped = [op.outputs[0] for op in reshape]
         params = {
             (float(graph.tensors[i].quantization.scale[0]), int(graph.tensors[i].quantization.zeroPoint[0]))
             for i in reshaped

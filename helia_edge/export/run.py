@@ -107,6 +107,11 @@ def _batch1(model):
     import keras
 
     if len(model.inputs) != 1:
+        if not any(state_pair(tensor.name) for tensor in model.inputs):
+            raise ValueError(
+                f"Recipes support single-input models and streaming models with state_in_k inputs; this model has "
+                f"{len(model.inputs)} inputs"
+            )
         if all(tensor.shape[0] == 1 for tensor in model.inputs):
             return model
         raise ValueError(f"A recipe model with {len(model.inputs)} inputs must have batch size 1 on every input")
@@ -131,7 +136,8 @@ def _check_resets(resets, steps: int, stateful: bool, what: str) -> None:
     if resets and not stateful:
         raise ValueError(f"{what} resets apply to streaming models only")
     if list(resets) != sorted(set(resets)) or (resets and resets[-1] >= steps):
-        raise ValueError(f"{what} resets {list(resets)} must be increasing steps between 1 and {steps - 1}")
+        bound = f"increasing steps between 1 and {steps - 1}" if steps > 1 else "absent for a single step"
+        raise ValueError(f"{what} resets {list(resets)} must be {bound}")
 
 
 def build_model(source: ParamsSeed | ParamsWeights | ParamsImport | KerasFile, base_dir: Path):
@@ -194,6 +200,10 @@ def _golden(content: bytes, frames: np.ndarray, resets, source: GoldenSource, pa
     from .runner import LiteRTStreamRunner
 
     runner = LiteRTStreamRunner(content, reference_kernels=True)
+    if len(runner.signals) != 1:
+        raise ValueError(
+            f"A streaming reference needs exactly one input that is not a state; got {list(runner.signals)}"
+        )
     (signal,) = runner.signals
     encoded = runner.encode(signal, frames.reshape(len(frames), *runner.inputs[signal]["shape"]))
     fed, produced = runner.run({signal: encoded}, resets)
