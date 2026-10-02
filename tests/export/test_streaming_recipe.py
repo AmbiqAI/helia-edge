@@ -32,8 +32,10 @@ def build_toy_stream(params, input_shape, num_classes):
     return keras.Model([x, h, c], [prob, state_output(0, h_next), state_output(1, c_next)])
 
 
-if "toy_stream" not in registry.architectures:
-    registry.architectures.add("toy_stream", build_toy_stream)
+@pytest.fixture(autouse=True)
+def toy_stream_architecture(monkeypatch):
+    """Register the toy architecture for each test only, so other tests see the built-in registry."""
+    monkeypatch.setitem(registry.architectures._values, "toy_stream", build_toy_stream)
 
 
 def sha(path):
