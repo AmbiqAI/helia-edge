@@ -31,11 +31,12 @@ UNITS, FEATURES = 12, 6
 INT16 = ExportSpec(precision="a16w8", io_dtype="int16", mode="keras")
 
 
-def build(concat_state=False, tanh_state=False, relu_head=False):
+def build(concat_state=False, tanh_state=False, relu_head=False, reshape_head=False):
     """A one-step LSTM detector whose head reads the hidden state through a biased Dense layer.
 
     With ``concat_state`` the hidden state also feeds a concatenation; with ``tanh_state`` the cell state
-    output is written by a tanh; with ``relu_head`` the head reads the hidden state through a ReLU.
+    output is written by a tanh; with ``relu_head`` the head reads the hidden state through a ReLU; with
+    ``reshape_head`` it reads it through a reshape and a 1x1 convolution.
     """
     keras.utils.set_random_seed(7)
     x = keras.Input((FEATURES,), batch_size=1, name="signal")
@@ -43,6 +44,9 @@ def build(concat_state=False, tanh_state=False, relu_head=False):
     h_next, c_next = StreamingLSTMCell(UNITS, name="lstm")([x, h, c])
     features = keras.layers.Concatenate()([h_next, h]) if concat_state else h_next
     features = keras.layers.ReLU()(features) if relu_head else features
+    if reshape_head:
+        features = keras.layers.Reshape((UNITS, 1))(features)
+        features = keras.layers.Flatten()(keras.layers.Conv1D(2, 1, name="mix")(features))
     prob = keras.layers.Dense(1, activation="sigmoid", name="prob")(features)
     c_out = keras.layers.Activation("tanh")(c_next) if tanh_state else c_next
     model = keras.Model([x, h, c], [prob, state_output(0, h_next), state_output(1, c_out)])
@@ -389,6 +393,33 @@ def test_a_tie_carries_through_a_relu_and_its_reader(signal):
         assert state_scales_tied(result.inputs, result.outputs) is True
         assert "RELU" in operator_names(result.content)
         runner = LiteRTStreamRunner(result.content, reference_kernels=True)
+        _, outputs = runner.run({"signal": runner.encode("signal", signal[96:, None])}, resets=[32])
+        errors[factor] = np.abs(runner.decode("prob", outputs["prob"])[:, 0] - want).max()
+    assert errors[1.25] < 2 * errors[1.0] + 1e-3
+
+
+def test_a_tie_carries_through_a_reshape_to_its_reader(signal):
+    from tensorflow.lite.python import schema_py_generated as schema
+
+    model = build(reshape_head=True)
+    calibration = stream_calibration(model, {"signal": signal[:96]})
+    spec = INT16.model_copy(update={"state_tie_tolerance": 0.3})
+    want = keras_stream(model, signal[96:], resets=[32])["prob"]
+    errors = {}
+    for factor in (1.0, 1.25):
+        content = export_model(model, spec, scaled_state(calibration, factor)).content
+        assert "RESHAPE" in operator_names(content)
+        parsed = schema.ModelT.InitFromObj(schema.Model.GetRootAsModel(bytearray(content), 0))
+        graph = parsed.subgraphs[0]
+        state_out = {r.pair: r for r in tensor_records(content)[1] if r.pair is not None}[0]
+        (index,) = [i for i in graph.outputs if graph.tensors[i].name.decode() == state_out.name]
+        reshaped = [op.outputs[0] for op in graph.operators if list(op.inputs)[0] == index and op.outputs is not None]
+        params = {
+            (float(graph.tensors[i].quantization.scale[0]), int(graph.tensors[i].quantization.zeroPoint[0]))
+            for i in reshaped
+        }
+        assert params == {(state_out.scale, state_out.zero_point)}
+        runner = LiteRTStreamRunner(content, reference_kernels=True)
         _, outputs = runner.run({"signal": runner.encode("signal", signal[96:, None])}, resets=[32])
         errors[factor] = np.abs(runner.decode("prob", outputs["prob"])[:, 0] - want).max()
     assert errors[1.25] < 2 * errors[1.0] + 1e-3

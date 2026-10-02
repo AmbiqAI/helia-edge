@@ -290,7 +290,12 @@ def run_recipe(recipe_path: Path, out_dir: Path, only: Collection[str] | None = 
         source = GoldenSource(uri=location + key, sha256=file.sha256)
 
     if isinstance(recipe.model, TfliteImport):
+        from .litert import tensor_records
+
         content = fetch(recipe.model.file, base).read_bytes()
+        if reference is not None:
+            stateful = any(record.pair is not None for record in tensor_records(content)[0])
+            _check_resets(resets, len(reference), stateful, "Reference")
         entries = [_entry("import", None, content, reference, out_dir, resets, source)]
     else:
         model = build_model(recipe.model, base)

@@ -247,8 +247,82 @@ def test_silero_vad_is_a_registered_architecture():
     model = resolve_architecture("vad_silero_v6")({"name": "vad"}, None, None)
     assert model.name == "vad" and [t.name for t in model.inputs] == ["audio", "state_in_0", "state_in_1"]
     assert SileroVadParams().samples == 576
+    from helia_edge.models import silero_vad_v6
+
+    assert silero_vad_v6("named").name == "named"
     with pytest.raises(ValueError, match="context"):
         resolve_architecture("vad_silero_v6")({"context": 32}, None, None)
     with pytest.raises(ValueError, match="fixed input shape"):
         resolve_architecture("vad_silero_v6")({}, (576,), None)
     assert "silero_vad_v6_onnx" in registry.weight_mappings
+
+
+def test_calibration_resets_reach_stream_calibration(workdir, monkeypatch):
+    from helia_edge.export import api
+
+    seen = []
+    original = api.stream_calibration
+    monkeypatch.setattr(
+        api,
+        "stream_calibration",
+        lambda model, signals, resets=(): seen.append(tuple(resets)) or original(model, signals, resets),
+    )
+    run_recipe(write(workdir / "r.json", stream_recipe(workdir, calibration_resets=(16, 40))), workdir / "out")
+    assert seen == [(16, 40)]
+
+
+def test_verify_detects_changed_golden_records(workdir):
+    write(workdir / "r.json", stream_recipe(workdir))
+    run_recipe(workdir / "r.json", workdir / "out")
+    path = workdir / "out" / "manifest.json"
+    data = json.loads(path.read_text())
+    data["entries"][0]["reference"]["golden"]["resets"] = [11]
+    path.write_text(json.dumps(data))
+    report = verify_manifest(path)
+    assert report.status == "drift" and any("recorded golden differs" in d for d in report.differences)
+
+
+def test_resets_of_an_imported_tflite_model_are_checked(workdir):
+    write(workdir / "r.json", stream_recipe(workdir))
+    manifest = run_recipe(workdir / "r.json", workdir / "out")
+    (workdir / "stream.tflite").write_bytes((workdir / "out" / manifest.entries[0].model.path).read_bytes())
+    recipe = {
+        "schema": "helia-edge/export@1",
+        "model": {
+            "kind": "tflite_import",
+            "file": {"kind": "path", "path": "stream.tflite", "sha256": sha(workdir / "stream.tflite")},
+        },
+        "reference": {"source": array_source(workdir / "ref.npy"), "resets": [25]},
+    }
+    with pytest.raises(ValueError, match="Reference resets"):
+        run_recipe(write(workdir / "i.json", recipe), workdir / "imported")
+    recipe["reference"]["resets"] = [5]
+    imported = run_recipe(write(workdir / "i.json", recipe), workdir / "imported")
+    assert imported.entries[0].reference.golden.resets == (5,)
+
+
+@pytest.mark.skipif(importlib.util.find_spec("helia_model_zoo") is None, reason="needs helia-model-zoo")
+def test_a_seeded_silero_model_exports_through_a_recipe(workdir):
+    from helia_model_zoo import golden
+
+    rng = np.random.default_rng(4)
+    np.save(workdir / "audio.npy", (0.1 * rng.standard_normal((6, 576))).astype(np.float32))
+    recipe = {
+        "schema": "helia-edge/export@1",
+        "model": {"kind": "params_seed", "architecture": "vad_silero_v6", "params": {}, "seed": 5},
+        "reference": {"source": array_source(workdir / "audio.npy"), "resets": [3]},
+        "exports": [EXPORTS[0]],
+    }
+    manifest = run_recipe(write(workdir / "s.json", recipe), workdir / "out")
+    (entry,) = manifest.entries
+    assert [r.pair for r in entry.inputs if r.pair is not None] and entry.reference.golden.steps == 6
+    record = entry.reference.golden
+    problems = golden.check(
+        workdir / "out" / entry.model.path,
+        workdir / "out" / record.file.path,
+        kind=record.kind,
+        steps=record.steps,
+        resets=record.resets,
+        resolver=record.resolver,
+    )
+    assert problems == [], problems
