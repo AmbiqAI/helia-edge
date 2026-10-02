@@ -897,7 +897,7 @@ ci = [
     { name = "ty" },
 ]
 dev = [
-    { name = "helia-model-zoo", extra = ["litert"] },
+    { name = "helia-model-zoo", extra = ["litert"], marker = "python_full_version < '3.14'" },
     { name = "ipykernel" },
     { name = "ipython" },
     { name = "notebook" },
@@ -908,7 +908,7 @@ dev = [
     { name = "ty" },
 ]
 parity = [
-    { name = "helia-model-zoo", extra = ["litert"] },
+    { name = "helia-model-zoo", extra = ["litert"], marker = "python_full_version < '3.14'" },
     { name = "onnxruntime", marker = "python_full_version < '3.14'" },
 ]
 typing = [
@@ -963,7 +963,7 @@ ci = [
     { name = "ty", specifier = "==0.0.82" },
 ]
 dev = [
-    { name = "helia-model-zoo", extras = ["litert"], git = "https://github.com/AmbiqAI/helia-model-zoo?rev=95ee61892333650a702e4c8f21e062b24cca9f31" },
+    { name = "helia-model-zoo", extras = ["litert"], marker = "python_full_version < '3.14'", git = "https://github.com/AmbiqAI/helia-model-zoo?rev=95ee61892333650a702e4c8f21e062b24cca9f31" },
     { name = "ipykernel", specifier = ">=6.29.5" },
     { name = "ipython", specifier = ">=8.25.0" },
     { name = "notebook", specifier = ">=7.2.1" },
@@ -974,7 +974,7 @@ dev = [
     { name = "ty", specifier = "==0.0.82" },
 ]
 parity = [
-    { name = "helia-model-zoo", extras = ["litert"], git = "https://github.com/AmbiqAI/helia-model-zoo?rev=95ee61892333650a702e4c8f21e062b24cca9f31" },
+    { name = "helia-model-zoo", extras = ["litert"], marker = "python_full_version < '3.14'", git = "https://github.com/AmbiqAI/helia-model-zoo?rev=95ee61892333650a702e4c8f21e062b24cca9f31" },
     { name = "onnxruntime", marker = "python_full_version < '3.14'", specifier = "==1.30.0" },
 ]
 typing = [{ name = "ty", specifier = "==0.0.82" }]
