@@ -15,6 +15,7 @@ BUILTIN_ARCHITECTURES: dict[str, str] = {
     "miniresnet_v1": "helia_edge.export.architectures:build_miniresnet_v1",
     "timeppg": "helia_edge.export.architectures:build_timeppg",
     "cornet": "helia_edge.export.architectures:build_cornet",
+    "vad_silero_v6": "helia_edge.export.architectures:build_vad_silero_v6",
 }
 
 Builder = Callable[[Mapping[str, Any], tuple[int, ...] | None, int | None], Any]
@@ -86,3 +87,11 @@ def build_cornet(params, input_shape, num_classes):
 
     _require("cornet", input_shape, num_classes, shape=True, classes=False)
     return CorNetModel.model_from_params(_input(input_shape), CorNetParams.from_config(params))
+
+
+def build_vad_silero_v6(params, input_shape, num_classes):
+    """Build the Silero VAD v6 streaming model from ``SileroVadParams``; its input shape is fixed."""
+    from ..models import SileroVadParams, silero_vad_v6
+
+    _require("vad_silero_v6", input_shape, num_classes, shape=False, classes=False)
+    return silero_vad_v6(SileroVadParams.model_validate(params))

@@ -98,7 +98,7 @@ def test_load_recipe_reads_yaml_and_json(tmp_path):
 
 
 def test_builtin_architectures_are_named_strings():
-    assert set(BUILTIN_ARCHITECTURES) == {"tcn", "mlperf_tiny", "miniresnet_v1", "timeppg", "cornet"}
+    assert set(BUILTIN_ARCHITECTURES) == {"tcn", "mlperf_tiny", "miniresnet_v1", "timeppg", "cornet", "vad_silero_v6"}
     assert all(":" in target for target in BUILTIN_ARCHITECTURES.values())
 
 
@@ -136,3 +136,38 @@ def test_cli_inspect_without_tensorflow_says_what_to_install(tmp_path):
     model.write_bytes(b"TFL3")
     result = CliRunner().invoke(app, ["inspect", str(model)])
     assert result.exit_code != 0 and "helia-edge[litert]" in result.output
+
+
+def test_params_import_and_resets_parse():
+    model = {
+        "kind": "params_import",
+        "architecture": "vad_silero_v6",
+        "params": {},
+        "mapping": "silero_vad_v6_onnx",
+        "weights": {"kind": "path", "path": "silero_vad_16k_op15.onnx", "sha256": SHA},
+    }
+    source = {"kind": "array", "file": {"kind": "path", "path": "frames.npy", "sha256": SHA}}
+    parsed = ExportRecipe.model_validate(
+        recipe(
+            model=model, calibration={"source": source, "resets": [3]}, reference={"source": source, "resets": [2, 5]}
+        )
+    )
+    assert parsed.model.kind == "params_import" and parsed.reference.resets == (2, 5)
+    with pytest.raises(pydantic.ValidationError):
+        ExportRecipe.model_validate(recipe(reference={"source": source, "resets": [0]}))
+
+
+def test_a_reference_is_either_arrays_or_a_golden():
+    from helia_edge.export.manifest import FileRecord, GoldenRecord, GoldenSource, ReferenceRecord
+
+    file = FileRecord(path="m/reference/golden.npz", sha256=SHA, bytes=10)
+    golden = GoldenRecord(
+        file=file, kind="sequence", steps=4, resets=(2,), source=GoldenSource(uri="path:f.npy", sha256=SHA)
+    )
+    record = ReferenceRecord(golden=golden)
+    data = json.loads(record.model_dump_json(by_alias=True))
+    assert data["golden"]["schema"] == "helia-model-zoo/golden@2"
+    assert ReferenceRecord.model_validate(data) == record
+    for invalid in ({}, {"inputs": file}, {"inputs": file, "outputs": file, "golden": golden}):
+        with pytest.raises(pydantic.ValidationError, match="either inputs and outputs files or a golden"):
+            ReferenceRecord(**invalid)
