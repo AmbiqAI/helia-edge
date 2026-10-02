@@ -156,12 +156,10 @@ def speech():
     return samples[: samples.size // 512 * 512]
 
 
-@pytest.mark.skipif(
-    not (ONNX_FILE and AUDIO_FILE),
-    reason="set HELIA_EDGE_SILERO_ONNX to the pinned silero_vad_16k_op15.onnx and HELIA_EDGE_SILERO_AUDIO to 16 kHz speech",
-)
+@pytest.mark.skipif(not ONNX_FILE, reason="set HELIA_EDGE_SILERO_ONNX to the pinned silero_vad_16k_op15.onnx")
 def test_imported_weights_match_onnx_runtime():
-    """A1: on speech, probability within 1e-4 of ONNX Runtime and the same decisions at 0.5, state carried."""
+    """A1: probability within 1e-4 of ONNX Runtime with the state carried; on speech from
+    HELIA_EDGE_SILERO_AUDIO, also the same decisions at 0.5, with speech and non-speech present."""
     if importlib.util.find_spec("onnxruntime") is None or importlib.util.find_spec("onnx") is None:
         pytest.skip("needs onnx and onnxruntime")
     import onnxruntime
@@ -176,9 +174,13 @@ def test_imported_weights_match_onnx_runtime():
         prob, state = session.run(None, {"input": x[None], "state": state, "sr": np.array(16000, np.int64)})
         return prob, state[0, 0], state[1, 0]
 
-    signal = speech()
+    signal = speech() if AUDIO_FILE else audio(160, seed=2)
     got, want = stream(keras_step(model), signal), stream(onnx_step, signal)
     probs, wanted = np.array([p for p, _, _ in got]), np.array([p for p, _, _ in want])
     assert np.abs(probs - wanted).max() <= 1e-4
-    assert ((probs > 0.5) == (wanted > 0.5)).all()
-    assert (wanted > 0.5).any() and (wanted < 0.5).any()
+    for (_, h, c), (_, rh, rc) in zip(got, want, strict=True):
+        np.testing.assert_allclose(h, rh, atol=1e-4)
+        np.testing.assert_allclose(c, rc, atol=1e-3, rtol=1e-5)
+    if AUDIO_FILE:
+        assert ((probs > 0.5) == (wanted > 0.5)).all()
+        assert (wanted > 0.5).any() and (wanted < 0.5).any()

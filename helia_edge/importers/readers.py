@@ -27,6 +27,9 @@ _SAFETENSORS_DTYPES = {
 def read_onnx(path: Path) -> dict[str, npt.NDArray]:
     """The initializers of a self-contained ``.onnx`` model, by name.
 
+    Weights held in ``Constant`` nodes rather than initializers are not read; such a source tensor is
+    reported as not in the file.
+
     Raises:
         ValueError: If an initializer is stored in a separate data file, which the source's sha256 does
             not cover.

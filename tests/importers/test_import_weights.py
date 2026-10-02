@@ -348,3 +348,12 @@ def test_a_transform_with_a_bad_axis_is_listed_with_the_other_problems(source):
     path, sha256 = source()
     with pytest.raises(ValueError, match="- dense/kernel: tuple index out of range"):
         import_weights(model(), mapping(sha256, tuple(rows)), path)
+
+
+def test_a_row_with_a_problem_is_not_also_listed_as_unmapped(source):
+    rows = list(ROWS)
+    rows[0] = WeightRow(sources=("dense.weight",), layer="dense", weight="kernel")  # shape mismatch
+    path, sha256 = source()
+    with pytest.raises(ValueError, match="mapped shape") as error:
+        import_weights(model(), mapping(sha256, tuple(rows)), path)
+    assert "without a mapping" not in str(error.value)

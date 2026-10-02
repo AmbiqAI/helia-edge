@@ -121,6 +121,7 @@ def import_weights(model, mapping: WeightMapping, path: Path | str) -> ImportRep
         problems.append(f"source tensors neither mapped nor listed as unused: {unused}")
 
     assigned = {}
+    reported = set()  # weights whose row already reported a problem
     values = {}
     for row in mapping.rows:
         try:
@@ -128,6 +129,7 @@ def import_weights(model, mapping: WeightMapping, path: Path | str) -> ImportRep
         except ValueError as exc:
             problems.append(str(exc))
             continue
+        reported.add(id(weight))
         if any(name not in tensors for name in row.sources):
             continue
         if id(weight) in assigned:
@@ -162,10 +164,11 @@ def import_weights(model, mapping: WeightMapping, path: Path | str) -> ImportRep
         if dtype.kind == "f" and not np.isfinite(_as_stored(value, weight.dtype)).all():
             problems.append(f"{row.layer}/{row.weight}: the mapped value is not finite as {weight.dtype}")
             continue
+        reported.discard(id(weight))
         assigned[id(weight)] = (row, weight)
         values[id(weight)] = value
 
-    missing = [w.path for w in model.weights if id(w) not in assigned]
+    missing = [w.path for w in model.weights if id(w) not in assigned and id(w) not in reported]
     if missing:
         problems.append(f"model weights without a mapping: {missing}")
     if problems:
