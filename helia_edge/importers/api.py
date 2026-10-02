@@ -19,7 +19,7 @@ class ImportReport:
     unused: tuple[str, ...]
 
 
-def file_sha256(path: Path) -> str:
+def _file_sha256(path: Path) -> str:
     digest = hashlib.sha256()
     with open(path, "rb") as file:
         for chunk in iter(lambda: file.read(1 << 20), b""):
@@ -62,7 +62,7 @@ def import_weights(model, mapping: WeightMapping, path: Path | str) -> ImportRep
     from ..registry import importers
 
     path = Path(path)
-    sha256 = file_sha256(path)
+    sha256 = _file_sha256(path)
     if sha256 != mapping.source.sha256:
         raise ValueError(
             f"{path} has sha256 {sha256}; mapping {mapping.name!r} is for {mapping.source.sha256} ({mapping.source.uri})"
