@@ -42,6 +42,13 @@ def _weight(model, layer: str, weight: str):
     return matches[0]
 
 
+def _as_stored(value: np.ndarray, dtype) -> np.ndarray:
+    """``value`` as a weight of ``dtype`` stores it, read back as float32 (catches overflow to inf in bfloat16)."""
+    import keras
+
+    return keras.ops.convert_to_numpy(keras.ops.cast(keras.ops.convert_to_tensor(value), dtype)).astype(np.float32)
+
+
 def _numpy_dtype(dtype) -> np.dtype:
     """NumPy dtype to check and assign a Keras weight's value in; float32 for a float type NumPy does not
     treat as float, such as bfloat16 (the variable casts on assignment)."""
@@ -64,7 +71,7 @@ def import_weights(model, mapping: WeightMapping, path: Path | str) -> ImportRep
     - the file's sha256 is the mapping's pinned ``source.sha256``;
     - every source tensor is used exactly once (each part once when split), or listed as ``unused``;
     - every weight of ``model`` is assigned exactly once, with its shape, from a source of a matching
-      kind (float to float), finite once cast to the weight's dtype.
+      kind (float to float), finite as stored in the weight's dtype (integers within its range).
 
     Args:
         model: A built Keras model.
@@ -126,14 +133,18 @@ def import_weights(model, mapping: WeightMapping, path: Path | str) -> ImportRep
         if id(weight) in assigned:
             problems.append(f"{row.layer}/{row.weight} is the same weight as another row's")
             continue
-        dtype = _numpy_dtype(weight.dtype)
+        try:
+            dtype = _numpy_dtype(weight.dtype)
+        except ValueError as exc:
+            problems.append(f"{row.layer}/{row.weight}: {exc}")
+            continue
         kinds = {np.asarray(tensors[name]).dtype.kind for name in row.sources}
         if (kinds != {"f"}) if dtype.kind == "f" else ("f" in kinds):
             problems.append(f"{row.layer}/{row.weight}: source kinds {sorted(kinds)} for a {weight.dtype} weight")
             continue
         try:
             value = row.value(tensors)
-        except ValueError as exc:
+        except (ValueError, IndexError) as exc:  # numpy reports a bad axis as an IndexError
             problems.append(f"{row.layer}/{row.weight}: {exc}")
             continue
         if tuple(value.shape) != tuple(weight.shape):
@@ -141,10 +152,15 @@ def import_weights(model, mapping: WeightMapping, path: Path | str) -> ImportRep
                 f"{row.layer}/{row.weight}: mapped shape {value.shape} for weight shape {tuple(weight.shape)}"
             )
             continue
+        if dtype.kind in "iu":
+            info = np.iinfo(dtype)
+            if value.size and (value.min() < info.min or value.max() > info.max):
+                problems.append(f"{row.layer}/{row.weight}: the mapped value is out of range for {weight.dtype}")
+                continue
         with np.errstate(over="ignore"):  # an overflow becomes inf, refused below
             value = value.astype(dtype)
-        if value.dtype.kind == "f" and not np.isfinite(value).all():
-            problems.append(f"{row.layer}/{row.weight}: the mapped value is not finite as {dtype}")
+        if dtype.kind == "f" and not np.isfinite(_as_stored(value, weight.dtype)).all():
+            problems.append(f"{row.layer}/{row.weight}: the mapped value is not finite as {weight.dtype}")
             continue
         assigned[id(weight)] = (row, weight)
         values[id(weight)] = value

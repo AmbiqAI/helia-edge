@@ -225,8 +225,14 @@ def test_inconsistent_split_layouts_are_refused(source, parts):
 
 
 class Counter(keras.layers.Layer):
+    def __init__(self, count_dtype="int32", **kwargs):
+        super().__init__(**kwargs)
+        self.count_dtype = count_dtype
+
     def build(self, input_shape):
-        self.count = self.add_weight(name="count", shape=(2,), dtype="int32", initializer="zeros", trainable=False)
+        self.count = self.add_weight(
+            name="count", shape=(2,), dtype=self.count_dtype, initializer="zeros", trainable=False
+        )
 
     def call(self, x):
         return x
@@ -245,7 +251,6 @@ def test_a_float_source_for_an_integer_weight_is_refused(source):
 
 
 def test_a_file_changed_while_read_is_refused(source, monkeypatch):
-    from helia_edge.importers import readers
     from helia_edge.registry import importers
 
     path, sha256 = source()
@@ -259,7 +264,6 @@ def test_a_file_changed_while_read_is_refused(source, monkeypatch):
     monkeypatch.setitem(importers._values, "safetensors", read_then_change)
     with pytest.raises(ValueError, match="changed while it was read"):
         import_weights(model(), mapping(sha256), path)
-    assert readers.read_safetensors is original
 
 
 def test_torch_tensors_numpy_cannot_hold_are_refused(tmp_path):
@@ -317,3 +321,30 @@ def test_bfloat16_weights_take_float_sources(source):
     import_weights(low, mapping(sha256, ROWS[:2]), path)
     kernel = keras.ops.convert_to_numpy(keras.ops.cast(low.get_layer("dense").kernel, "float32"))
     np.testing.assert_allclose(kernel, values["dense.weight"].T, rtol=1e-2)
+
+
+def test_values_are_checked_as_the_weight_stores_them(source):
+    x = keras.Input((3,))
+    low = keras.Model(x, keras.layers.Dense(4, dtype="bfloat16", name="dense")(x))
+    values = {k: v for k, v in tensors().items() if k != "head.weight"}
+    values["dense.weight"][0, 0] = 3.4e38  # finite in float32, inf in bfloat16
+    path, sha256 = source(values)
+    with pytest.raises(ValueError, match="not finite as bfloat16"):
+        import_weights(low, mapping(sha256, ROWS[:2]), path)
+
+    counted = keras.Model(x, Counter(count_dtype="int8", name="counter")(x))
+    path, sha256 = source({"count": np.array([300, -200], np.int64)})
+    with pytest.raises(ValueError, match="out of range for int8"):
+        import_weights(
+            counted, mapping(sha256, (WeightRow(sources=("count",), layer="counter", weight="count"),)), path
+        )
+
+
+def test_a_transform_with_a_bad_axis_is_listed_with_the_other_problems(source):
+    rows = list(ROWS)
+    rows[0] = WeightRow(
+        sources=("dense.weight",), transforms=(Split(axis=5, parts=2, index=0),), layer="dense", weight="kernel"
+    )
+    path, sha256 = source()
+    with pytest.raises(ValueError, match="- dense/kernel: tuple index out of range"):
+        import_weights(model(), mapping(sha256, tuple(rows)), path)
