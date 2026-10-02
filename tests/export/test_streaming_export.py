@@ -31,17 +31,18 @@ UNITS, FEATURES = 12, 6
 INT16 = ExportSpec(precision="a16w8", io_dtype="int16", mode="keras")
 
 
-def build(concat_state=False, tanh_state=False):
+def build(concat_state=False, tanh_state=False, relu_head=False):
     """A one-step LSTM detector whose head reads the hidden state through a biased Dense layer.
 
     With ``concat_state`` the hidden state also feeds a concatenation; with ``tanh_state`` the cell state
-    output is written by a tanh.
+    output is written by a tanh; with ``relu_head`` the head reads the hidden state through a ReLU.
     """
     keras.utils.set_random_seed(7)
     x = keras.Input((FEATURES,), batch_size=1, name="signal")
     h, c = state_input(0, (UNITS,), 1), state_input(1, (UNITS,), 1)
     h_next, c_next = StreamingLSTMCell(UNITS, name="lstm")([x, h, c])
     features = keras.layers.Concatenate()([h_next, h]) if concat_state else h_next
+    features = keras.layers.ReLU()(features) if relu_head else features
     prob = keras.layers.Dense(1, activation="sigmoid", name="prob")(features)
     c_out = keras.layers.Activation("tanh")(c_next) if tanh_state else c_next
     model = keras.Model([x, h, c], [prob, state_output(0, h_next), state_output(1, c_out)])
@@ -375,3 +376,19 @@ def test_int8_pairs_whose_ranges_overlap_are_tied_to_a_range_covering_both(model
     assert state_scales_tied(result.inputs, result.outputs) is True
     low, high = representable(pair_params(result.inputs, 1)[0], info)
     assert low <= min(in_low, out_low) and high >= max(in_high, out_high)
+
+
+def test_a_tie_carries_through_a_relu_and_its_reader(signal):
+    model = build(relu_head=True)
+    calibration = stream_calibration(model, {"signal": signal[:96]})
+    spec = INT16.model_copy(update={"state_tie_tolerance": 0.3})
+    want = keras_stream(model, signal[96:], resets=[32])["prob"]
+    errors = {}
+    for factor in (1.0, 1.25):
+        result = export_model(model, spec, scaled_state(calibration, factor))
+        assert state_scales_tied(result.inputs, result.outputs) is True
+        assert "RELU" in operator_names(result.content)
+        runner = LiteRTStreamRunner(result.content, reference_kernels=True)
+        _, outputs = runner.run({"signal": runner.encode("signal", signal[96:, None])}, resets=[32])
+        errors[factor] = np.abs(runner.decode("prob", outputs["prob"])[:, 0] - want).max()
+    assert errors[1.25] < 2 * errors[1.0] + 1e-3
