@@ -315,7 +315,8 @@ def test_a_seeded_silero_model_exports_through_a_recipe(workdir):
     }
     manifest = run_recipe(write(workdir / "s.json", recipe), workdir / "out")
     (entry,) = manifest.entries
-    assert [r.pair for r in entry.inputs if r.pair is not None] and entry.reference.golden.steps == 6
+    assert sorted(r.pair for r in entry.inputs if r.pair is not None) == [0, 1]
+    assert entry.reference.golden.steps == 6
     record = entry.reference.golden
     problems = golden.check(
         workdir / "out" / entry.model.path,
