@@ -6,7 +6,7 @@
 outputs and state pairs, built from its weights:
 
 - The 576 samples become 9 blocks of 64. Frames 0 to 2 are a convolution over blocks (kernel 4,
-  stride 2); a 128-sample stride is beyond the NPU.
+  stride 2) rather than over samples with a 128-sample stride.
 - Frame 3 overlaps the right reflect padding. Reflection is linear, so it is folded into a second
   convolution's weights over blocks 6 to 8.
 - The magnitude of each bin is the largest of 9 projections of (|re|, |im|) onto directions from 0 to

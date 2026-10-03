@@ -373,6 +373,9 @@ def _environment_differences(recorded: EnvironmentEntry, current: EnvironmentEnt
         for key in ("helia_edge", "helia_edge_commit", "python", "platform")
         if getattr(recorded, key) != getattr(current, key)
     ]
+    # Manifests written before helia_edge_source was recorded have None
+    if recorded.helia_edge_source is not None and recorded.helia_edge_source != current.helia_edge_source:
+        differences.append(f"helia_edge_source: {recorded.helia_edge_source} -> {current.helia_edge_source}")
     for package in sorted(set(recorded.packages) | set(current.packages)):
         if recorded.packages.get(package) != current.packages.get(package):
             differences.append(f"{package}: {recorded.packages.get(package)} -> {current.packages.get(package)}")

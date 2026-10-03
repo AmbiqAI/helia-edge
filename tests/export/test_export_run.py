@@ -275,6 +275,15 @@ def test_the_manifest_records_how_helia_edge_was_installed(workdir, installed_as
     assert quiet.exit_code == 0 and "does not identify" not in quiet.stderr
 
 
+def test_verify_reports_a_different_install_source_as_an_environment_mismatch(workdir, installed_as):
+    installed_as("release")
+    run_recipe(ad_recipe(workdir), workdir / "out", only=["fp32"])
+    installed_as("local")
+    report = verify_manifest(workdir / "out" / "manifest.json")
+    assert report.status == "env_mismatch"
+    assert report.environment_differences == ["helia_edge_source: release -> local"]
+
+
 @pytest.mark.parametrize("source", ["local", "unknown"])
 def test_publication_runs_refuse_code_the_manifest_cannot_identify(workdir, installed_as, source):
     installed_as(source)
