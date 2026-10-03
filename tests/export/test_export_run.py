@@ -269,6 +269,10 @@ def test_the_manifest_records_how_helia_edge_was_installed(workdir, installed_as
     assert ExportManifest.read(workdir / "out" / "manifest.json").environment.helia_edge_source == "vcs"
     installed_as("release")
     run_recipe(ad_recipe(workdir), workdir / "release", only=["fp32"], require_provenance=True)
+    quiet = CliRunner().invoke(
+        app, ["export", "run", str(workdir / "ad.yaml"), "--out", str(workdir / "cli"), "--only", "fp32"]
+    )
+    assert quiet.exit_code == 0 and "does not identify" not in quiet.stderr
 
 
 @pytest.mark.parametrize("source", ["local", "unknown"])

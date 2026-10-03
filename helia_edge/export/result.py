@@ -67,8 +67,8 @@ class EnvironmentRecord:
     example a source tree on ``PYTHONPATH``). ``helia_edge_commit`` is set only for a distribution
     installed from a VCS URL. ``helia_edge_source`` says how the version identifies the code: ``release``
     (installed from a package index), ``vcs`` (installed from a VCS URL at ``helia_edge_commit``),
-    ``local`` (installed from a local directory or archive, which the version does not identify) or
-    ``unknown``.
+    ``local`` (installed from a directory or an archive, or a source tree with egg-info metadata, which
+    the version does not identify) or ``unknown``.
     """
 
     helia_edge: str
@@ -121,8 +121,10 @@ def _installed_helia_edge() -> tuple[str, str | None, HeliaEdgeSource]:
     if Path(installed).resolve() != imported:
         return "unknown", None, "unknown"
     commit = direct_url.get("vcs_info", {}).get("commit_id")
-    # PEP 610: a distribution installed from an index has no direct_url.json
-    source = "vcs" if commit else ("local" if direct_url else "release")
+    # PEP 610: a distribution installed from an index has no direct_url.json. Installed distributions
+    # have a RECORD; a source tree's .egg-info, which also has no direct_url.json, does not.
+    installed_from_index = not direct_url and distribution.read_text("RECORD") is not None
+    source = "vcs" if commit else ("release" if installed_from_index else "local")
     return distribution.version, commit, source
 
 
