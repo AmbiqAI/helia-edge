@@ -130,7 +130,7 @@ helia-edge export verify exports/manifest.json
 - **Batch size and session:** models are exported with batch size 1. Each is built in a fresh Keras session, because auto-generated layer names become tensor names in the exported bytes.
 - **Manifest:** `manifest.json` (`schema: helia-edge/manifest@1`) records the recipe's sha256, the environment (helia-edge version, plus its commit when installed from a git URL; Python; platform; NumPy, Keras, TensorFlow and ai-edge-litert versions), and each file's sha256. `run` writes into `--out` without removing files from earlier runs; only the entries in the manifest are verified. `helia-edge export schema --kind recipe|manifest` prints the JSON Schemas.
 - **Provenance:** `environment.helia_edge_source` says whether the version identifies the code that exported:
-  - `release`: installed from a package index;
+  - `release`: installed from a package index (a wheel built from a modified tree and served from a private index looks the same, so prefer `vcs` for published exports);
   - `vcs`: installed from a git URL, at `helia_edge_commit`;
   - `local`: installed from a directory or an archive (local or by URL), or run from a source tree, none of which the version identifies;
   - `unknown`.

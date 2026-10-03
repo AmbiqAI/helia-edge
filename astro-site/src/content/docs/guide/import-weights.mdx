@@ -23,7 +23,7 @@ The model is a streaming model (see [Streaming models](/helia-edge/guide/export/
 As built, the model exports to `fp32`. LiteRT cannot quantize its exact STFT magnitude (a square root) to int16 activations. For `a16w8`, export it with the `npu` [lowering](/helia-edge/guide/export/#lowerings) (`lowering="npu"`, `architecture="vad_silero_v6"`), which rebuilds it from operators an Ethos-U NPU runs:
 
 - The STFT becomes convolutions over 64-sample blocks, with the right reflect padding folded into the weights.
-- Each magnitude is the largest of 9 projections of the real and imaginary parts, within ±0.24% of the exact value.
+- Each magnitude is the largest of 9 projections of the real and imaginary parts, within ±0.24% of the exact value in float.
 - The last two encoder convolutions become fully connected layers over the taps that see real frames.
 
 Everything else is exact in float. Calibrate with speech at full scale as well as at typical levels: the int16 audio input covers only the calibrated range, and louder samples clip.
