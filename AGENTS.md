@@ -14,15 +14,17 @@ Keras 3 add-on for training and exporting models to Ambiq edge targets. Full gui
 - Export with `helia_edge.export.export_model` and run with `LiteRTRunner`, or `LiteRTStreamRunner` for streaming
   models with state pairs (export guide); the `converters` and `interpreters.tflite` classes are deprecated
   (they warn) and must not be used in new code or examples.
-- Export recipes: `helia-edge export run RECIPE.yaml --out DIR`, then `helia-edge export verify DIR/manifest.json`
-  (exit 0 ok, 1 drift, 2 environment mismatch); `helia-edge export schema --kind recipe|manifest`.
-- Extensions register in `helia_edge.registry` (exporters, architectures, lowerings) or through the `helia_edge.plugins`
-  entry-point group; custom train steps use `helia_edge.trainers.gradient_step` (MaskedAutoencoder does; the
-  contrastive trainers are TensorFlow-only).
+- Export recipes: `helia-edge export run RECIPE.yaml --out DIR` (`--require-provenance` for published exports),
+  then `helia-edge export verify DIR/manifest.json` (exit 0 ok, 1 drift, 2 environment mismatch);
+  `helia-edge export schema --kind recipe|manifest`.
+- Extensions register in `helia_edge.registry` (exporters, architectures, lowerings) or through the
+  `helia_edge.plugins` entry-point group; custom train steps use `helia_edge.trainers.gradient_step`
+  (MaskedAutoencoder does; the contrastive trainers are TensorFlow-only).
 - Weights trained elsewhere load through `helia_edge.importers.import_weights` with a `WeightMapping` pinned to
   the source file's sha256 (extra `onnx` for ONNX), or a recipe's `params_import` model source; streaming
-  recipes write `helia-model-zoo/golden@2` sequence goldens. `ExportSpec.lowering` (with `architecture=`) rebuilds a
-  model from accelerator operators before conversion: Silero VAD v6 exports to `a16w8` only as `lowering="npu"`.
+  recipes write `helia-model-zoo/golden@2` sequence goldens.
+- `ExportSpec.lowering` (with `architecture=`) rebuilds a model from accelerator operators before conversion;
+  Silero VAD v6 exports to `a16w8` only as `lowering="npu"`.
 - Data: `helia_edge.data.to_grain` (extra `grain`) reads indexed records; `to_tf_dataset` and `to_torch_loader`
   wrap its batches. The tf.data generator helpers live in `helia_edge.data.tf_data` (re-exported by
   `helia_edge.utils`).

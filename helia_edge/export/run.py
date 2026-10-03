@@ -264,7 +264,9 @@ def _entry(
     )
 
 
-def run_recipe(recipe_path: Path, out_dir: Path, only: Collection[str] | None = None) -> ExportManifest:
+def run_recipe(
+    recipe_path: Path, out_dir: Path, only: Collection[str] | None = None, require_provenance: bool = False
+) -> ExportManifest:
     """Regenerate a recipe's exports into ``out_dir`` and write ``out_dir/manifest.json``.
 
     The model is built in a fresh Keras session (see ``build_model``).
@@ -273,12 +275,22 @@ def run_recipe(recipe_path: Path, out_dir: Path, only: Collection[str] | None = 
         recipe_path: Recipe file (YAML or JSON). Path sources resolve relative to its directory.
         out_dir: Output directory; each export is written to ``<name>/model.tflite``.
         only: Export names to run; all when None.
+        require_provenance: Refuse to run unless the manifest will identify the helia-edge code: a release
+            installed from a package index, or an install from a git URL at a commit.
 
     Returns:
         ExportManifest: The written manifest.
     """
     from .api import export_model
 
+    if require_provenance:
+        record = environment_record()
+        if not record.identified:
+            raise ValueError(
+                f"helia-edge {record.helia_edge} ({record.helia_edge_source} install) does not identify its code; "
+                "install a release, or install from git at a commit: "
+                "uv pip install 'helia-edge @ git+https://github.com/AmbiqAI/helia-edge@<commit>'"
+            )
     recipe_path, out_dir = Path(recipe_path).resolve(), Path(out_dir).resolve()
     recipe = load_recipe(recipe_path)
     base = recipe_path.parent

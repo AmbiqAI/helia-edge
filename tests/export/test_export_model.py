@@ -145,10 +145,11 @@ class FakeDistribution:
 @pytest.mark.parametrize(
     ("layout", "expected"),
     [
-        ("vcs", ("9.9.9", "abc123")),
-        ("editable", ("9.9.9", None)),
-        ("wheel", ("9.9.9", None)),
-        ("other-tree", ("unknown", None)),
+        ("vcs", ("9.9.9", "abc123", "vcs")),
+        ("editable", ("9.9.9", None, "local")),
+        ("directory", ("9.9.9", None, "local")),
+        ("wheel", ("9.9.9", None, "release")),
+        ("other-tree", ("unknown", None, "unknown")),
     ],
 )
 def test_environment_identity_of_installed_distributions(monkeypatch, tmp_path, layout, expected):
@@ -164,13 +165,15 @@ def test_environment_identity_of_installed_distributions(monkeypatch, tmp_path, 
     direct_url = {
         "vcs": json.dumps({"url": "https://example.invalid/helia-edge.git", "vcs_info": {"commit_id": "abc123"}}),
         "editable": json.dumps({"url": f"file://{source}", "dir_info": {"editable": True}}),
+        "directory": json.dumps({"url": f"file://{source}", "dir_info": {}}),
         "wheel": None,
         "other-tree": None,
     }[layout]
     root = tmp_path / "elsewhere" if layout == "other-tree" else site
     monkeypatch.setattr(importlib.metadata, "distribution", lambda name: FakeDistribution(root, direct_url))
     env = result.environment_record()
-    assert (env.helia_edge, env.helia_edge_commit) == expected
+    assert (env.helia_edge, env.helia_edge_commit, env.helia_edge_source) == expected
+    assert env.identified == (expected[2] in ("vcs", "release"))
 
 
 def test_environment_is_unknown_for_an_uninstalled_tree(monkeypatch, tmp_path):
@@ -179,7 +182,7 @@ def test_environment_is_unknown_for_an_uninstalled_tree(monkeypatch, tmp_path):
 
     monkeypatch.setattr(helia_edge, "__file__", str(tmp_path / "helia_edge" / "__init__.py"))
     env = environment_record()
-    assert (env.helia_edge, env.helia_edge_commit) == ("unknown", None)
+    assert (env.helia_edge, env.helia_edge_commit, env.helia_edge_source) == ("unknown", None, "unknown")
 
 
 def test_environment_is_recorded(model):

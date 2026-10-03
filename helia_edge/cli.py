@@ -26,11 +26,22 @@ def export_run(
     recipe: Annotated[Path, typer.Argument(help="Recipe file (YAML or JSON).", exists=True, dir_okay=False)],
     out: Annotated[Path, typer.Option(help="Output directory.")] = Path("exports"),
     only: Annotated[list[str] | None, typer.Option(help="Export name to run; repeat for several.")] = None,
+    require_provenance: Annotated[
+        bool, typer.Option(help="Refuse unless helia-edge is a release or a git install at a commit.")
+    ] = False,
 ) -> None:
     """Regenerate a recipe's exports and write OUT/manifest.json."""
+    from .export.result import environment_record
     from .export.run import run_recipe
 
-    manifest = run_recipe(recipe, out, only=only)
+    record = environment_record()
+    if not record.identified and not require_provenance:
+        typer.echo(
+            f"warning: helia-edge {record.helia_edge} ({record.helia_edge_source} install) does not identify its "
+            "code; the manifest records no commit",
+            err=True,
+        )
+    manifest = run_recipe(recipe, out, only=only, require_provenance=require_provenance)
     for entry in manifest.entries:
         typer.echo(f"{entry.name}: {entry.model.path} sha256 {entry.model.sha256}")
     typer.echo(f"manifest: {Path(out) / 'manifest.json'}")
@@ -108,6 +119,7 @@ def info() -> None:
     report = {
         "helia_edge": record.helia_edge,
         "helia_edge_commit": record.helia_edge_commit,
+        "helia_edge_source": record.helia_edge_source,
         "python": record.python,
         "packages": dict(record.packages),
         "keras_backend_env": os.environ.get("KERAS_BACKEND"),
