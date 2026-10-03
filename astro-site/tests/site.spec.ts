@@ -54,7 +54,7 @@ test('installation choices sync and advanced examples stay available', async ({p
   await expect(page.getByRole('tabpanel').filter({hasText:'uv sync --python 3.12 --extra torch'}).last()).toBeVisible();
   await page.getByRole('tab',{name:'PyPI release',exact:true}).click();
   await page.getByRole('tab',{name:'uv',exact:true}).click();
-  await expect(page.getByRole('tabpanel').filter({hasText:"uv add 'helia-edge==0.6.2'"}).last()).toBeVisible();
+  await expect(page.getByRole('tabpanel').filter({hasText:"uv add 'helia-edge[tensorflow]==0.7.0'"}).last()).toBeVisible();
   await page.goto('getting-started/backends/');
   await expect(page.getByRole('tab',{name:'PyTorch',exact:true})).toHaveAttribute('aria-selected','true');
   await page.goto('guide/input-pipeline/');

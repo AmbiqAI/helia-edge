@@ -45,26 +45,26 @@ Run scripts with `uv run`. Record `git rev-parse HEAD` with your experiments.
 </TabItem>
 <TabItem label="PyPI release">
 
-Release 0.6.2 uses the earlier TensorFlow-based API and includes plotting and AWS dependencies by default. Use the source checkout for the portable TensorFlow/PyTorch APIs and optional capability extras described on this site.
+Release 0.7.0 provides the portable TensorFlow/PyTorch APIs described on this site. Choose a backend with the `tensorflow` or `torch` extra.
 
 <Tabs syncKey="edge-installer">
 <TabItem label="pip">
 
 ```sh
-pip install 'helia-edge==0.6.2'
+pip install 'helia-edge[tensorflow]==0.7.0'
 ```
 
 </TabItem>
 <TabItem label="uv">
 
 ```sh
-uv add 'helia-edge==0.6.2'
+uv add 'helia-edge[tensorflow]==0.7.0'
 ```
 
 </TabItem>
 </Tabs>
 
-The 0.6.2 release offers a `litert` extra; it has no `torch`, `tensorflow`, `plotting` or `aws` extras.
+Other extras: `torch`, `litert`, `onnx`, `grain`, `plotting` and `aws`.
 
 </TabItem>
 </Tabs>
