@@ -120,7 +120,7 @@ for args in (["info"], ["export", "schema"], ["export", "schema", "--kind", "man
     result = CliRunner().invoke(app, args)
     assert result.exit_code == 0, result.output
 report = json.loads(CliRunner().invoke(app, ["info"]).output)
-assert {"helia_edge", "python", "packages", "keras_backend_env", "installed"} <= report.keys()
+assert {"helia_edge", "helia_edge_source", "python", "packages", "keras_backend_env", "installed"} <= report.keys()
 assert not {"keras", "tensorflow", "torch"} & sys.modules.keys(), sorted({"keras", "tensorflow", "torch"} & sys.modules.keys())
 """
     result = subprocess.run([sys.executable, "-c", source], text=True, capture_output=True, timeout=120)

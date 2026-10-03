@@ -14,8 +14,9 @@ Keras 3 add-on for training and exporting models to Ambiq edge targets. Full gui
 - Export with `helia_edge.export.export_model` and run with `LiteRTRunner`, or `LiteRTStreamRunner` for streaming
   models with state pairs (export guide); the `converters` and `interpreters.tflite` classes are deprecated
   (they warn) and must not be used in new code or examples.
-- Export recipes: `helia-edge export run RECIPE.yaml --out DIR`, then `helia-edge export verify DIR/manifest.json`
-  (exit 0 ok, 1 drift, 2 environment mismatch); `helia-edge export schema --kind recipe|manifest`.
+- Export recipes: `helia-edge export run RECIPE.yaml --out DIR` (`--require-provenance` for published exports),
+  then `helia-edge export verify DIR/manifest.json` (exit 0 ok, 1 drift, 2 environment mismatch);
+  `helia-edge export schema --kind recipe|manifest`.
 - Extensions register in `helia_edge.registry` (exporters, architectures) or through the `helia_edge.plugins`
   entry-point group; custom train steps use `helia_edge.trainers.gradient_step` (MaskedAutoencoder does; the
   contrastive trainers are TensorFlow-only).
