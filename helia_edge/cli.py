@@ -32,15 +32,14 @@ def export_run(
 ) -> None:
     """Regenerate a recipe's exports and write OUT/manifest.json."""
     from .export.result import environment_record
-    from .export.run import run_recipe
+    from .export.run import run_recipe, unidentified_install
 
     record = environment_record()
-    if not record.identified and not require_provenance:
-        typer.echo(
-            f"warning: helia-edge {record.helia_edge} ({record.helia_edge_source} install) does not identify its "
-            "code; the manifest records no commit",
-            err=True,
-        )
+    if not record.identified:
+        if require_provenance:
+            typer.echo(f"error: {unidentified_install(record)}", err=True)
+            raise typer.Exit(1)
+        typer.echo(f"warning: {unidentified_install(record)}", err=True)
     manifest = run_recipe(recipe, out, only=only, require_provenance=require_provenance)
     for entry in manifest.entries:
         typer.echo(f"{entry.name}: {entry.model.path} sha256 {entry.model.sha256}")

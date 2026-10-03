@@ -285,7 +285,7 @@ def test_publication_runs_refuse_code_the_manifest_cannot_identify(workdir, inst
     refused = runner.invoke(
         app, ["export", "run", str(workdir / "ad.yaml"), "--out", str(workdir / "out"), "--require-provenance"]
     )
-    assert refused.exit_code != 0 and not (workdir / "out").exists()
+    assert refused.exit_code == 1 and "error:" in refused.stderr and not (workdir / "out").exists()
     warned = runner.invoke(
         app, ["export", "run", str(workdir / "ad.yaml"), "--out", str(workdir / "out"), "--only", "fp32"]
     )

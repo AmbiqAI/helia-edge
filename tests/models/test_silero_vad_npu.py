@@ -1,4 +1,4 @@
-"""The Silero VAD v6 NPU lowering: block STFT and projection magnitude, and the lowered model against the semantic one."""
+"""The Silero VAD v6 NPU lowering: block STFT, projection magnitude, and the lowered model against the semantic one."""
 
 import keras
 import numpy as np

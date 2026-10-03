@@ -32,7 +32,7 @@ from .recipe import (
     UrlSource,
     load_recipe,
 )
-from .result import environment_record, state_scales_tied
+from .result import EnvironmentRecord, environment_record, state_scales_tied
 from .spec import CALIBRATED, ExportSpec, state_pair
 
 
@@ -264,6 +264,15 @@ def _entry(
     )
 
 
+def unidentified_install(record: EnvironmentRecord) -> str:
+    """Why ``record`` does not identify the helia-edge code, and how to install code that does."""
+    return (
+        f"helia-edge {record.helia_edge} ({record.helia_edge_source} install) does not identify its code; "
+        "install a release, or install from git at a commit: "
+        "uv pip install 'helia-edge @ git+https://github.com/AmbiqAI/helia-edge@<commit>'"
+    )
+
+
 def run_recipe(
     recipe_path: Path, out_dir: Path, only: Collection[str] | None = None, require_provenance: bool = False
 ) -> ExportManifest:
@@ -286,11 +295,7 @@ def run_recipe(
     if require_provenance:
         record = environment_record()
         if not record.identified:
-            raise ValueError(
-                f"helia-edge {record.helia_edge} ({record.helia_edge_source} install) does not identify its code; "
-                "install a release, or install from git at a commit: "
-                "uv pip install 'helia-edge @ git+https://github.com/AmbiqAI/helia-edge@<commit>'"
-            )
+            raise ValueError(unidentified_install(record))
     recipe_path, out_dir = Path(recipe_path).resolve(), Path(out_dir).resolve()
     recipe = load_recipe(recipe_path)
     base = recipe_path.parent
