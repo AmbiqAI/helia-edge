@@ -70,7 +70,7 @@ class TcnParams(BaseModel):
     blocks: list[TcnBlockParams] = Field(default_factory=list, description="TCN blocks")
     output_kernel: int | tuple[int, int] = Field(default=3, description="Output kernel size")
     include_top: bool = Field(default=True, description="Include top")
-    num_classes: int | None = Field(default=None, description="Classes of the output layer")
+    num_classes: int | None = Field(default=None, gt=0, description="Classes of the output layer")
     use_logits: bool = Field(default=True, description="Use logits")
     output_activation: str | None = Field(default=None, description="Output activation")
 

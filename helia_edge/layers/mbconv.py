@@ -17,6 +17,7 @@ from typing import Callable
 import keras
 
 from .convolutional import conv2d
+from .mbconv_params import MBConvParams as MBConvParams
 from .normalization import batch_normalization
 from .squeeze_excite import se_layer
 

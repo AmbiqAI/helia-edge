@@ -267,16 +267,21 @@ def mobilenetv1_layer(x: keras.KerasTensor, params: MobileNetV1Params) -> keras.
     return y
 
 
-def build(params: MobileNetV1Params, input_shape: tuple[int, ...], *, batch_size: int | None = None) -> keras.Model:
+def build(
+    params: MobileNetV1Params, input_shape: tuple[int, ...], *, batch_size: int | None = None, name: str | None = None
+) -> keras.Model:
     """Build a MobileNetV1 model.
 
     Args:
         params (MobileNetV1Params): Model parameters.
         input_shape (tuple[int, ...]): Input shape without the batch axis.
         batch_size (int | None): Static batch size; None for a dynamic batch.
+        name (str | None): Model name; the family when None.
 
     Returns:
-        keras.Model: The model, named ``mobilenet``.
+        keras.Model: The model, named ``mobilenet`` unless ``name`` is given.
     """
+    if params.include_top and params.num_classes is None:
+        raise ValueError("MobileNetV1 needs num_classes with include_top")
     inputs = keras.Input(shape=input_shape, batch_size=batch_size, name="inputs")
-    return keras.Model(inputs=inputs, outputs=mobilenetv1_layer(inputs, params), name=params.family)
+    return keras.Model(inputs=inputs, outputs=mobilenetv1_layer(inputs, params), name=name or params.family)

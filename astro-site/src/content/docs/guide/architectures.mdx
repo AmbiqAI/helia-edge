@@ -43,8 +43,9 @@ deployed = build(spec, batch_size=1)
 spec_json = spec.model_dump_json()  # ModelSpec.model_validate_json(spec_json) restores it
 ```
 
-- **Selecting a family:** each parameter class has a `family` field (`"resnet"` here), so a spec read from JSON builds the right family. The model is named after its family.
-- **Strict parameters:** parameters are immutable and reject unknown fields. `num_classes` is a parameter: the classes of the output layer, or None for no dense layer.
+- **Selecting a family:** each parameter class has a `family` field (`"resnet"` here), so a spec read from JSON builds the right family. The model is named after its family; pass `name=` to `build` to combine two models of one family in a Keras graph.
+- **Strict parameters:** parameters are immutable and reject unknown fields. `num_classes` is a parameter: the classes of the output layer, at least 1. With None, most families build without a dense layer; TCN and MobileNetV1 (with `include_top`) and TsMixer refuse to build.
+- **Input shapes:** positive sizes, or None for a variable axis.
 - **Each family's builder:** `helia_edge.models.<family>.build(params, input_shape, batch_size=None)`.
 - **Other families:** UNet, UNext, MiniResNet, FastEnhancer, CorNET, TimePPG, MLPerf Tiny and Silero VAD keep their own constructors; the [typed architecture guide](../typed-architectures/) covers them.
 

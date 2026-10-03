@@ -27,5 +27,7 @@ class ConvMixerParams(BaseModel):
     kernel_size: int = Field(default=5, description="Filter size")
     patch_size: int = Field(default=2, description="Patch size")
     include_top: bool = Field(default=True, description="Include top")
-    num_classes: int | None = Field(default=None, description="Classes of the dense head; None for no dense layer")
+    num_classes: int | None = Field(
+        default=None, gt=0, description="Classes of the dense head; None for no dense layer"
+    )
     output_activation: str | None = Field(default=None, description="Output activation")

@@ -291,7 +291,7 @@ def metaformer_layer(x: keras.KerasTensor, params: MetaFormerParams) -> keras.Ke
 
 # def ccaa_metaformer(
 #     x: keras.KerasTensor,
-#     params.num_classes: int | None = None,
+#     num_classes: int | None = None,
 # ) -> keras.Model:
 #     """CCAA Metaformer model"""
 
@@ -405,20 +405,23 @@ def metaformer_layer(x: keras.KerasTensor, params: MetaFormerParams) -> keras.Ke
 #     return metaformer_layer(
 #         x=x,
 #         params=params,
-#         params.num_classes=params.num_classes,
+#         num_classes=num_classes,
 #     )
 
 
-def build(params: MetaFormerParams, input_shape: tuple[int, ...], *, batch_size: int | None = None) -> keras.Model:
+def build(
+    params: MetaFormerParams, input_shape: tuple[int, ...], *, batch_size: int | None = None, name: str | None = None
+) -> keras.Model:
     """Build a MetaFormer model.
 
     Args:
         params (MetaFormerParams): Model parameters.
         input_shape (tuple[int, ...]): Input shape without the batch axis.
         batch_size (int | None): Static batch size; None for a dynamic batch.
+        name (str | None): Model name; the family when None.
 
     Returns:
-        keras.Model: The model, named ``metaformer``.
+        keras.Model: The model, named ``metaformer`` unless ``name`` is given.
     """
     inputs = keras.Input(shape=input_shape, batch_size=batch_size, name="inputs")
-    return keras.Model(inputs=inputs, outputs=metaformer_layer(inputs, params), name=params.family)
+    return keras.Model(inputs=inputs, outputs=metaformer_layer(inputs, params), name=name or params.family)

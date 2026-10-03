@@ -550,3 +550,13 @@ def test_recipes_refuse_formats_other_than_litert(workdir):
     write(workdir / "o.yaml", recipe)
     with pytest.raises(ValueError, match="litert format only"):
         run_recipe(workdir / "o.yaml", workdir / "out")
+
+
+def test_recipe_tcn_is_built_with_batch_one_and_one_class_count():
+    from helia_edge.export.architectures import build_tcn
+
+    model = build_tcn(TCN, [32, 4], 2)
+    assert model.input_shape == (1, 32, 4) and model.output_shape[-1] == 2
+    assert build_tcn({**TCN, "num_classes": 2}, [32, 4], 2).output_shape[-1] == 2
+    with pytest.raises(ValueError, match="differs"):
+        build_tcn({**TCN, "num_classes": 3}, [32, 4], 2)

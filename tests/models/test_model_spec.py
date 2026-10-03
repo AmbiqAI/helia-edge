@@ -46,6 +46,7 @@ def test_families_are_unique():
         {"params": {"family": "tcn", "name": "tcn"}, "input_shape": [4]},
         {"params": {"family": "tcn"}, "input_shape": [4], "extra": 1},
         {"params": {"blocks": []}, "input_shape": [4]},
+        {"params": {"family": "tcn", "num_classes": 0}, "input_shape": [4]},
     ],
 )
 def test_specs_are_strict(data):
@@ -85,3 +86,57 @@ def test_build_names_the_model_after_its_family_and_sets_the_batch():
 def test_build_refuses_a_non_family():
     with pytest.raises(TypeError, match="Not a family"):
         build(ModelSpec.model_construct(params=object(), input_shape=(4,)))
+
+
+def _params_classes():
+    import importlib
+    import inspect
+
+    modules = [f"helia_edge.models.{cls.model_fields['family'].default}_params" for cls in FAMILIES]
+    modules.append("helia_edge.layers.mbconv_params")
+    for name in modules:
+        module = importlib.import_module(name)
+        for _, cls in inspect.getmembers(module, inspect.isclass):
+            if issubclass(cls, pydantic.BaseModel) and cls.__module__ == name:
+                yield cls
+
+
+@pytest.mark.parametrize("cls", list(_params_classes()), ids=lambda cls: cls.__name__)
+def test_every_params_class_is_frozen_and_strict(cls):
+    assert cls.model_config.get("frozen") is True and cls.model_config.get("extra") == "forbid"
+
+
+@pytest.mark.parametrize("params_cls", FAMILIES, ids=lambda cls: cls.__name__)
+def test_num_classes_is_positive(params_cls):
+    with pytest.raises(pydantic.ValidationError):
+        params_cls(num_classes=0)
+
+
+@pytest.mark.parametrize("shape", [(), (0, 4), (-1, 4)])
+def test_input_shapes_are_positive_and_not_empty(shape):
+    with pytest.raises(pydantic.ValidationError):
+        ModelSpec(params=TcnParams(), input_shape=shape)
+
+
+def test_a_variable_axis_is_none():
+    assert ModelSpec(params=TcnParams(), input_shape=(1, None, 4)).input_shape == (1, None, 4)
+
+
+@pytest.mark.parametrize("params_cls", FAMILIES, ids=lambda cls: cls.__name__)
+def test_families_without_an_optional_head_say_they_need_num_classes(params_cls):
+    pytest.importorskip("keras")
+    family = params_cls.model_fields["family"].default
+    if family not in ("tcn", "mobilenet", "tsmixer"):
+        pytest.skip("num_classes None builds without a dense layer")
+    with pytest.raises(ValueError, match="needs num_classes"):
+        build(ModelSpec(params=params_cls(), input_shape=(1, 32, 4)))
+
+
+def test_two_models_of_one_family_combine_with_names():
+    keras = pytest.importorskip("keras")
+    spec = ModelSpec(params=TcnParams(blocks=[{"filters": 8}], num_classes=2), input_shape=(1, 16, 2))
+    teacher, student = build(spec, name="teacher"), build(spec, name="student")
+    assert (teacher.name, student.name) == ("teacher", "student")
+    inputs = keras.Input((1, 16, 2))
+    combined = keras.Model(inputs, [teacher(inputs), student(inputs)])
+    assert len(combined.outputs) == 2

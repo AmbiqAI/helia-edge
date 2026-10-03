@@ -46,24 +46,26 @@ class ModelSpec(BaseModel):
 
     Attributes:
         params (ModelParams): The family's typed Params; ``params.family`` selects the family.
-        input_shape (tuple[int, ...]): Input shape without the batch axis.
+        input_shape (tuple[int | None, ...]): Input shape without the batch axis; None for a variable axis.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     params: ModelParams
-    input_shape: tuple[int, ...]
+    input_shape: Annotated[tuple[Annotated[int, Field(gt=0)] | None, ...], Field(min_length=1)]
 
 
-def build(spec: ModelSpec, *, batch_size: int | None = None) -> "keras.Model":
+def build(spec: ModelSpec, *, batch_size: int | None = None, name: str | None = None) -> "keras.Model":
     """Build the model a spec describes.
 
     Args:
         spec (ModelSpec): Family Params and input shape.
         batch_size (int | None): Static batch size; None for a dynamic batch.
+        name (str | None): Model name; the family when None. Give distinct names to combine two models
+            of one family in a Keras graph.
 
     Returns:
-        keras.Model: The model, named after its family.
+        keras.Model: The model.
     """
     params = spec.params
     match params:
@@ -91,4 +93,4 @@ def build(spec: ModelSpec, *, batch_size: int | None = None) -> "keras.Model":
             from .tsmixer import build as family_build
         case _:
             raise TypeError(f"Not a family's Params: {type(params).__name__}")
-    return family_build(params, spec.input_shape, batch_size=batch_size)
+    return family_build(params, spec.input_shape, batch_size=batch_size, name=name)

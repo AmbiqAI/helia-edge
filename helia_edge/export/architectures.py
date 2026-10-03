@@ -56,6 +56,8 @@ def build_tcn(params, input_shape, num_classes):
 
     _require("tcn", input_shape, num_classes, shape=True, classes=None)
     if num_classes is not None:
+        if params.get("num_classes") not in (None, num_classes):
+            raise ValueError(f"tcn: num_classes {num_classes} differs from params num_classes {params['num_classes']}")
         params = {**params, "num_classes": num_classes}
     return build(TcnParams.model_validate(params), tuple(input_shape), batch_size=1)
 

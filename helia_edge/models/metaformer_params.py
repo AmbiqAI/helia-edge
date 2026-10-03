@@ -61,6 +61,6 @@ class MetaFormerParams(BaseModel):
     output_filters: int = Field(default=0, description="Output filters")
     output_activation: str | None = Field(default=None, description="Output activation")
     include_top: bool = Field(default=True, description="Include top")
-    num_classes: int | None = Field(default=None, description="Classes of the output layer")
+    num_classes: int | None = Field(default=None, gt=0, description="Classes of the output layer")
     dropout: float = Field(default=0.2, description="Dropout rate")
     drop_connect_rate: float = Field(default=0.2, description="Drop connect rate")

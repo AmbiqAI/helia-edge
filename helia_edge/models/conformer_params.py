@@ -67,4 +67,4 @@ class ConformerParams(BaseModel):
     blocks: list[ConformerBlockParams] = Field(default_factory=list, description="Conformer blocks")
     output_activation: str | None = Field(default=None, description="Output activation")
     include_top: bool = Field(default=True, description="Include top")
-    num_classes: int | None = Field(default=None, description="Classes of the output layer")
+    num_classes: int | None = Field(default=None, gt=0, description="Classes of the output layer")
