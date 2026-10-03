@@ -76,7 +76,7 @@ class ConformerParams(BaseModel):
 
     """
 
-    subsamples: list[SubsampleBlockParams] = Field(default_factory=list, description="Subsample blocks")
+    subsamples: list[SubsampleBlockParams] = Field(default_factory=[SubsampleBlockParams()], min_length=1, description="Subsample blocks")
     blocks: list[ConformerBlockParams] = Field(default_factory=list, description="Conformer blocks")
     output_activation: str | None = Field(default=None, description="Output activation")
     include_top: bool = Field(default=True, description="Include top")
