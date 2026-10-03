@@ -132,23 +132,27 @@ def test_dynamic_dimensions_calibrate_and_are_recorded():
 
 
 class FakeDistribution:
-    def __init__(self, root, direct_url):
-        self.version, self.root, self.direct_url = "9.9.9", root, direct_url
+    def __init__(self, root, direct_url, record=True):
+        self.version, self.root, self.direct_url, self.record = "9.9.9", root, direct_url, record
 
     def locate_file(self, name):
         return self.root / name
 
     def read_text(self, name):
+        if name == "RECORD":
+            return "helia_edge/__init__.py,,\n" if self.record else None
         return self.direct_url if name == "direct_url.json" else None
 
 
 @pytest.mark.parametrize(
     ("layout", "expected"),
     [
-        ("vcs", ("9.9.9", "abc123")),
-        ("editable", ("9.9.9", None)),
-        ("wheel", ("9.9.9", None)),
-        ("other-tree", ("unknown", None)),
+        ("vcs", ("9.9.9", "abc123", "vcs")),
+        ("editable", ("9.9.9", None, "local")),
+        ("directory", ("9.9.9", None, "local")),
+        ("wheel", ("9.9.9", None, "release")),
+        ("egg-info", ("9.9.9", None, "local")),
+        ("other-tree", ("unknown", None, "unknown")),
     ],
 )
 def test_environment_identity_of_installed_distributions(monkeypatch, tmp_path, layout, expected):
@@ -164,13 +168,18 @@ def test_environment_identity_of_installed_distributions(monkeypatch, tmp_path, 
     direct_url = {
         "vcs": json.dumps({"url": "https://example.invalid/helia-edge.git", "vcs_info": {"commit_id": "abc123"}}),
         "editable": json.dumps({"url": f"file://{source}", "dir_info": {"editable": True}}),
+        "directory": json.dumps({"url": f"file://{source}", "dir_info": {}}),
         "wheel": None,
+        "egg-info": None,
         "other-tree": None,
     }[layout]
     root = tmp_path / "elsewhere" if layout == "other-tree" else site
-    monkeypatch.setattr(importlib.metadata, "distribution", lambda name: FakeDistribution(root, direct_url))
+    monkeypatch.setattr(
+        importlib.metadata, "distribution", lambda name: FakeDistribution(root, direct_url, layout != "egg-info")
+    )
     env = result.environment_record()
-    assert (env.helia_edge, env.helia_edge_commit) == expected
+    assert (env.helia_edge, env.helia_edge_commit, env.helia_edge_source) == expected
+    assert env.identified == (expected[2] in ("vcs", "release"))
 
 
 def test_environment_is_unknown_for_an_uninstalled_tree(monkeypatch, tmp_path):
@@ -179,7 +188,7 @@ def test_environment_is_unknown_for_an_uninstalled_tree(monkeypatch, tmp_path):
 
     monkeypatch.setattr(helia_edge, "__file__", str(tmp_path / "helia_edge" / "__init__.py"))
     env = environment_record()
-    assert (env.helia_edge, env.helia_edge_commit) == ("unknown", None)
+    assert (env.helia_edge, env.helia_edge_commit, env.helia_edge_source) == ("unknown", None, "unknown")
 
 
 def test_environment_is_recorded(model):

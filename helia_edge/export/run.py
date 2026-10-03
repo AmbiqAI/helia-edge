@@ -32,7 +32,7 @@ from .recipe import (
     UrlSource,
     load_recipe,
 )
-from .result import environment_record, state_scales_tied
+from .result import EnvironmentRecord, environment_record, state_scales_tied
 from .spec import CALIBRATED, ExportSpec, state_pair
 
 
@@ -264,7 +264,18 @@ def _entry(
     )
 
 
-def run_recipe(recipe_path: Path, out_dir: Path, only: Collection[str] | None = None) -> ExportManifest:
+def unidentified_install(record: EnvironmentRecord) -> str:
+    """Why ``record`` does not identify the helia-edge code, and how to install code that does."""
+    return (
+        f"helia-edge {record.helia_edge} ({record.helia_edge_source} install) does not identify its code; "
+        "install a release, or install from git at a commit: "
+        "uv pip install 'helia-edge @ git+https://github.com/AmbiqAI/helia-edge@<commit>'"
+    )
+
+
+def run_recipe(
+    recipe_path: Path, out_dir: Path, only: Collection[str] | None = None, require_provenance: bool = False
+) -> ExportManifest:
     """Regenerate a recipe's exports into ``out_dir`` and write ``out_dir/manifest.json``.
 
     The model is built in a fresh Keras session (see ``build_model``).
@@ -273,12 +284,18 @@ def run_recipe(recipe_path: Path, out_dir: Path, only: Collection[str] | None = 
         recipe_path: Recipe file (YAML or JSON). Path sources resolve relative to its directory.
         out_dir: Output directory; each export is written to ``<name>/model.tflite``.
         only: Export names to run; all when None.
+        require_provenance: Refuse to run unless the manifest will identify the helia-edge code: a release
+            installed from a package index, or an install from a git URL at a commit.
 
     Returns:
         ExportManifest: The written manifest.
     """
     from .api import export_model
 
+    if require_provenance:
+        record = environment_record()
+        if not record.identified:
+            raise ValueError(unidentified_install(record))
     recipe_path, out_dir = Path(recipe_path).resolve(), Path(out_dir).resolve()
     recipe = load_recipe(recipe_path)
     base = recipe_path.parent
@@ -355,6 +372,9 @@ def _environment_differences(recorded: EnvironmentEntry, current: EnvironmentEnt
         for key in ("helia_edge", "helia_edge_commit", "python", "platform")
         if getattr(recorded, key) != getattr(current, key)
     ]
+    # Manifests written before helia_edge_source was recorded have None
+    if recorded.helia_edge_source is not None and recorded.helia_edge_source != current.helia_edge_source:
+        differences.append(f"helia_edge_source: {recorded.helia_edge_source} -> {current.helia_edge_source}")
     for package in sorted(set(recorded.packages) | set(current.packages)):
         if recorded.packages.get(package) != current.packages.get(package):
             differences.append(f"{package}: {recorded.packages.get(package)} -> {current.packages.get(package)}")
@@ -376,8 +396,8 @@ def verify_manifest(manifest_path: Path, allow_env_mismatch: bool = False) -> Ve
 
     A changed recipe or file is ``drift`` whatever the environment; environment differences are
     still listed. Otherwise a different environment (helia-edge, Python, platform or dependency
-    versions) is ``env_mismatch`` without regenerating, unless ``allow_env_mismatch``. Regenerated
-    entries must match the recorded sha256 and size of every file, the spec and the tensor records.
+    versions, or a recorded install source) is ``env_mismatch`` without regenerating, unless
+    ``allow_env_mismatch``. Regenerated entries must match the recorded sha256 and size of every file, the spec and the tensor records.
     """
     manifest_path = Path(manifest_path).resolve()
     root = manifest_path.parent

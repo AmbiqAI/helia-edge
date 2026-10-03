@@ -6,7 +6,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from .recipe import NAME, SHA256
-from .result import EnvironmentRecord, TensorRecord
+from .result import EnvironmentRecord, HeliaEdgeSource, TensorRecord
 from .spec import ExportSpec, IODType, TensorRole
 
 MANIFEST_SCHEMA = "helia-edge/manifest@1"
@@ -93,12 +93,17 @@ class ReferenceRecord(BaseModel):
 
 
 class EnvironmentEntry(BaseModel):
-    """Versions that can change exported bytes; ``verify`` refuses to compare across a difference."""
+    """Versions that can change exported bytes; ``verify`` refuses to compare across a difference.
+
+    ``helia_edge_source`` is how the version identifies the code (see ``EnvironmentRecord``); None in
+    manifests written before it was recorded.
+    """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     helia_edge: str
     helia_edge_commit: str | None
+    helia_edge_source: HeliaEdgeSource | None = None
     python: str
     platform: str
     packages: dict[str, str | None]
@@ -108,6 +113,7 @@ class EnvironmentEntry(BaseModel):
         return cls(
             helia_edge=record.helia_edge,
             helia_edge_commit=record.helia_edge_commit,
+            helia_edge_source=record.helia_edge_source,
             python=record.python,
             platform=record.platform,
             packages=dict(record.packages),

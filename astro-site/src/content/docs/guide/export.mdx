@@ -114,7 +114,14 @@ helia-edge export verify exports/manifest.json
   - The reference becomes a `helia-model-zoo/golden@2` sequence golden (`reference/golden.npz`): `input_i`/`output_i` in subgraph order, raw values stacked by step, each `state_out_k` carried into the next `state_in_k` and reset at `resets` (steps after 0).
   - The manifest's `reference.golden` records its file, steps, resets and source; the model zoo's `golden.check` validates it.
 - **Batch size and session:** models are exported with batch size 1. Each is built in a fresh Keras session, because auto-generated layer names become tensor names in the exported bytes.
-- **Manifest:** `manifest.json` (`schema: helia-edge/manifest@1`) records the recipe's sha256, the environment (helia-edge version, plus its commit when installed from a git URL; Python; platform; NumPy, Keras, TensorFlow and ai-edge-litert versions), and each file's sha256. `run` writes into `--out` without removing files from earlier runs; only the entries in the manifest are verified. `helia-edge export schema --kind recipe|manifest` prints the JSON Schemas.
+- **Manifest:** `manifest.json` (`schema: helia-edge/manifest@1`) records the recipe's sha256, the environment (helia-edge version and install source, plus its commit when installed from a git URL; Python; platform; NumPy, Keras, TensorFlow and ai-edge-litert versions), and each file's sha256. `run` writes into `--out` without removing files from earlier runs; only the entries in the manifest are verified. `helia-edge export schema --kind recipe|manifest` prints the JSON Schemas.
+- **Provenance:** `environment.helia_edge_source` says whether the version identifies the code that exported:
+  - `release`: installed from a package index (a wheel built from a modified tree and served from a private index looks the same, so prefer `vcs` for published exports);
+  - `vcs`: installed from a git URL, at `helia_edge_commit`;
+  - `local`: installed from a directory or an archive (local or by URL), or with only egg-info metadata (a source tree, some system packages), none of which the version identifies;
+  - `unknown`.
+
+  `export run` warns unless it is `release` or `vcs`. For exports you publish, `--require-provenance` (`run_recipe(..., require_provenance=True)`) refuses such an install. Install from git at a commit instead: `uv pip install 'helia-edge @ git+https://github.com/AmbiqAI/helia-edge@<commit>'`.
 - **`export verify`:** checks in this order:
   - Exit 1 (drift): a file, a source or the recipe changed. Environment differences are still listed.
   - Exit 2 (environment mismatch): the environment differs from the recorded one; nothing is regenerated. `--allow-env-mismatch` regenerates anyway and lists the differences.
