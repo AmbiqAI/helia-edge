@@ -267,6 +267,10 @@ def test_the_manifest_records_how_helia_edge_was_installed(workdir, installed_as
     environment = manifest.environment
     assert (environment.helia_edge_commit, environment.helia_edge_source) == ("abc123", "vcs")
     assert ExportManifest.read(workdir / "out" / "manifest.json").environment.helia_edge_source == "vcs"
+    for flags in ([], ["--require-provenance"]):
+        args = ["export", "run", str(workdir / "ad.yaml"), "--out", str(workdir / "vcs"), "--only", "fp32", *flags]
+        git_install = CliRunner().invoke(app, args)
+        assert git_install.exit_code == 0 and "does not identify" not in git_install.stderr
     installed_as("release")
     run_recipe(ad_recipe(workdir), workdir / "release", only=["fp32"], require_provenance=True)
     quiet = CliRunner().invoke(

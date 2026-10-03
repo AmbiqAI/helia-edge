@@ -397,7 +397,8 @@ def verify_manifest(manifest_path: Path, allow_env_mismatch: bool = False) -> Ve
     A changed recipe or file is ``drift`` whatever the environment; environment differences are
     still listed. Otherwise a different environment (helia-edge, Python, platform or dependency
     versions, or a recorded install source) is ``env_mismatch`` without regenerating, unless
-    ``allow_env_mismatch``. Regenerated entries must match the recorded sha256 and size of every file, the spec and the tensor records.
+    ``allow_env_mismatch``. Regenerated entries must match the recorded sha256 and size of every
+    file, the spec and the tensor records.
     """
     manifest_path = Path(manifest_path).resolve()
     root = manifest_path.parent
