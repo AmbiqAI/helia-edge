@@ -26,7 +26,7 @@ As built, the model exports to `fp32`. LiteRT cannot quantize its exact STFT mag
 - Each magnitude is the largest of 9 projections of the real and imaginary parts, within ±0.24% of the exact value.
 - The last two encoder convolutions become fully connected layers over the taps that see real frames.
 
-Everything else is exact in float.
+Everything else is exact in float. Calibrate with speech at full scale as well as at typical levels: the int16 audio input covers only the calibrated range, and louder samples clip.
 
 An export recipe imports the same way with a `params_import` model source: `{kind: params_import, architecture: vad_silero_v6, params: {}, mapping: silero_vad_v6_onnx, weights: {kind: path, path: silero_vad_16k_op15.onnx, sha256: 7ed98ddb…}}` (see [Export recipes](/helia-edge/guide/export/#export-recipes-and-the-command-line)).
 
