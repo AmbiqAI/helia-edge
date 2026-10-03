@@ -3,6 +3,7 @@ from . import convolutional as convolutional
 from . import ema_residual_vector_quantizer as ema_residual_vector_quantizer
 from . import gumbel_softmax_bottleneck as gumbel_softmax_bottleneck
 from . import mbconv as mbconv
+from . import mbconv_params as mbconv_params
 from . import normalization as normalization
 from . import patching as patching
 from . import preprocessing as preprocessing
@@ -22,8 +23,8 @@ from .convolutional import conv1d as conv1d
 from .convolutional import conv2d as conv2d
 from .ema_residual_vector_quantizer import EmaResidualVectorQuantizer as EmaResidualVectorQuantizer
 from .gumbel_softmax_bottleneck import GumbelSoftmaxBottleneck as GumbelSoftmaxBottleneck
-from .mbconv import MBConvParams as MBConvParams
 from .mbconv import mbconv_block as mbconv_block
+from .mbconv_params import MBConvParams as MBConvParams
 from .normalization import LayerNormalization as LayerNormalization
 from .normalization import batch_normalization as batch_normalization
 from .normalization import layer_normalization as layer_normalization

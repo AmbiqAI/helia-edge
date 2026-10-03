@@ -14,7 +14,7 @@
     "text": "Start with a configurable architecture, then make the input shape and output classes your own. Keep the parameters alongside the trained weights.",
     "tag": "ARCHITECTURES",
     "guide": "architectures",
-    "code": "import keras\nfrom helia_edge.models import TcnModel, compact_tcn_params\n\nparams = compact_tcn_params(filters=8)\ninputs = keras.Input(shape=(240, 14), batch_size=1)\nmodel = TcnModel.model_from_params(\n    inputs, params, num_classes=2\n)",
+    "code": "from helia_edge.models import ModelSpec, build, compact_tcn_params\n\nparams = compact_tcn_params(filters=8, num_classes=2)\nspec = ModelSpec(params=params, input_shape=(240, 14))\nmodel = build(spec)",
     "note": "Constructs a model with fresh weights. Training data comes from your task."
   },
   {

@@ -3,12 +3,10 @@
 
 This module provides utility functions to compose a sequential set of networks/layers.
 
-Classes:
-    ComposerLayerParams: Composer layer parameters
-    ComposerParams: Composer Network parameters
-    ComposerModel: Helper class to generate model from parameters
+Parameters are in ``helia_edge.models.composer_params``.
 
 Functions:
+    build: Composer model from ``ComposerParams``
     composer_layer: Composes a sequential set of networks/layers
 
 """
@@ -16,57 +14,24 @@ Functions:
 import logging
 
 import keras
-from pydantic import BaseModel, Field
 
 from ..layers.activations import relu6
 from ..layers.convolutional import conv2d
 from ..layers.normalization import batch_normalization
 from ..layers.squeeze_excite import se_layer
+from .composer_params import ComposerParams
 from .utils import load_model
 
 logger = logging.getLogger(__name__)
 
 
-class ComposerLayerParams(BaseModel):
-    """Composer layer parameters
-
-    Attributes:
-        name (str): Layer name
-        params (dict): Layer arguments
-    """
-
-    name: str = Field(..., description="Layer name")
-    params: dict = Field(default_factory=dict, description="Layer arguments")
-
-
-class ComposerParams(BaseModel):
-    """Composer Network parameters
-
-    Attributes:
-        layers (list[ComposerLayerParams]): Network layers
-        include_top (bool): Include top
-        output_activation (str | None): Output activation
-        name (str): Model name
-    """
-
-    layers: list[ComposerLayerParams] = Field(default_factory=list, description="Network layers")
-    include_top: bool = Field(default=True, description="Include top")
-    output_activation: str | None = Field(default=None, description="Output activation")
-    name: str = Field(default="Composer", description="Model name")
-
-
-def composer_layer(
-    x: keras.KerasTensor,
-    params: ComposerParams,
-    num_classes: int | None = None,
-) -> keras.KerasTensor:
+def composer_layer(x: keras.KerasTensor, params: ComposerParams) -> keras.KerasTensor:
     """Composes a sequential set of networks/layers.
     Useful for adding custom layers to a pre-trained model (e.g. foundation).
 
     Args:
         x (keras.KerasTensor): Model input
         params (ComposerParams): Model parameters
-        num_classes (int | None): Number of classes
 
     Returns:
         keras.KerasTensor: Model output
@@ -97,26 +62,24 @@ def composer_layer(
     # END FOR
 
     if params.include_top:
-        if num_classes is not None:
-            y = keras.layers.Dense(num_classes)(y)
+        if params.num_classes is not None:
+            y = keras.layers.Dense(params.num_classes)(y)
         if params.output_activation:
             y = keras.layers.Activation(params.output_activation)(y)
 
     return y
 
 
-class ComposerModel:
-    """Helper class to generate model from parameters"""
+def build(params: ComposerParams, input_shape: tuple[int, ...], *, batch_size: int | None = None) -> keras.Model:
+    """Build a Composer model.
 
-    @staticmethod
-    def layer_from_params(inputs: keras.Input, params: ComposerParams | dict, num_classes: int | None = None):
-        """Create layer from parameters"""
-        if isinstance(params, dict):
-            params = ComposerParams(**params)
-        return composer_layer(x=inputs, params=params, num_classes=num_classes)
+    Args:
+        params (ComposerParams): Model parameters.
+        input_shape (tuple[int, ...]): Input shape without the batch axis.
+        batch_size (int | None): Static batch size; None for a dynamic batch.
 
-    @staticmethod
-    def model_from_params(inputs: keras.Input, params: ComposerParams | dict, num_classes: int | None = None):
-        """Create model from parameters"""
-        outputs = ComposerModel.layer_from_params(inputs=inputs, params=params, num_classes=num_classes)
-        return keras.Model(inputs=inputs, outputs=outputs)
+    Returns:
+        keras.Model: The model, named ``composer``.
+    """
+    inputs = keras.Input(shape=input_shape, batch_size=batch_size, name="inputs")
+    return keras.Model(inputs=inputs, outputs=composer_layer(inputs, params), name=params.family)

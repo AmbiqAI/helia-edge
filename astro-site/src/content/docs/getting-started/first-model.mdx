@@ -19,7 +19,7 @@ import os
 os.environ["KERAS_BACKEND"] = "tensorflow"  # Use "torch" in a Torch environment.
 
 import keras
-from helia_edge.models import TcnModel, compact_tcn_params
+from helia_edge.models import ModelSpec, build, compact_tcn_params
 ```
 
 Use a separate process when switching backends. See [Backend support](/helia-edge/getting-started/backends/) for feature-specific limits.
@@ -27,9 +27,8 @@ Use a separate process when switching backends. See [Backend support](/helia-edg
 ## Configure and construct
 
 ```python
-params = compact_tcn_params(filters=8)
-inputs = keras.Input(shape=(240, 14), batch_size=1, dtype="float32")
-model = TcnModel.model_from_params(inputs, params, num_classes=2)
+spec = ModelSpec(params=compact_tcn_params(filters=8, num_classes=2), input_shape=(240, 14))
+model = build(spec, batch_size=1)
 model.summary()
 ```
 
@@ -37,11 +36,11 @@ The input represents 240 time steps and 14 channels per example. Those dimension
 
 With this preset, the output shape is `(1, 240, 2)`: two logits per time step. It is a sequence output, not one classification for the entire window.
 
-The parameter object describes the architecture. The constructed Keras model holds its layers and weights. Keep both when recording an experiment:
+The spec (family parameters and input shape) describes the architecture. The constructed Keras model holds its layers and weights. Keep both when recording an experiment:
 
 ```python
 from pathlib import Path
-Path("architecture.json").write_text(params.model_dump_json(indent=2))
+Path("architecture.json").write_text(spec.model_dump_json(indent=2))
 model.save("model.keras")
 ```
 

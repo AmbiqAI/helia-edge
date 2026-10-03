@@ -8,11 +8,10 @@ In particular, the architecture leverages both fused and non-fused MBConv blocks
 
 For more info, refer to the original paper [EfficientNetV2: Smaller Models and Faster Training](https://arxiv.org/abs/2104.00298).
 
-Classes:
-    EfficientNetV2Params: EfficientNetV2 parameters
-    EfficientNetV2Model: Helper class to generate model from parameters
+Parameters are in ``helia_edge.models.efficientnet_params``.
 
 Functions:
+    build: EfficientNetV2 model from ``EfficientNetParams``
     efficientnetv2_layer: EfficientNetV2 layer
 
 
@@ -25,83 +24,38 @@ The EfficientNetV2 architecture has been modified to allow the following:
 ## Usage
 
 ```python
-import keras
-from helia_edge.models import EfficientNetV2, EfficientNetV2Params, MBConvParams
+from helia_edge.layers import MBConvParams
+from helia_edge.models import EfficientNetParams, ModelSpec, build
 
-inputs = keras.Input(shape=(800, 1))
-num_classes = 5
-
-model = EfficientNetV2(
-    x=inputs,
-    params=EfficientNetV2Params(
-        input_filters=24,
-        input_kernel_size=(1, 7),
-        input_strides=(1, 2),
-        blocks=[
-            MBConvParams(filters=32, depth=2, kernel_size=(1, 7), strides=(1, 2), ex_ratio=1, se_ratio=2),
-            MBConvParams(filters=48, depth=2, kernel_size=(1, 7), strides=(1, 2), ex_ratio=1, se_ratio=2),
-            MBConvParams(filters=64, depth=2, kernel_size=(1, 7), strides=(1, 2), ex_ratio=1, se_ratio=2),
-            MBConvParams(filters=72, depth=1, kernel_size=(1, 7), strides=(1, 2), ex_ratio=1, se_ratio=2)
-        ],
-        output_filters=0,
-        include_top=True,
-        dropout=0.2,
-        drop_connect_rate=0.2,
-        model_name="efficientnetv2"
-    ),
-    num_classes=num_classes,
+params = EfficientNetParams(
+    input_filters=24,
+    input_kernel_size=(1, 7),
+    input_strides=(1, 2),
+    blocks=[
+        MBConvParams(filters=32, depth=2, kernel_size=(1, 7), strides=(1, 2), ex_ratio=1, se_ratio=2),
+        MBConvParams(filters=48, depth=2, kernel_size=(1, 7), strides=(1, 2), ex_ratio=1, se_ratio=2),
+        MBConvParams(filters=64, depth=2, kernel_size=(1, 7), strides=(1, 2), ex_ratio=1, se_ratio=2),
+        MBConvParams(filters=72, depth=1, kernel_size=(1, 7), strides=(1, 2), ex_ratio=1, se_ratio=2),
+    ],
+    output_filters=0,
+    include_top=True,
+    num_classes=5,
+    dropout=0.2,
+    drop_connect_rate=0.2,
 )
-
-
+model = build(ModelSpec(params=params, input_shape=(1, 800, 1)))
 ```
 
 """
 
-from typing import Literal
-
 import keras
-from pydantic import BaseModel, Field
 
 from ..layers.convolutional import conv2d
-from ..layers.mbconv import MBConvParams, mbconv_block
+from ..layers.mbconv import mbconv_block
+from ..layers.mbconv_params import MBConvParams
 from ..layers.normalization import batch_normalization
+from .efficientnet_params import EfficientNetParams
 from .utils import make_divisible
-
-
-class EfficientNetParams(BaseModel):
-    """EfficientNet parameters
-
-    Attributes:
-        blocks (list[MBConvParams]): EfficientNet blocks
-        input_filters (int): Input filters
-        input_kernel_size (int | tuple[int, int]): Input kernel size
-        input_strides (int | tuple[int, int]): Input stride
-        input_activation (str): Input activation
-        output_filters (int): Output filters
-        output_activation (str | None): Output activation
-        include_top (bool): Include top
-        dropout (float): Dropout rate
-        drop_connect_rate (float): Drop connect rate
-        use_logits (bool): Use logits
-        activation (str): Activation function
-        norm (Literal["batch", "layer"] | None): Normalization type
-        name (str): Model name
-    """
-
-    blocks: list[MBConvParams] = Field(default_factory=list, description="EfficientNet blocks")
-    input_filters: int = Field(default=0, description="Input filters")
-    input_kernel_size: int | tuple[int, int] = Field(default=3, description="Input kernel size")
-    input_strides: int | tuple[int, int] = Field(default=2, description="Input stride")
-    input_activation: str = Field(default="relu6", description="Input activation")
-    output_filters: int = Field(default=0, description="Output filters")
-    output_activation: str | None = Field(default=None, description="Output activation")
-    include_top: bool = Field(default=True, description="Include top")
-    dropout: float = Field(default=0.2, description="Dropout rate")
-    drop_connect_rate: float = Field(default=0.2, description="Drop connect rate")
-    use_logits: bool = Field(default=True, description="Use logits")
-    activation: str = Field(default="relu6", description="Activation function")
-    norm: Literal["batch", "layer"] | None = Field(default="layer", description="Normalization type")
-    name: str = Field(default="EfficientNetV2", description="Model name")
 
 
 def efficientnet_core(blocks: list[MBConvParams], drop_connect_rate: float = 0) -> keras.Layer:
@@ -143,17 +97,12 @@ def efficientnet_core(blocks: list[MBConvParams], drop_connect_rate: float = 0) 
     return layer
 
 
-def efficientnetv2_layer(
-    x: keras.KerasTensor,
-    params: EfficientNetParams,
-    num_classes: int | None = None,
-) -> keras.KerasTensor:
+def efficientnetv2_layer(x: keras.KerasTensor, params: EfficientNetParams) -> keras.KerasTensor:
     """Create EfficientNet V2 TF functional model
 
     Args:
         x (keras.KerasTensor): Input tensor
         params (EfficientNetParams): Model parameters.
-        num_classes (int, optional): Number of classes.
 
     Returns:
         keras.KerasTensor: Output tensor
@@ -195,8 +144,8 @@ def efficientnetv2_layer(
         y = keras.layers.GlobalAveragePooling2D(name=f"{name}_pool")(y)
         if 0 < params.dropout < 1:
             y = keras.layers.Dropout(params.dropout)(y)
-        if num_classes is not None:
-            y = keras.layers.Dense(num_classes, name=name)(y)
+        if params.num_classes is not None:
+            y = keras.layers.Dense(params.num_classes, name=name)(y)
 
         if params.output_activation:
             y = keras.layers.Activation(params.output_activation)(y)
@@ -209,18 +158,16 @@ def efficientnetv2_layer(
     return y
 
 
-class EfficientNetV2Model:
-    """Helper class to generate model from parameters"""
+def build(params: EfficientNetParams, input_shape: tuple[int, ...], *, batch_size: int | None = None) -> keras.Model:
+    """Build a EfficientNetV2 model.
 
-    @staticmethod
-    def layer_from_params(inputs: keras.Input, params: EfficientNetParams | dict, num_classes: int | None = None):
-        """Create layer from parameters"""
-        if isinstance(params, dict):
-            params = EfficientNetParams(**params)
-        return efficientnetv2_layer(x=inputs, params=params, num_classes=num_classes)
+    Args:
+        params (EfficientNetParams): Model parameters.
+        input_shape (tuple[int, ...]): Input shape without the batch axis.
+        batch_size (int | None): Static batch size; None for a dynamic batch.
 
-    @staticmethod
-    def model_from_params(inputs: keras.Input, params: EfficientNetParams | dict, num_classes: int | None = None):
-        """Create model from parameters"""
-        outputs = EfficientNetV2Model.layer_from_params(inputs=inputs, params=params, num_classes=num_classes)
-        return keras.Model(inputs=inputs, outputs=outputs)
+    Returns:
+        keras.Model: The model, named ``efficientnet``.
+    """
+    inputs = keras.Input(shape=input_shape, batch_size=batch_size, name="inputs")
+    return keras.Model(inputs=inputs, outputs=efficientnetv2_layer(inputs, params), name=params.family)

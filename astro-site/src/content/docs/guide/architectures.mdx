@@ -30,7 +30,23 @@ Input rank, output shape and configuration differ between families. The individu
 
 Factories do not select your backend, reset global seeds or export models. Typed parameter objects make architecture choices explicit; they do not include the trained weights or data-processing policy.
 
-For TCN JSON configuration, use `TcnParams.from_config()` to reject unknown nested fields. Other families have their own validation rules; do not assume all parameter classes are equally strict. The [typed architecture guide](../typed-architectures/) covers the exact boundaries and serialization behavior.
+## Describe an architecture with a ModelSpec
+
+TCN, TsMixer, ResNet, MobileNetV1, MobileOne, EfficientNetV2, RegNet, ConvMixer, Composer, MetaFormer and Conformer are built from a `ModelSpec`. A spec holds the family's typed parameters and the input shape without the batch axis:
+
+```python
+from helia_edge.models import ModelSpec, ResNetParams, build
+
+spec = ModelSpec(params=ResNetParams(input_filters=8, blocks=[{"filters": 8}], num_classes=4), input_shape=(32, 32, 3))
+model = build(spec)                 # dynamic batch, for training
+deployed = build(spec, batch_size=1)
+spec_json = spec.model_dump_json()  # ModelSpec.model_validate_json(spec_json) restores it
+```
+
+- **Selecting a family:** each parameter class has a `family` field (`"resnet"` here), so a spec read from JSON builds the right family. The model is named after its family.
+- **Strict parameters:** parameters are immutable and reject unknown fields. `num_classes` is a parameter: the classes of the output layer, or None for no dense layer.
+- **Each family's builder:** `helia_edge.models.<family>.build(params, input_shape, batch_size=None)`.
+- **Other families:** UNet, UNext, MiniResNet, FastEnhancer, CorNET, TimePPG, MLPerf Tiny and Silero VAD keep their own constructors; the [typed architecture guide](../typed-architectures/) covers them.
 
 ## Build something custom
 

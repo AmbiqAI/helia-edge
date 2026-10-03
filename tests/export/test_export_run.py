@@ -438,10 +438,11 @@ def test_calibration_uses_the_first_rows_in_stored_order(workdir):
 def test_params_weights_and_keras_file_verify(workdir):
     keras.backend.clear_session()
     keras.utils.set_random_seed(9)
-    inputs = keras.Input((32, 4))  # batch None: the recipe rebuilds it with batch size 1
-    from helia_edge.models import TcnModel, TcnParams
+    from helia_edge.models import TcnParams
+    from helia_edge.models.tcn import build
 
-    model = TcnModel.model_from_params(inputs, TcnParams.from_config(TCN), num_classes=2)
+    # batch None: the recipe rebuilds it with batch size 1
+    model = build(TcnParams.model_validate({**TCN, "num_classes": 2}), (32, 4))
     model.save(workdir / "free.keras")
     model.save_weights(workdir / "free.weights.h5")
     exports = [{"name": "fp32", "precision": "fp32", "io_dtype": "float32", "mode": "keras"}]

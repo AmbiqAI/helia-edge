@@ -11,6 +11,11 @@ Keras 3 add-on for training and exporting models to Ambiq edge targets. Full gui
   - `uv run prek run --all-files --hook-stage pre-commit`: ruff format, ruff check, `uv lock --check`.
   - `uv run prek run --all-files --hook-stage pre-push`: `ty check --error-on-warning`, fast pytest set.
 - ruff, ty and prek are pinned exactly in the `ci` group; change a pin in `pyproject.toml` and relock.
+- Model families: Keras-free `XParams` in `models/<family>_params.py` (strict, frozen, with a `family` field and
+  `num_classes`), one `models/<family>.build(params, input_shape, *, batch_size=None)`, and
+  `helia_edge.models.build(ModelSpec(params=..., input_shape=...))`. Add a family by adding it to `ModelParams` and
+  the `match` in `models/spec.py`; no registries or `XModel` classes. UNet, UNext, MiniResNet, FastEnhancer, CorNET,
+  TimePPG, MLPerf Tiny and Silero VAD still use their own constructors.
 - Export with `helia_edge.export.export_model` and run with `LiteRTRunner`, or `LiteRTStreamRunner` for streaming
   models with state pairs (export guide); the `converters` and `interpreters.tflite` classes are deprecated
   (they warn) and must not be used in new code or examples.

@@ -45,17 +45,17 @@ def models():
         MiniResNetV1Params,
         MlperfTinyModel,
         MlperfTinyParams,
-        TcnModel,
         TcnParams,
         compact_tcn_params,
     )
+    from helia_edge.models.tcn import build as tcn_build
 
     tcn = compact_tcn_params(filters=8)
     miniresnet = MiniResNetV1Params(base_filters=8, stacks=1, pooling="avg")
     kws = MlperfTinyParams(architecture="kws")
     return {
         "compact-tcn": (
-            lambda p: TcnModel.model_from_params(keras.Input((64, 14)), TcnParams.from_config(p), num_classes=3),
+            lambda p: tcn_build(TcnParams.model_validate({**p, "num_classes": 3}), (64, 14)),
             tcn.model_dump(mode="json"),
             (64, 14),
         ),

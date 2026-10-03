@@ -15,37 +15,10 @@ from collections.abc import Iterable
 from typing import Callable
 
 import keras
-from pydantic import BaseModel, Field
 
 from .convolutional import conv2d
 from .normalization import batch_normalization
 from .squeeze_excite import se_layer
-
-
-class MBConvParams(BaseModel):
-    """MBConv parameters
-
-    Attributes:
-        filters (int): Number of filters
-        depth (int): Layer depth
-        ex_ratio (float): Expansion ratio
-        kernel_size (int | tuple[int, int]): Kernel size
-        strides (int | tuple[int, int]): Stride size
-        se_ratio (float): Squeeze Excite ratio
-        droprate (float): Drop rate
-        bn_momentum (float): Batch normalization momentum
-        activation (str): Activation function
-    """
-
-    filters: int = Field(..., description="# filters")
-    depth: int = Field(default=1, description="Layer depth")
-    ex_ratio: float = Field(default=1, description="Expansion ratio")
-    kernel_size: int | tuple[int, int] = Field(default=3, description="Kernel size")
-    strides: int | tuple[int, int] = Field(default=1, description="Stride size")
-    se_ratio: float = Field(default=8, description="Squeeze Excite ratio")
-    droprate: float = Field(default=0, description="Drop rate")
-    bn_momentum: float = Field(default=0.9, description="Batch normalization momentum")
-    activation: str = Field(default="relu6", description="Activation function")
 
 
 def mbconv_block(

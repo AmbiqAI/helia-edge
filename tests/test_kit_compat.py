@@ -1,7 +1,7 @@
 """Names used by heartKIT 64cd51b, sleepKIT 799bf7c and compressionKIT 7fb3663 still resolve.
 
 The list holds every ``helia_edge`` name those kits reference in Python that resolved on main
-a342b107. Deprecated names stay here until their removal is announced.
+a342b107, except the names removed in 0.8.0 (the family `XModel` classes).
 """
 
 import importlib
@@ -40,14 +40,7 @@ CORE = [
     "helia_edge.metrics.compute_metrics",
     "helia_edge.metrics.flops.get_flops",
     "helia_edge.metrics.threshold.get_predicted_threshold_indices",
-    "helia_edge.models.ComposerModel.model_from_params",
-    "helia_edge.models.EfficientNetV2Model.model_from_params",
-    "helia_edge.models.MobileNetV1Model.model_from_params",
-    "helia_edge.models.MobileOneModel.model_from_params",
-    "helia_edge.models.ResNetModel.model_from_params",
     "helia_edge.models.TcnBlockParams",
-    "helia_edge.models.TcnModel",
-    "helia_edge.models.TcnModel.model_from_params",
     "helia_edge.models.TcnParams",
     "helia_edge.models.UNetModel.model_from_params",
     "helia_edge.models.UNextModel.model_from_params",

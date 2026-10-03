@@ -8,11 +8,10 @@ The architecture is designed to learn from few examples and generalize to new ta
 
 For more info, refer to the original paper [MetaFormer: Meta-Learning with Transformers](https://arxiv.org/abs/2110.11605).
 
-Classes:
-    MetaFormerParams: MetaFormer parameters
-    MetaFormerModel: Helper class to generate model from parameters
+Parameters are in ``helia_edge.models.metaformer_params``.
 
 Functions:
+    build: MetaFormer model from ``MetaFormerParams``
     patch_embedding: Patch embedding layer
     pool_token_mixer: Token mixer using average pooling
     conv_token_mixer: Token mixer using separable convolution
@@ -24,60 +23,8 @@ Functions:
 """
 
 import keras
-from pydantic import BaseModel, Field
 
-
-class NameArgs(BaseModel):
-    """Name and arguments
-
-    Attributes:
-        name (str): Name
-        args (dict): Arguments
-
-    """
-
-    name: str = Field(default="conv", description="Name")
-    args: dict = Field(default_factory=dict, description="Arguments")
-
-
-class MetaFormerBlockParams(BaseModel):
-    """MetaFormer block parameters
-
-    Attributes:
-        layers (int): Number of layers
-        patch_embed (dict): Patch embedding
-        token_mixer (NameArgs): Token mixer
-        channel_mixer (NameArgs): Channel mixer
-
-    """
-
-    layers: int = Field(default=2, description="Number of layers")
-    patch_embed: dict = Field(default_factory=dict, description="Patch embedding")
-    token_mixer: NameArgs = Field(default_factory=dict, description="Token mixer")
-    channel_mixer: NameArgs = Field(default_factory=dict, description="Channel mixer")
-
-
-class MetaFormerParams(BaseModel):
-    """MetaFormer parameters
-
-    Attributes:
-        blocks (list[MetaFormerBlockParams]): MetaFormer blocks
-        output_filters (int): Output filters
-        output_activation (str | None): Output activation
-        include_top (bool): Include top
-        dropout (float): Dropout rate
-        drop_connect_rate (float): Drop connect rate
-        name (str): Model name
-
-    """
-
-    blocks: list[MetaFormerBlockParams] = Field(default_factory=list, description="MetaFormer blocks")
-    output_filters: int = Field(default=0, description="Output filters")
-    output_activation: str | None = Field(default=None, description="Output activation")
-    include_top: bool = Field(default=True, description="Include top")
-    dropout: float = Field(default=0.2, description="Dropout rate")
-    drop_connect_rate: float = Field(default=0.2, description="Drop connect rate")
-    name: str = Field(default="MetaFormer", description="Model name")
+from .metaformer_params import MetaFormerParams
 
 
 def patch_embedding(
@@ -292,17 +239,12 @@ def metaformer_block(
     return layer
 
 
-def metaformer_layer(
-    x: keras.KerasTensor,
-    params: MetaFormerParams,
-    num_classes: int | None = None,
-) -> keras.KerasTensor:
+def metaformer_layer(x: keras.KerasTensor, params: MetaFormerParams) -> keras.KerasTensor:
     """MetaFormer functional layer
 
     Args:
         x (keras.KerasTensor): Input tensor
         params (MetaFormerParams): Model parameters.
-        num_classes (int, optional): Number of classes.
 
     Returns:
         keras.KerasTensor: Output tensor
@@ -338,8 +280,8 @@ def metaformer_layer(
         y = keras.layers.GlobalAveragePooling2D(name=f"{name}_gap")(y)
         if 0 < params.dropout < 1:
             y = keras.layers.Dropout(params.dropout, name=f"{name}_dropout")(y)
-        if num_classes is not None:
-            y = keras.layers.Dense(num_classes, name=name)(y)
+        if params.num_classes is not None:
+            y = keras.layers.Dense(params.num_classes, name=name)(y)
         if params.output_activation:
             y = keras.layers.Activation(params.output_activation)(y)
     # END IF
@@ -349,7 +291,7 @@ def metaformer_layer(
 
 # def ccaa_metaformer(
 #     x: keras.KerasTensor,
-#     num_classes: int | None = None,
+#     params.num_classes: int | None = None,
 # ) -> keras.Model:
 #     """CCAA Metaformer model"""
 
@@ -463,22 +405,20 @@ def metaformer_layer(
 #     return metaformer_layer(
 #         x=x,
 #         params=params,
-#         num_classes=num_classes,
+#         params.num_classes=params.num_classes,
 #     )
 
 
-class MetaFormerModel:
-    """Helper class to generate model from parameters"""
+def build(params: MetaFormerParams, input_shape: tuple[int, ...], *, batch_size: int | None = None) -> keras.Model:
+    """Build a MetaFormer model.
 
-    @staticmethod
-    def layer_from_params(inputs: keras.Input, params: MetaFormerParams | dict, num_classes: int | None = None):
-        """Create layer from parameters"""
-        if isinstance(params, dict):
-            params = MetaFormerParams(**params)
-        return metaformer_layer(x=inputs, params=params, num_classes=num_classes)
+    Args:
+        params (MetaFormerParams): Model parameters.
+        input_shape (tuple[int, ...]): Input shape without the batch axis.
+        batch_size (int | None): Static batch size; None for a dynamic batch.
 
-    @staticmethod
-    def model_from_params(inputs: keras.Input, params: MetaFormerParams | dict, num_classes: int | None = None):
-        """Create model from parameters"""
-        outputs = MetaFormerModel.layer_from_params(inputs=inputs, params=params, num_classes=num_classes)
-        return keras.Model(inputs=inputs, outputs=outputs)
+    Returns:
+        keras.Model: The model, named ``metaformer``.
+    """
+    inputs = keras.Input(shape=input_shape, batch_size=batch_size, name="inputs")
+    return keras.Model(inputs=inputs, outputs=metaformer_layer(inputs, params), name=params.family)

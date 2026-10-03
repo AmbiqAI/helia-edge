@@ -3,13 +3,10 @@
 
 Conformer model implementation in Keras.
 
-Classes:
-    SubsampleBlockParams: Subsample block parameters
-    ConformerBlockParams: Conformer block parameters
-    ConformerParams: Conformer parameters
-    ConformerModel: Helper class to generate model from parameters
+Parameters are in ``helia_edge.models.conformer_params``.
 
 Functions:
+    build: Conformer model from ``ConformerParams``
     subsampler: Subsampler block
     fc_block: Fully connected block
     conv_block: Convolutional block
@@ -20,67 +17,10 @@ Functions:
 """
 
 import keras
-from pydantic import BaseModel, Field
 
 from ..layers.activations import glu, relu, swish
 from ..layers.normalization import batch_normalization, layer_normalization
-
-
-class SubsampleBlockParams(BaseModel):
-    """Subsample block parameters
-
-    Attributes:
-        depth (int): Depth
-        kernel_size (int): Kernel size
-        strides (int): Stride size
-    """
-
-    depth: int = 256
-    kernel_size: int = 3
-    strides: int = 2
-
-
-class ConformerBlockParams(BaseModel):
-    """Conformer block parameters
-
-    Attributes:
-        depth (int): Depth
-        fc_ex_factor (float): FC expansion factor
-        fc_res_factor (float): FC residual factor
-        embedding (str): Embedding type
-        num_heads (int): Number of heads
-        kernel_size (int): Kernel size
-        dropout (float): Dropout rate
-        use_bias (bool): Use bias
-    """
-
-    depth: int = 256
-    fc_ex_factor: float = 4
-    fc_res_factor: float = 0.5
-    embedding: str = "relative"
-    num_heads: int = 4
-    kernel_size: int = 9
-    dropout: float = 0.1
-    use_bias: bool = True
-
-
-class ConformerParams(BaseModel):
-    """Conformer parameters
-
-    Attributes:
-        subsamples (list[SubsampleBlockParams]): Subsample blocks
-        blocks (list[ConformerBlockParams]): Conformer blocks
-        output_activation (str | None): Output activation
-        include_top (bool): Include top
-        name (str): Model name
-
-    """
-
-    subsamples: list[SubsampleBlockParams] = Field(default_factory=list, description="Subsample blocks")
-    blocks: list[ConformerBlockParams] = Field(default_factory=list, description="Conformer blocks")
-    output_activation: str | None = Field(default=None, description="Output activation")
-    include_top: bool = Field(default=True, description="Include top")
-    name: str = Field(default="Fast Conformer", description="Model name")
+from .conformer_params import ConformerParams, SubsampleBlockParams
 
 
 def subsampler(
@@ -407,17 +347,12 @@ def conformer_block(
     return layer
 
 
-def conformer_layer(
-    x: keras.KerasTensor,
-    params: ConformerParams,
-    num_classes: int | None = None,
-) -> keras.KerasTensor:
+def conformer_layer(x: keras.KerasTensor, params: ConformerParams) -> keras.KerasTensor:
     """Conformer functional layer
 
     Args:
         x (keras.KerasTensor): Input tensor
         params (ConformerParams): Model parameters.
-        num_classes (int, optional): Number of classes.
 
     Returns:
         keras.KerasTensor: Output tensor
@@ -442,8 +377,8 @@ def conformer_layer(
     if params.include_top:
         name = "top"
         y = keras.layers.GlobalAveragePooling1D(name=f"{name}_gap")(y)
-        if num_classes is not None:
-            y = keras.layers.Dense(num_classes, name=name)(y)
+        if params.num_classes is not None:
+            y = keras.layers.Dense(params.num_classes, name=name)(y)
         if params.output_activation:
             y = keras.layers.Activation(params.output_activation)(y)
     # END IF
@@ -451,18 +386,16 @@ def conformer_layer(
     return y
 
 
-class ConformerModel:
-    """Helper class to generate model from parameters"""
+def build(params: ConformerParams, input_shape: tuple[int, ...], *, batch_size: int | None = None) -> keras.Model:
+    """Build a Conformer model.
 
-    @staticmethod
-    def layer_from_params(inputs: keras.Input, params: ConformerParams | dict, num_classes: int | None = None):
-        """Create layer from parameters"""
-        if isinstance(params, dict):
-            params = ConformerParams(**params)
-        return conformer_layer(x=inputs, params=params, num_classes=num_classes)
+    Args:
+        params (ConformerParams): Model parameters.
+        input_shape (tuple[int, ...]): Input shape without the batch axis.
+        batch_size (int | None): Static batch size; None for a dynamic batch.
 
-    @staticmethod
-    def model_from_params(inputs: keras.Input, params: ConformerParams | dict, num_classes: int | None = None):
-        """Create model from parameters"""
-        outputs = ConformerModel.layer_from_params(inputs=inputs, params=params, num_classes=num_classes)
-        return keras.Model(inputs=inputs, outputs=outputs)
+    Returns:
+        keras.Model: The model, named ``conformer``.
+    """
+    inputs = keras.Input(shape=input_shape, batch_size=batch_size, name="inputs")
+    return keras.Model(inputs=inputs, outputs=conformer_layer(inputs, params), name=params.family)

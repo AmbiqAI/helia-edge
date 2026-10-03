@@ -7,12 +7,10 @@ Temporal convolutional network (TCN) is a type of convolutional neural network (
 
 For more info, refer to the original paper [Temporal Convolutional Networks: A Unified Approach to Action Segmentation](https://doi.org/10.48550/arXiv.1608.08242).
 
-Classes:
-    TcnParams: TCN parameters
-    TcnBlockParams: TCN block parameters
-    TcnModel: Helper class to generate model from parameters
+Parameters are in ``helia_edge.models.tcn_params``.
 
 Functions:
+    build: TCN model from ``TcnParams``
     normalization: Normalization layer
     tcn_block_lg: TCN large block
     tcn_block_mb: TCN mbconv block
@@ -31,14 +29,10 @@ The TCN architecture has been modified to allow the following:
 
 ## Usage
 
-The following example demonstrates how to create a TCN model using the `Tcn` class. The model is defined using a set of parameters defined in the `TcnParams` and `TcnBlockParams` classes.
+The following example builds a TCN from `TcnParams` and `TcnBlockParams` through a `ModelSpec`.
 
 ```python
-import keras
 import helia_edge as helia
-
-inputs = keras.Input(shape=(800, 1), name="inputs")
-num_classes = 5
 
 params = helia.models.TcnParams(
     input_kernel=(1, 3),
@@ -51,156 +45,19 @@ params = helia.models.TcnParams(
     ],
     output_kernel=(1, 3),
     include_top=True,
+    num_classes=5,
     use_logits=True,
-    model_name="tcn",
 )
-
-model = helia.models.TcnModel.model_from_params(
-    inputs=inputs,
-    params=params,
-    num_classes=num_classes,
-)
+model = helia.models.build(helia.models.ModelSpec(params=params, input_shape=(1, 800, 1)))
 ```
 
 """
 
-from collections.abc import Mapping
-from typing import Any, Literal
-
 import keras
-from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from ..layers.normalization import LayerNormalization
 from ..layers.squeeze_excite import se_layer
-
-
-class TcnBlockParams(BaseModel):
-    """TCN block parameters
-
-    Attributes:
-        depth (int): Layer depth
-        branch (int): Number of branches
-        filters (int): Number of filters
-        kernel (int | tuple[int, int]): Kernel size
-        dilation (int | tuple[int, int]): Dilation rate
-        ex_ratio (float): Expansion ratio
-        se_ratio (float): Squeeze and excite ratio
-        dropout (float | None): Dropout rate
-        norm (Literal["batch", "layer"] | None): Normalization type
-        activation (str): Activation function
-    """
-
-    depth: int = Field(default=1, description="Layer depth")
-    branch: int = Field(default=1, description="Number of branches")
-    filters: int = Field(..., description="# filters")
-    kernel: int | tuple[int, int] = Field(default=3, description="Kernel size")
-    dilation: int | tuple[int, int] = Field(default=1, description="Dilation rate")
-    ex_ratio: float = Field(default=1, description="Expansion ratio")
-    se_ratio: float = Field(default=0, description="Squeeze and excite ratio")
-    dropout: float | None = Field(default=None, description="Dropout rate")
-    norm: Literal["batch", "layer"] | None = Field(default="layer", description="Normalization type")
-    activation: str = Field(default="relu6", description="Activation function")
-
-
-@keras.saving.register_keras_serializable(package="helia_edge")
-class TcnParams(BaseModel):
-    """TCN parameters
-
-    Attributes:
-        input_kernel (int | tuple[int, int] | None): Input kernel size
-        input_norm (Literal["batch", "layer"] | None): Input normalization type
-        block_type (Literal["lg", "mb", "sm"]): Block type
-        blocks (list[TcnBlockParams]): TCN blocks
-        output_kernel (int | tuple[int, int]): Output kernel size
-        include_top (bool): Include top
-        use_logits (bool): Use logits
-        output_activation (str | None): Output activation
-        name (str): Model name
-    """
-
-    input_kernel: int | tuple[int, int] | None = Field(default=None, description="Input kernel size")
-    input_norm: Literal["batch", "layer"] | None = Field(default="layer", description="Input normalization type")
-    block_type: Literal["lg", "mb", "sm"] = Field(default="mb", description="Block type")
-    blocks: list[TcnBlockParams] = Field(default_factory=list, description="TCN blocks")
-    output_kernel: int | tuple[int, int] = Field(default=3, description="Output kernel size")
-    include_top: bool = Field(default=True, description="Include top")
-    use_logits: bool = Field(default=True, description="Use logits")
-    output_activation: str | None = Field(default=None, description="Output activation")
-    name: str = Field(default="TCN", description="Model name")
-
-    def get_config(self) -> dict[str, Any]:
-        """Return a JSON-shaped architecture config, excluding inputs and weights."""
-        return self.model_dump(mode="json")
-
-    @classmethod
-    def from_config(cls, config: Mapping[str, Any]) -> "TcnParams":
-        """Parse JSON-shaped config with unknown model/block fields rejected.
-
-        This opt-in boundary leaves legacy model_validate and dict factory calls
-        compatible. Seed, input signatures, weights and export policy are external.
-        """
-        parsed = _StrictTcnParams.model_validate(dict(config))
-        return cls.model_validate(parsed.model_dump())
-
-
-def _positive_spatial(value):
-    if value is not None:
-        dimensions = (value,) if isinstance(value, int) else value
-        if any(dimension <= 0 for dimension in dimensions):
-            raise ValueError("Spatial dimensions must be positive")
-    return value
-
-
-class _StrictTcnBlockParams(TcnBlockParams):
-    model_config = ConfigDict(extra="forbid")
-    depth: int = Field(default=1, gt=0)
-    branch: int = Field(default=1, gt=0)
-    filters: int = Field(gt=0)
-    ex_ratio: float = Field(default=1, gt=0, allow_inf_nan=False)
-    se_ratio: float = Field(default=0, ge=0, allow_inf_nan=False)
-    dropout: float | None = Field(default=None, ge=0, lt=1, allow_inf_nan=False)
-    _spatial = field_validator("kernel", "dilation")(_positive_spatial)
-
-
-class _StrictTcnParams(TcnParams):
-    model_config = ConfigDict(extra="forbid")
-    blocks: list[_StrictTcnBlockParams] = Field(default_factory=list)
-    _spatial = field_validator("input_kernel", "output_kernel")(_positive_spatial)
-
-
-def compact_tcn_params(*, filters: int = 8) -> TcnParams:
-    """Four small SE4 blocks with 1/2/4/8 dilations and per-point linear output.
-
-    Input shape and output class count are supplied to TcnModel by the caller.
-    At least eight channels retain the existing builder's SE squeeze path.
-    """
-    if type(filters) is not int or filters < 8:
-        raise ValueError("compact TCN filters must be an integer >= 8")
-    return TcnParams(
-        input_kernel=None,
-        input_norm="batch",
-        block_type="sm",
-        blocks=[
-            TcnBlockParams(
-                filters=filters,
-                kernel=(1, 3),
-                dilation=(1, dilation),
-                depth=1,
-                branch=1,
-                ex_ratio=1,
-                se_ratio=4,
-                dropout=None,
-                norm="batch",
-                activation="relu6",
-            )
-            for dilation in (1, 2, 4, 8)
-        ],
-        output_kernel=(1, 1),
-        include_top=True,
-        use_logits=True,
-        output_activation=None,
-        name="compact_tcn",
-    )
+from .tcn_params import TcnBlockParams, TcnParams
 
 
 def normalization(norm: str, name: str) -> keras.Layer:
@@ -513,17 +370,12 @@ def tcn_core(params: TcnParams) -> keras.Layer:
     return layer
 
 
-def tcn_layer(
-    x: keras.KerasTensor,
-    params: TcnParams,
-    num_classes: int | None = None,
-) -> keras.KerasTensor:
+def tcn_layer(x: keras.KerasTensor, params: TcnParams) -> keras.KerasTensor:
     """TCN functional layer
 
     Args:
         x (keras.KerasTensor): Input tensor
         params (TcnParams): Parameters
-        num_classes (int): Number of classes
 
     Returns:
         keras.KerasTensor: Output tensor
@@ -553,7 +405,7 @@ def tcn_layer(
     if params.include_top:
         # Add a per-point classification layer
         y = keras.layers.Conv2D(
-            num_classes,
+            params.num_classes,
             kernel_size=params.output_kernel,
             padding="same",
             name="NECK_conv",
@@ -573,22 +425,16 @@ def tcn_layer(
     return y
 
 
-class TcnModel:
-    """Helper class to generate model from parameters"""
+def build(params: TcnParams, input_shape: tuple[int, ...], *, batch_size: int | None = None) -> keras.Model:
+    """Build a TCN model.
 
-    @staticmethod
-    def layer_from_params(
-        inputs: keras.KerasTensor, params: TcnParams | dict[str, Any], num_classes: int | None = None
-    ) -> keras.KerasTensor:
-        """Create layer from parameters"""
-        if isinstance(params, dict):
-            params = TcnParams(**params)
-        return tcn_layer(x=inputs, params=params, num_classes=num_classes)
+    Args:
+        params (TcnParams): Model parameters.
+        input_shape (tuple[int, ...]): Input shape without the batch axis.
+        batch_size (int | None): Static batch size; None for a dynamic batch.
 
-    @staticmethod
-    def model_from_params(
-        inputs: keras.KerasTensor, params: TcnParams | dict[str, Any], num_classes: int | None = None
-    ) -> keras.Model:
-        """Create model from parameters"""
-        outputs = TcnModel.layer_from_params(inputs=inputs, params=params, num_classes=num_classes)
-        return keras.Model(inputs=inputs, outputs=outputs)
+    Returns:
+        keras.Model: The model, named ``tcn``.
+    """
+    inputs = keras.Input(shape=input_shape, batch_size=batch_size, name="inputs")
+    return keras.Model(inputs=inputs, outputs=tcn_layer(inputs, params), name=params.family)
