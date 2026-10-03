@@ -79,6 +79,19 @@ probabilities = runner.decode("prob", outputs["prob"])
 - **Running:** `LiteRTStreamRunner` runs a stream on raw tensors, carrying the state unchanged; it returns every input as fed and every output, stacked by step. `LiteRTRunner` stays single-input.
 - Export recipes take streaming models with one signal input; see [Export recipes](#export-recipes-and-the-command-line).
 
+## Lowerings
+
+Some models are built from operators an accelerator does not run, or that integer kernels cannot quantize. A lowering rebuilds such a model, with its weights, from operators that do, keeping its input and output names and state pairs. Set `ExportSpec.lowering` to its name and pass the architecture the model was built as:
+
+```python
+spec = ExportSpec(precision="a16w8", io_dtype="int16", mode="keras", lowering="npu")
+result = export_model(model, spec, calibration, architecture="vad_silero_v6")
+```
+
+- **Lookup:** the lowering is `helia_edge.registry.lowerings["<architecture>:<lowering>"]`. Without `architecture` the export is refused; an unregistered key raises `NotRegistered`.
+- **Built in:** `vad_silero_v6:npu`, Silero VAD v6 for an Ethos-U NPU, which quantizes to `a16w8` with the default `strict: true` (see [Import weights](/helia-edge/guide/import-weights/)).
+- **Calibration:** the samples are fed to the lowered model; for a streaming model, `stream_calibration` with the model as built gives the states.
+
 ## Export recipes and the command line
 
 An export recipe (`schema: helia-edge/export@1`) states the model source, calibration and reference data, and every export. Every file it names carries a sha256:
@@ -107,6 +120,7 @@ helia-edge export verify exports/manifest.json
   - `params_import`: the same architectures, with weights imported from a file trained elsewhere through a named mapping in `helia_edge.registry.weight_mappings` (see [Import weights](/helia-edge/guide/import-weights/)); the file's sha256 must be the one the mapping is pinned to;
   - `keras_file`: a saved `.keras` model;
   - `tflite_import`: an existing `.tflite` file, taken as is.
+- **Lowerings:** an export's `lowering` applies to `params_seed`, `params_weights` and `params_import` models, with their `architecture`; a `keras_file` recipe with a lowering is refused. The manifest records it in the entry's spec.
 - **Sources:** `path` sources resolve relative to the recipe. `url` sources are downloaded once into `~/.cache/helia-edge/sources` (set `HELIA_EDGE_CACHE` to move it). A source whose sha256 differs is refused.
 - **Calibration and reference data:** calibration uses the first `samples` rows in stored order (more rows than stored is an error). Reference inputs are run with LiteRT's reference kernels; the inputs as fed and the outputs are saved as `.npy` files next to each model.
 - **Streaming models:** for a model with state pairs and one signal input, calibration and reference rows are consecutive calls of the signal input.
@@ -114,7 +128,14 @@ helia-edge export verify exports/manifest.json
   - The reference becomes a `helia-model-zoo/golden@2` sequence golden (`reference/golden.npz`): `input_i`/`output_i` in subgraph order, raw values stacked by step, each `state_out_k` carried into the next `state_in_k` and reset at `resets` (steps after 0).
   - The manifest's `reference.golden` records its file, steps, resets and source; the model zoo's `golden.check` validates it.
 - **Batch size and session:** models are exported with batch size 1. Each is built in a fresh Keras session, because auto-generated layer names become tensor names in the exported bytes.
-- **Manifest:** `manifest.json` (`schema: helia-edge/manifest@1`) records the recipe's sha256, the environment (helia-edge version, plus its commit when installed from a git URL; Python; platform; NumPy, Keras, TensorFlow and ai-edge-litert versions), and each file's sha256. `run` writes into `--out` without removing files from earlier runs; only the entries in the manifest are verified. `helia-edge export schema --kind recipe|manifest` prints the JSON Schemas.
+- **Manifest:** `manifest.json` (`schema: helia-edge/manifest@1`) records the recipe's sha256, the environment (helia-edge version and install source, plus its commit when installed from a git URL; Python; platform; NumPy, Keras, TensorFlow and ai-edge-litert versions), and each file's sha256. `run` writes into `--out` without removing files from earlier runs; only the entries in the manifest are verified. `helia-edge export schema --kind recipe|manifest` prints the JSON Schemas.
+- **Provenance:** `environment.helia_edge_source` says whether the version identifies the code that exported:
+  - `release`: installed from a package index (a wheel built from a modified tree and served from a private index looks the same, so prefer `vcs` for published exports);
+  - `vcs`: installed from a git URL, at `helia_edge_commit`;
+  - `local`: installed from a directory or an archive (local or by URL), or with only egg-info metadata (a source tree, some system packages), none of which the version identifies;
+  - `unknown`.
+
+  `export run` warns unless it is `release` or `vcs`. For exports you publish, `--require-provenance` (`run_recipe(..., require_provenance=True)`) refuses such an install. Install from git at a commit instead: `uv pip install 'helia-edge @ git+https://github.com/AmbiqAI/helia-edge@<commit>'`.
 - **`export verify`:** checks in this order:
   - Exit 1 (drift): a file, a source or the recipe changed. Environment differences are still listed.
   - Exit 2 (environment mismatch): the environment differs from the recorded one; nothing is regenerated. `--allow-env-mismatch` regenerates anyway and lists the differences.
@@ -123,7 +144,7 @@ helia-edge export verify exports/manifest.json
 
 ## Add an exporter or architecture
 
-`helia_edge.registry` holds the exporters (keyed `"<format>:<backend>"`) and the architectures that recipes build. An exporter is called as `exporter(model, spec, calibration)` and may receive a model with several inputs, with `calibration` a mapping of input name to samples; an exporter that supports single-input models only should refuse others with a `ValueError`. Built-in entries are `"module:attr"` strings, imported only when used. Another package adds entries through the `helia_edge.plugins` entry-point group, without changes to heliaEDGE:
+`helia_edge.registry` holds the exporters (keyed `"<format>:<backend>"`), the architectures that recipes build, and the [lowerings](#lowerings) (keyed `"<architecture>:<lowering>"`). An exporter is called as `exporter(model, spec, calibration)` and may receive a model with several inputs, with `calibration` a mapping of input name to samples; an exporter that supports single-input models only should refuse others with a `ValueError`. Built-in entries are `"module:attr"` strings, imported only when used. Another package adds entries through the `helia_edge.plugins` entry-point group, without changes to heliaEDGE:
 
 ```toml
 # pyproject.toml of your package
@@ -140,6 +161,7 @@ def register(registry):
 
 - **Architecture builders** take `(params, input_shape, num_classes)` and return a Keras model with batch size 1.
 - **Exporters** take `(model, spec, calibration)` and return an `ExportResult`.
+- **Lowerings** take the model as built and return a new model with the same input and output names and state pairs, leaving the original unchanged. Name every layer they create: auto-generated names become tensor names in the exported bytes.
 - **Loading:** plugins load once, the first time a key is not found, for example an exporter for a format on the active backend. A plugin that fails does not stop the others; the failures are raised together as `PluginError`. An unknown key raises `NotRegistered`, a `ValueError` that lists what is registered.
 - **Recipes:** they export the `litert` format only, because they write and inspect `.tflite` files. Exporters for other formats are used through `export_model`.
 

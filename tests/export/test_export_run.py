@@ -244,6 +244,69 @@ def test_only_selects_exports(workdir):
         run_recipe(ad_recipe(workdir), workdir / "out", only=["nope"])
 
 
+@pytest.fixture
+def installed_as(monkeypatch):
+    """Make the environment record report helia-edge installed from the given source."""
+    import dataclasses
+
+    from helia_edge.export import result, run
+
+    def install(source, commit=None):
+        record = dataclasses.replace(
+            result.environment_record(), helia_edge="9.9.9", helia_edge_commit=commit, helia_edge_source=source
+        )
+        monkeypatch.setattr(result, "environment_record", lambda: record)
+        monkeypatch.setattr(run, "environment_record", lambda: record)
+
+    return install
+
+
+def test_the_manifest_records_how_helia_edge_was_installed(workdir, installed_as):
+    installed_as("vcs", "abc123")
+    manifest = run_recipe(ad_recipe(workdir), workdir / "out", only=["fp32"], require_provenance=True)
+    environment = manifest.environment
+    assert (environment.helia_edge_commit, environment.helia_edge_source) == ("abc123", "vcs")
+    assert ExportManifest.read(workdir / "out" / "manifest.json").environment.helia_edge_source == "vcs"
+    installed_as("release")
+    run_recipe(ad_recipe(workdir), workdir / "release", only=["fp32"], require_provenance=True)
+    quiet = CliRunner().invoke(
+        app, ["export", "run", str(workdir / "ad.yaml"), "--out", str(workdir / "cli"), "--only", "fp32"]
+    )
+    assert quiet.exit_code == 0 and "does not identify" not in quiet.stderr
+
+
+def test_verify_reports_a_different_install_source_as_an_environment_mismatch(workdir, installed_as):
+    installed_as("release")
+    run_recipe(ad_recipe(workdir), workdir / "out", only=["fp32"])
+    installed_as("local")
+    report = verify_manifest(workdir / "out" / "manifest.json")
+    assert report.status == "env_mismatch"
+    assert report.environment_differences == ["helia_edge_source: release -> local"]
+    # A manifest written before the source was recorded still verifies
+    manifest = workdir / "out" / "manifest.json"
+    data = json.loads(manifest.read_text())
+    del data["environment"]["helia_edge_source"]
+    manifest.write_text(json.dumps(data))
+    assert verify_manifest(manifest).status == "ok"
+
+
+@pytest.mark.parametrize("source", ["local", "unknown"])
+def test_publication_runs_refuse_code_the_manifest_cannot_identify(workdir, installed_as, source):
+    installed_as(source)
+    with pytest.raises(ValueError, match=f"{source} install"):
+        run_recipe(ad_recipe(workdir), workdir / "out", require_provenance=True)
+    assert not (workdir / "out").exists()
+    runner = CliRunner()
+    refused = runner.invoke(
+        app, ["export", "run", str(workdir / "ad.yaml"), "--out", str(workdir / "out"), "--require-provenance"]
+    )
+    assert refused.exit_code == 1 and "error:" in refused.stderr and not (workdir / "out").exists()
+    warned = runner.invoke(
+        app, ["export", "run", str(workdir / "ad.yaml"), "--out", str(workdir / "out"), "--only", "fp32"]
+    )
+    assert warned.exit_code == 0 and "does not identify its code" in warned.stderr
+
+
 def test_cli_run_verify_and_inspect(workdir):
     runner = CliRunner()
     recipe = ad_recipe(workdir)

@@ -139,7 +139,11 @@ def stream_calibration(
 
 
 def export_model(
-    model, spec: ExportSpec, calibration: npt.NDArray | Mapping[str, npt.NDArray] | None = None
+    model,
+    spec: ExportSpec,
+    calibration: npt.NDArray | Mapping[str, npt.NDArray] | None = None,
+    *,
+    architecture: str | None = None,
 ) -> ExportResult:
     """Export a Keras model.
 
@@ -155,6 +159,8 @@ def export_model(
             or for a model with several inputs a mapping of every input name to its samples
             (``stream_calibration`` builds one for a streaming model). Samples are used one at a time in
             stored order.
+        architecture: The registered architecture the model was built as; needed when ``spec.lowering``
+            is set, to find the lowering.
 
     Returns:
         ExportResult: The exported bytes, their sha256, the I/O tensor records and the environment.
@@ -164,8 +170,9 @@ def export_model(
             exporter for ``spec.format`` on the active Keras backend. A process cannot switch Keras
             backend: rebuild the model from its params and weights in a process started with a
             backend that has one (``KERAS_BACKEND=tensorflow`` for the built-in LiteRT exporter).
-        ValueError: If the format is unknown, the calibration data is invalid, or a state pair cannot be
-            tied.
+        ValueError: If the format is unknown, the calibration data is invalid, a state pair cannot be
+            tied, or ``spec.lowering`` is set without ``architecture``.
+        NotRegistered: If no lowering is registered as ``"<architecture>:<spec.lowering>"``.
         PluginError: If a ``helia_edge.plugins`` entry point fails while plugins load.
     """
     from ..registry import exporters, load_plugins
@@ -193,6 +200,12 @@ def export_model(
             f"{spec.format} export needs the {' or '.join(backends)} backend; the active Keras backend is "
             f"{backend!r}. Rebuild the model from its params and weights with KERAS_BACKEND={backends[0]}."
         )
+    if spec.lowering is not None:
+        from ..registry import lowerings
+
+        if architecture is None:
+            raise ValueError(f"Lowering {spec.lowering!r} needs the model's architecture")
+        model = lowerings.get(f"{architecture}:{spec.lowering}")(model)
     if len(model.inputs) == 1:
         if isinstance(calibration, Mapping):
             raise ValueError("A single-input model takes calibration as an array")

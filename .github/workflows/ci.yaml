@@ -108,7 +108,7 @@ jobs:
           tests/layers/test_preprocessing_integration.py
           tests/export/test_export_spec.py tests/export/test_export_backend.py tests/export/test_export_recipe.py
           tests/test_registry.py tests/data tests/test_removed_modules.py
-          tests/models/test_load_model_names.py tests/layers/test_layer_normalization.py tests/layers/test_streaming_lstm_cell.py tests/importers tests/layers/test_stft_magnitude.py tests/models/test_silero_vad.py
+          tests/models/test_load_model_names.py tests/layers/test_layer_normalization.py tests/layers/test_streaming_lstm_cell.py tests/importers tests/layers/test_stft_magnitude.py tests/models/test_silero_vad.py tests/models/test_silero_vad_npu.py
       - run: >-
           uv run --no-sync python tests/trainers/mae_parity_fixture.py
           --output '${{ runner.temp }}/mae-evidence.npz'

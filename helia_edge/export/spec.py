@@ -2,6 +2,7 @@
 
 import re
 from enum import StrEnum
+from typing import Annotated
 
 from pydantic import BaseModel, ConfigDict, Field, StrictBool, StrictFloat, model_validator
 
@@ -111,6 +112,10 @@ class ExportSpec(BaseModel):
             (``state_in_k``, ``state_out_k``) one scale and zero point covering both tensors' ranges, and
             refuses when that scale differs from either original by more than this fraction of it (at
             most 0.5). Models without state pairs ignore it.
+        lowering: Rebuild the model before conversion with the lowering of this name registered for its
+            architecture in ``helia_edge.registry.lowerings`` (``"<architecture>:<lowering>"``), such as
+            ``npu`` for ``vad_silero_v6``; None exports the model as built. A name is letters, digits,
+            ``_``, ``.`` and ``-``, starting with a letter or digit.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -121,6 +126,7 @@ class ExportSpec(BaseModel):
     mode: ConversionMode
     strict: StrictBool = True
     state_tie_tolerance: StrictFloat = Field(default=0.01, ge=0.0, le=0.5)
+    lowering: Annotated[str, Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9_.-]*$", max_length=64)] | None = None
 
     @model_validator(mode="after")
     def _io_dtype_matches_precision(self) -> "ExportSpec":

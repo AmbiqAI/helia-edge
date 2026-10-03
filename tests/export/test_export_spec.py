@@ -99,5 +99,14 @@ def test_spec_is_frozen_strict_and_round_trips():
         "mode": "concrete",
         "strict": True,
         "state_tie_tolerance": 0.01,
+        "lowering": None,
     }
     assert ExportSpec.model_validate(data) == spec
+
+
+@pytest.mark.parametrize("lowering", ["", "npu:int", "a b", "-npu", "n" * 65, 1])
+def test_a_lowering_is_a_plain_name(lowering):
+    with pytest.raises(pydantic.ValidationError):
+        ExportSpec(precision="fp32", io_dtype="float32", mode="keras", lowering=lowering)
+    for name in ("npu", "ethos_u85", "NPU-v2.1"):
+        assert ExportSpec(precision="fp32", io_dtype="float32", mode="keras", lowering=name).lowering == name

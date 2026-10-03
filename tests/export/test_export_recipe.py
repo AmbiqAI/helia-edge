@@ -76,6 +76,16 @@ def test_a_valid_recipe_round_trips():
             },
             "reserved",
         ),
+        (
+            {
+                "model": {"kind": "keras_file", "file": {"kind": "path", "path": "m.keras", "sha256": SHA}},
+                "exports": [
+                    {"name": "npu", "precision": "fp32", "io_dtype": "float32", "mode": "keras", "lowering": "npu"}
+                ],
+                "calibration": None,
+            },
+            "lowering",
+        ),
     ],
 )
 def test_invalid_recipes_are_rejected(changes, message):
