@@ -282,6 +282,12 @@ def test_verify_reports_a_different_install_source_as_an_environment_mismatch(wo
     report = verify_manifest(workdir / "out" / "manifest.json")
     assert report.status == "env_mismatch"
     assert report.environment_differences == ["helia_edge_source: release -> local"]
+    # A manifest written before the source was recorded still verifies
+    manifest = workdir / "out" / "manifest.json"
+    data = json.loads(manifest.read_text())
+    del data["environment"]["helia_edge_source"]
+    manifest.write_text(json.dumps(data))
+    assert verify_manifest(manifest).status == "ok"
 
 
 @pytest.mark.parametrize("source", ["local", "unknown"])
