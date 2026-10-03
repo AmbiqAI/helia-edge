@@ -323,7 +323,8 @@ def run_recipe(recipe_path: Path, out_dir: Path, only: Collection[str] | None = 
         entries = []
         for entry in selected:
             spec = ExportSpec(**entry.model_dump(exclude={"name"}))
-            result = export_model(model, spec, calibration if spec.precision in CALIBRATED else None)
+            calibrated = calibration if spec.precision in CALIBRATED else None
+            result = export_model(model, spec, calibrated, architecture=getattr(recipe.model, "architecture", None))
             entries.append(_entry(entry.name, spec, result.content, reference, out_dir, resets, source))
 
     manifest = ExportManifest(

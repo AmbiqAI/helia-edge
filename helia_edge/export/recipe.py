@@ -174,6 +174,9 @@ class ExportRecipe(BaseModel):
                 raise ValueError("tflite_import recipes take no exports or calibration")
         elif not self.exports:
             raise ValueError("a recipe needs at least one export")
+        lowered = [entry.name for entry in self.exports if entry.lowering is not None]
+        if lowered and isinstance(self.model, KerasFile):
+            raise ValueError(f"exports {lowered} take a lowering, which needs a model built from an architecture")
         calibrated = [entry.name for entry in self.exports if entry.precision in CALIBRATED]
         if calibrated and self.calibration is None:
             raise ValueError(f"exports {calibrated} need calibration")

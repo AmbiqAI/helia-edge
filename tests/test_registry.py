@@ -16,6 +16,7 @@ import sys
 from helia_edge import registry
 assert "litert:tensorflow" in registry.exporters and "tcn" in registry.architectures
 assert "helia_edge.export.litert" not in sys.modules and "helia_edge.models.tcn" not in sys.modules
+assert "vad_silero_v6:npu" in registry.lowerings and "helia_edge.models.silero_vad_npu" not in sys.modules
 assert not {"keras", "tensorflow", "torch"} & sys.modules.keys()
 """
     result = subprocess.run([sys.executable, "-c", source], text=True, capture_output=True, timeout=60)
@@ -27,6 +28,8 @@ def test_architecture_builtins_match_the_recipe_table():
 
     assert list(registry.architectures) == sorted(BUILTIN_ARCHITECTURES)
     assert list(registry.exporters) == ["litert:tensorflow"]
+    assert list(registry.lowerings) == ["vad_silero_v6:npu"]
+    assert {key.split(":")[0] for key in registry.lowerings} <= set(BUILTIN_ARCHITECTURES)
 
 
 def test_add_register_get_and_duplicates():
