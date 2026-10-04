@@ -243,8 +243,8 @@ def _reference_build():
     """Build with unnamed layers numbered from zero and a float32 dtype policy and ``floatx``, then restore those.
 
     Unnamed layers' names become the artifact's tensor names, so a model built here exports the same bytes
-    whatever the caller built before or set as its policy. Only these three settings are changed, and they
-    are restored even when the build fails. Layer numbering and the dtype policy are per thread, but
+    whatever the caller built before or set as its policy. These three settings are restored even when the
+    build fails; the build itself, like any Keras build, may draw from the random generators. Layer numbering and the dtype policy are per thread, but
     ``floatx`` is shared by the process: another thread building layers meanwhile sees float32.
     """
     import keras
@@ -267,7 +267,7 @@ def _reference_build():
 
 def _steps(resets: Collection[int]) -> tuple[int, ...]:
     """``resets`` as integer steps; a bool, float, string, bytes or non-collection is refused, not converted."""
-    if isinstance(resets, str | bytes):
+    if isinstance(resets, str | bytes | set | frozenset):
         raise ValueError(f"resets are integer steps, not {resets!r:.80}")
     try:
         steps = [step for step in resets]
@@ -312,8 +312,9 @@ class Export:
         """
         from .golden import golden_npz
 
-        if len(inputs) == 0:
-            raise ValueError("A golden needs at least one call")
+        inputs = np.asarray(inputs, dtype=np.float32)
+        if inputs.ndim < 1 or len(inputs) == 0 or not np.isfinite(inputs).all():
+            raise ValueError("A golden needs at least one call of finite inputs")
         stateful = any(entry.role is TensorRole.STATE for entry in self.record.io.inputs)
         resets = _steps(resets)
         check_resets(resets, len(inputs), stateful, "Golden")
@@ -371,8 +372,8 @@ def export(
         model: The Keras model.
         precision: ``fp32``, ``fp16``, ``a8w8`` or ``a16w8``.
         io_dtype: Input and output element type, valid for ``precision``.
-        calibration: For ``a8w8`` and ``a16w8``: float32 samples along axis 0 of the model's one input, or of
-            a streaming model's signal input.
+        calibration: For ``a8w8`` and ``a16w8``: samples along axis 0 of the model's one input, or of a
+            streaming model's signal input, cast to float32; the record hashes the float32 array.
         resets: For a streaming model, calibration steps at which the states are zero.
         spec: The model's ``ModelSpec``, recorded so the export can be rebuilt; the model's weights must
             have the shapes of ``build(spec)``.
@@ -389,7 +390,7 @@ def export(
             shapes differ from ``build(spec)``'s, a calibrated precision has ``batch_size`` other than 1, or
             the calibration or resets are invalid.
     """
-    calibration = None if calibration is None else np.asarray(calibration)
+    calibration = None if calibration is None else np.asarray(calibration, dtype=np.float32)
     resets = _steps(resets)
     if resets and calibration is None:
         raise ValueError("resets apply to the calibration of a streaming model; no calibration was given")

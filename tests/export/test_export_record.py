@@ -17,6 +17,8 @@ from helia_edge.export import (  # noqa: E402
     ExportOptions,
     ExportRecord,
     ExportSpec,
+    Source,
+    WeightImport,
     export,
     export_model,
     load_export_record,
@@ -24,7 +26,6 @@ from helia_edge.export import (  # noqa: E402
 )
 from helia_edge.export.golden import golden_npz  # noqa: E402
 from helia_edge.export.litert import operator_names  # noqa: E402
-from helia_edge.export.record import Source, WeightImport  # noqa: E402
 from helia_edge.models import (  # noqa: E402
     ModelSpec,
     SileroVadParams,
@@ -38,6 +39,23 @@ KIT_SPECS = json.loads((Path(__file__).parents[1] / "fixtures" / "kit-tcn-specs.
 """TCN configurations of heartKIT PPG denoise, heartKIT PPG beat segmentation and sleepKIT apnea."""
 
 SPEC = ModelSpec(params=compact_tcn_params(num_classes=3), input_shape=(64, 4))
+
+
+class Holder(keras.layers.Layer):
+    """A layer holding one weight of the given shape and dtype; ``weights_digest`` reads ``.weights``."""
+
+    def __init__(self, shape, dtype, **kwargs):
+        super().__init__(**kwargs)
+        self.value = self.add_weight(shape=shape, dtype=dtype, initializer="zeros", trainable=False)
+
+
+def npy_sha256(array):
+    import hashlib
+    import io
+
+    buffer = io.BytesIO()
+    np.save(buffer, np.ascontiguousarray(array), allow_pickle=False)
+    return hashlib.sha256(buffer.getvalue()).hexdigest()
 
 
 def seeded(spec, seed=0, batch_size=None):
@@ -74,6 +92,11 @@ def test_the_export_is_the_export_model_artifact_with_its_record():
     record = result.record
     assert record.model == SPEC and record.weights.digest == weights_digest(model)
     assert record.export.calibration.samples == len(calibration) and record.export.options == ExportOptions()
+    assert record.export.calibration.sha256 == npy_sha256(calibration)
+    from_float64 = export(
+        model, precision="a8w8", io_dtype="int8", calibration=calibration.astype(np.float64), spec=SPEC
+    )
+    assert from_float64.content == result.content and from_float64.record == record  # cast to float32, then hashed
     assert record.artifact.file == "model.tflite" and record.artifact.bytes == len(result.content)
     assert len(record.io.inputs) == len(model.inputs) and record.io.inputs[0].shape == (1, *SPEC.input_shape)
     assert record.environment.helia_edge.source in ("release", "vcs", "local", "unknown")
@@ -98,15 +121,12 @@ def test_without_a_spec_the_batch_must_match_and_with_one_the_spec_is_built():
     longer = SPEC.model_copy(update={"input_shape": (128, 4)})  # the same weights for a longer input
     with pytest.raises(ValueError, match="inputs do not have the shapes of build"):
         export(seeded(SPEC, batch_size=1), precision="fp32", io_dtype="float32", spec=longer)
-    with pytest.raises(ValueError, match="batch_size 1"):
-        export(
-            seeded(SPEC),
-            precision="a8w8",
-            io_dtype="int8",
-            calibration=samples(SPEC.input_shape),
-            spec=SPEC,
-            batch_size=2,
-        )
+    for precision, io_dtype in (("a8w8", "int8"), ("a16w8", "int16")):
+        with pytest.raises(ValueError, match="batch_size 1"):
+            calibration = samples(SPEC.input_shape)
+            export(
+                seeded(SPEC), precision=precision, io_dtype=io_dtype, calibration=calibration, spec=SPEC, batch_size=2
+            )
     for batch_size in (0, True, 1.0):
         with pytest.raises(pydantic.ValidationError, match="batch_size"):
             export(seeded(SPEC, batch_size=1), precision="fp32", io_dtype="float32", batch_size=batch_size)
@@ -206,6 +226,10 @@ def test_the_record_refuses_what_it_does_not_describe():
             {**settings, "precision": "a8w8", "io_dtype": "int8", "calibration": {**calibration, "resets": [4]}},
             "resets",
         ),
+        (
+            {**settings, "precision": "a16w8", "io_dtype": "int16", "calibration": calibration, "batch_size": 2},
+            "batch_size 1",
+        ),
     ):
         with pytest.raises(pydantic.ValidationError, match=message):
             ExportRecord.model_validate({**data, "export": wrong})
@@ -224,6 +248,16 @@ def test_the_weights_digest_follows_the_weights_not_the_file(tmp_path):
     dense = [keras.Sequential([keras.Input((2,)), keras.layers.Dense(2, name=name)]) for name in ("a", "b")]
     dense[1].set_weights(dense[0].get_weights())  # weight paths are not hashed: Keras numbers unnamed layers
     assert weights_digest(dense[0]) == weights_digest(dense[1])
+    swapped = keras.Sequential([keras.Input((2,)), keras.layers.Dense(2), keras.layers.Dense(2)])
+    kernel_a, bias_a, kernel_b, bias_b = swapped.get_weights()
+    digest_before = weights_digest(swapped)
+    swapped.set_weights([kernel_b, bias_a, kernel_a, bias_b])
+    assert weights_digest(swapped) != digest_before  # the order of the weights is hashed
+    as_int, as_float = (Holder((2,), dtype) for dtype in ("int32", "float32"))
+    as_int.value.assign(np.arange(2, dtype=np.float32).view(np.int32))  # the same bytes as another dtype
+    as_float.value.assign(np.arange(2, dtype=np.float32))
+    assert weights_digest(as_int) != weights_digest(as_float)
+    assert weights_digest(Holder((), "float32")) != weights_digest(Holder((1,), "float32"))  # zeros, other shapes
     wide, tall = (keras.Sequential([keras.Input((n,)), keras.layers.Dense(6 // n, use_bias=False)]) for n in (2, 3))
     tall.set_weights([wide.get_weights()[0].reshape(3, 2)])  # the same bytes in another shape
     assert weights_digest(wide) != weights_digest(tall)
@@ -271,7 +305,7 @@ assert again.record.artifact == record.artifact and again.record.weights == reco
     assert result.returncode == 0, result.stderr[-2000:]
 
 
-def test_a_streaming_export_records_its_calibration_import_and_golden(tmp_path):
+def test_a_streaming_export_records_its_calibration_import_and_golden(tmp_path, monkeypatch):
     spec = ModelSpec(params=SileroVadParams(stft="conv_blocks", magnitude="max_projection", encoder_tail="live_taps"))
     model = seeded(spec, batch_size=1)
     rng = np.random.default_rng(3)
@@ -283,9 +317,20 @@ def test_a_streaming_export_records_its_calibration_import_and_golden(tmp_path):
     signal = 0.05 * rng.standard_normal(t.size) + 0.4 * np.sin(2 * np.pi * 300 * t) * (np.sin(2 * np.pi * 0.7 * t) > 0)
     calls = np.stack([signal[i * 512 : i * 512 + 576] for i in range(64)]).astype(np.float32)
     imported = WeightImport(mapping="silero_vad_v6_onnx", source=Source(sha256="7" * 64))
+    from helia_edge.export import api
+
+    seen = []
+    original = api.stream_calibration
+
+    def spy(model, signals, resets=()):
+        seen.append(tuple(resets))
+        return original(model, signals, resets)
+
+    monkeypatch.setattr(api, "stream_calibration", spy)
     result = export(
         model, precision="a16w8", io_dtype="int16", calibration=calls, resets=(32,), spec=spec, weights_import=imported
-    ).with_golden(calls[:16], resets=(8,))
+    ).with_golden(calls[:16], resets=(8,), uri="https://example.com/calls.npy")
+    assert seen == [(32,)]  # the resets reach the state calibration
     # Sqrt-free, mirror-pad-free
     assert not {"SQRT", "MIRROR_PAD", "TRANSPOSE"} & set(operator_names(result.content))
     record = result.record
@@ -304,6 +349,7 @@ def test_a_streaming_export_records_its_calibration_import_and_golden(tmp_path):
         ManifestGolden.model_validate({**manifest_golden, "resets": (4,)})
     assert from_array.record.export.calibration.resets == (32,)
     assert record.io.state_scales_tied is True
+    assert record.golden.inputs == Source(sha256=npy_sha256(calls[:16]), uri="https://example.com/calls.npy")
     assert (
         record.golden.steps == 16
         and record.golden.resets == (8,)
@@ -326,13 +372,15 @@ def test_a_streaming_export_records_its_calibration_import_and_golden(tmp_path):
             export(model, precision="a16w8", io_dtype="int16", calibration=calls, resets=resets, spec=spec)
     with pytest.raises(ValueError, match="resets"):
         result.with_golden(calls[:4], resets=(4,))
-    for resets in ([2.0], ["3"], 3, "3", b"\x08", [True]):
+    for resets in ([2.0], ["3"], 3, "3", b"\x08", [True], {1, 2}):
         with pytest.raises(ValueError, match="integer steps"):
             result.with_golden(calls[:4], resets=resets)
     with pytest.raises(ValueError, match="integer steps"):
         export(model, precision="a16w8", io_dtype="int16", calibration=calls, resets=3, spec=spec)
     with pytest.raises(ValueError, match="at least one call"):
         result.with_golden(calls[:0])
+    with pytest.raises(ValueError, match="finite"):
+        result.with_golden(np.full_like(calls[:2], np.nan))
     bare = export(model, precision="a16w8", io_dtype="int16", calibration=calls, resets=(32,), spec=spec)
     bare.write(tmp_path)
     assert not (tmp_path / "golden.npz").exists()  # a golden of an earlier write is removed

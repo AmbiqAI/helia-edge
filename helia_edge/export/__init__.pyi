@@ -20,6 +20,8 @@ from .recipe import load_recipe as load_recipe
 from .record import RECORD_SCHEMA as RECORD_SCHEMA
 from .record import ExportOptions as ExportOptions
 from .record import ExportRecord as ExportRecord
+from .record import Source as Source
+from .record import WeightImport as WeightImport
 from .record import weights_digest as weights_digest
 from .result import EnvironmentRecord as EnvironmentRecord
 from .result import ExportResult as ExportResult

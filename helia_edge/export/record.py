@@ -103,6 +103,8 @@ class ExportSettings(BaseModel):
     def _consistent(self) -> "ExportSettings":
         if self.io_dtype not in VALID_IO[self.precision]:
             raise ValueError(f"io_dtype {self.io_dtype} is not valid for precision {self.precision}")
+        if self.precision in CALIBRATED and self.batch_size != 1:
+            raise ValueError(f"precision {self.precision} exports with batch_size 1, not {self.batch_size}")
         if (self.calibration is not None) != (self.precision in CALIBRATED):
             raise ValueError(
                 f"precision {self.precision} {'needs' if self.precision in CALIBRATED else 'takes no'} calibration"
@@ -254,8 +256,8 @@ def weights_digest(model) -> str:
 
     digest = hashlib.sha256()
     for weight in model.weights:
-        value = np.ascontiguousarray(keras.ops.convert_to_numpy(weight))
+        value = np.asarray(keras.ops.convert_to_numpy(weight))  # ascontiguousarray would make a 0-d value (1,)
         for field in (value.dtype.name, ",".join(map(str, value.shape))):
             digest.update(field.encode() + b"\0")
-        digest.update(value.tobytes())
+        digest.update(value.tobytes(order="C"))
     return f"sha256:{digest.hexdigest()}"
