@@ -7,7 +7,7 @@ import tempfile
 from collections.abc import Collection
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Literal, cast, get_args
+from typing import Literal, get_args
 
 import numpy as np
 
@@ -212,28 +212,10 @@ def _npy(array: np.ndarray) -> bytes:
 
 def _golden(content: bytes, frames: np.ndarray, resets, source: GoldenSource, path: Path, out: Path) -> GoldenRecord:
     """Write a golden@2 sequence for a streaming model: ``frames`` are consecutive calls of its signal input."""
-    import io
+    from .golden import golden_npz
 
-    from .runner import LiteRTStreamRunner
-
-    runner = LiteRTStreamRunner(content, reference_kernels=True)
-    if len(runner.signals) != 1:
-        raise ValueError(
-            f"A streaming reference needs exactly one input that is not a state; got {list(runner.signals)}"
-        )
-    (signal,) = runner.signals
-    encoded = runner.encode(signal, frames.reshape(len(frames), *runner.inputs[signal]["shape"]))
-    fed, produced = runner.run({signal: encoded}, resets)
-    by_index = {details["index"]: name for name, details in runner.inputs.items()}
-    out_by_index = {details["index"]: name for name, details in runner.outputs.items()}
-    order_in = [by_index[d["index"]] for d in runner.interpreter.get_input_details()]
-    order_out = [out_by_index[d["index"]] for d in runner.interpreter.get_output_details()]
-    arrays = {f"input_{i}": fed[name] for i, name in enumerate(order_in)}
-    arrays |= {f"output_{i}": produced[name] for i, name in enumerate(order_out)}
-    buffer = io.BytesIO()
-    np.savez(buffer, **cast(dict[str, Any], arrays))  # plain savez: zlib versions cannot change the bytes
     return GoldenRecord(
-        file=_write(path, buffer.getvalue(), out),
+        file=_write(path, golden_npz(content, frames, resets), out),
         kind="sequence",
         steps=len(frames),
         resets=tuple(resets),

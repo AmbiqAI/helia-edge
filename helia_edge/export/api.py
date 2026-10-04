@@ -1,11 +1,32 @@
-"""Export entry point: validate, then convert with the exporter for the active backend."""
+"""Export entry points: ``export`` (an artifact with its export record) and ``export_model`` (the
+conversion), validating, then converting with the exporter for the active backend."""
 
+import hashlib
+import io
 from collections.abc import Collection, Mapping
+from dataclasses import dataclass, replace
+from pathlib import Path
+from typing import Any
 
 import numpy as np
 import numpy.typing as npt
 
-from .result import ExportResult
+from .record import (
+    CalibrationRecord,
+    EnvironmentEntry,
+    ExportOptions,
+    ExportRecord,
+    ExportSettings,
+    GoldenRecord,
+    IORecord,
+    Source,
+    TensorEntry,
+    WeightImport,
+    WeightsRecord,
+    file_record,
+    weights_digest,
+)
+from .result import ExportResult, state_scales_tied
 from .spec import CALIBRATED, BackendUnavailable, ExportSpec, state_input_name, state_output_name, state_pair
 
 
@@ -201,3 +222,197 @@ def export_model(
         shapes = {tensor.name: tuple(tensor.shape) for tensor in model.inputs}
         check_named_calibration(spec, calibration, shapes)
     return exporters.get(f"{spec.format}:{backend}")(model, spec, calibration)
+
+
+def _array_sha256(array: npt.ArrayLike) -> str:
+    """sha256 of ``array`` as ``numpy.save`` stores it."""
+    buffer = io.BytesIO()
+    np.save(buffer, np.ascontiguousarray(array), allow_pickle=False)
+    return hashlib.sha256(buffer.getvalue()).hexdigest()
+
+
+@dataclass(frozen=True)
+class Export:
+    """An exported artifact with its export record.
+
+    Attributes:
+        content: The artifact (a ``.tflite`` flatbuffer).
+        record: Its export record.
+        model: The Keras model that was exported, with the record's batch size.
+        golden: The golden@2 NPZ, when ``with_golden`` made one.
+    """
+
+    content: bytes
+    record: ExportRecord
+    model: Any
+    golden: bytes | None = None
+
+    def with_golden(self, inputs: npt.NDArray, resets: Collection[int] = (), uri: str | None = None) -> "Export":
+        """This export with a golden@2 sequence: ``inputs`` are consecutive calls of the streaming model's
+        signal input, run with LiteRT's reference kernels, the state carried and reset at ``resets``.
+
+        Args:
+            inputs: The signal, one call per row.
+            resets: Calls at which the states are zero.
+            uri: Where the inputs can be fetched, if anywhere; recorded with their sha256.
+        """
+        from .golden import golden_npz
+
+        data = golden_npz(self.content, inputs, resets)
+        golden = GoldenRecord(
+            file=file_record("golden.npz", data),
+            steps=len(inputs),
+            resets=tuple(resets),
+            inputs=Source(sha256=_array_sha256(inputs), uri=uri),
+        )
+        return replace(self, record=self.record.model_copy(update={"golden": golden}), golden=data)
+
+    def write(self, directory: Path | str) -> Path:
+        """Write ``model.tflite``, ``model.weights.h5``, ``golden.npz`` (if any) and ``record.json``.
+
+        Returns:
+            Path: The record's path.
+        """
+        directory = Path(directory)
+        directory.mkdir(parents=True, exist_ok=True)
+        (directory / self.record.artifact.file).write_bytes(self.content)
+        self.model.save_weights(directory / "model.weights.h5")
+        if self.golden is not None and self.record.golden is not None:
+            (directory / self.record.golden.file.file).write_bytes(self.golden)
+        self.record.write(directory / "record.json")
+        return directory / "record.json"
+
+
+def export(
+    model,
+    *,
+    precision: str,
+    io_dtype: str,
+    calibration: npt.NDArray | None = None,
+    resets: Collection[int] = (),
+    spec=None,
+    batch_size: int = 1,
+    options: ExportOptions = ExportOptions(),
+    weights_import: WeightImport | None = None,
+    calibration_uri: str | None = None,
+) -> Export:
+    """Export a Keras model to LiteRT with its export record (``helia-edge/export-record@1``).
+
+    The exported model has a static batch: every input's batch is ``batch_size``. A model built with a
+    dynamic batch is rebuilt from ``spec`` with ``batch_size`` and the same weights; without ``spec`` it is
+    refused. A streaming model (``state_in_k``/``state_out_k``) is calibrated with ``stream_calibration``
+    from its signal, the states reset at ``resets``.
+
+    Args:
+        model: The Keras model.
+        precision: ``fp32``, ``fp16``, ``a8w8`` or ``a16w8``.
+        io_dtype: Input and output element type, valid for ``precision``.
+        calibration: For ``a8w8`` and ``a16w8``: float32 samples along axis 0 of the model's one input, or of
+            a streaming model's signal input.
+        resets: For a streaming model, calibration steps at which the states are zero.
+        spec: The model's ``ModelSpec``, recorded so the export can be rebuilt; the model's weights must
+            have the shapes of ``build(spec)``.
+        batch_size: The batch of the exported model.
+        options: LiteRT options.
+        weights_import: Where the weights came from, when imported from another framework.
+        calibration_uri: Where the calibration array can be fetched, if anywhere.
+
+    Returns:
+        Export: The artifact, its record and the exported Keras model.
+
+    Raises:
+        ValueError: If the batch is dynamic without ``spec`` or differs from ``batch_size``, the weights do
+            not match ``spec``, or the calibration is invalid.
+    """
+    if not isinstance(batch_size, int) or isinstance(batch_size, bool) or batch_size < 1:
+        raise ValueError(f"batch_size is a positive integer, not {batch_size!r}")
+    calibration = None if calibration is None else np.asarray(calibration)
+    settings = ExportSettings(
+        precision=precision,
+        io_dtype=io_dtype,
+        batch_size=batch_size,
+        options=options,
+        calibration=None
+        if calibration is None
+        else CalibrationRecord(
+            sha256=_array_sha256(calibration), uri=calibration_uri, samples=len(calibration), resets=tuple(resets)
+        ),
+    )
+    rebuilt = None
+    if spec is not None:
+        from ..models.spec import build
+
+        rebuilt = build(spec, batch_size=batch_size)
+        want, got = [tuple(w.shape) for w in rebuilt.weights], [tuple(w.shape) for w in model.weights]
+        if want != got:
+            raise ValueError(f"The model's weights do not have the shapes of build(spec): {got} vs {want}")
+    batches = {tensor.shape[0] for tensor in model.inputs}
+    if batches != {batch_size}:
+        if batches != {None} or rebuilt is None:
+            raise ValueError(
+                f"The model's input batch is {sorted(batches, key=str)}, not {batch_size}. Build it with "
+                f"build(spec, batch_size={batch_size}), or pass spec to rebuild it with that batch."
+            )
+        rebuilt.set_weights(model.get_weights())
+        model = rebuilt
+
+    names = [tensor.name for tensor in model.inputs]
+    signals = [name for name in names if state_pair(name) is None]
+    streaming = len(signals) < len(names)
+    if resets and not streaming:
+        raise ValueError("resets apply to streaming models (state_in_k inputs) only")
+    data: npt.NDArray | Mapping[str, npt.NDArray] | None = calibration
+    if calibration is not None and streaming:
+        if len(signals) != 1:
+            raise ValueError(f"A streaming model needs exactly one input that is not a state; got {signals}")
+        data = stream_calibration(model, {signals[0]: calibration.astype(np.float32)}, resets)
+    result = export_model(
+        model,
+        ExportSpec(
+            precision=settings.precision,
+            io_dtype=settings.io_dtype,
+            mode=options.mode,
+            strict=options.strict,
+            state_tie_tolerance=options.state_tie_tolerance,
+        ),
+        data,
+    )
+    record = ExportRecord(
+        model=spec,
+        weights=WeightsRecord(digest=weights_digest(model), import_=weights_import),
+        export=settings,
+        artifact=file_record("model.tflite", result.content),
+        io=IORecord(
+            inputs=tuple(TensorEntry.from_record(r) for r in result.inputs),
+            outputs=tuple(TensorEntry.from_record(r) for r in result.outputs),
+            state_scales_tied=state_scales_tied(result.inputs, result.outputs),
+        ),
+        environment=EnvironmentEntry.from_record(result.environment),
+    )
+    return Export(content=result.content, record=record, model=model)
+
+
+def load_export_record(path: Path | str, weights: Path | str | None = None):
+    """Rebuild the Keras model an export record describes, with its weights.
+
+    Args:
+        path: The ``record.json``.
+        weights: The ``.weights.h5`` file; by default ``model.weights.h5`` next to the record.
+
+    Returns:
+        keras.Model: ``build(record.model)`` with the record's batch size and the weights.
+
+    Raises:
+        ValueError: If the record has no model spec, or the weights do not have the record's digest.
+    """
+    from ..models.spec import build
+
+    record = ExportRecord.read(path)
+    if record.model is None:
+        raise ValueError(f"{path} has no model spec, so the model cannot be rebuilt")
+    model = build(record.model, batch_size=record.export.batch_size)
+    model.load_weights(Path(weights) if weights is not None else Path(path).with_name("model.weights.h5"))
+    digest = weights_digest(model)
+    if digest != record.weights.digest:
+        raise ValueError(f"The weights have digest {digest}; the record names {record.weights.digest}")
+    return model
