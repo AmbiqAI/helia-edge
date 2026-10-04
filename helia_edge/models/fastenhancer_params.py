@@ -10,7 +10,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 class FastEnhancerRNNFormerParams(BaseModel):
     """RNNFormer stage: per-band GRU over time, then attention across bands."""
 
-    model_config = ConfigDict(extra="forbid", strict=True, frozen=True)
+    model_config = ConfigDict(frozen=True, extra="forbid")
 
     num_blocks: int = Field(default=2, ge=1)
     channels: int = Field(default=20, gt=0)
@@ -36,8 +36,9 @@ class FastEnhancerParams(BaseModel):
     untrained architecture unless matching weights exist.
     """
 
-    model_config = ConfigDict(extra="forbid", strict=True, frozen=True)
+    model_config = ConfigDict(frozen=True, extra="forbid")
 
+    family: Literal["fastenhancer"] = "fastenhancer"
     form: Literal["folded_inference"] = "folded_inference"
     n_fft: int = Field(default=512, ge=4)
     channels: int = Field(default=24, gt=0)
@@ -48,7 +49,6 @@ class FastEnhancerParams(BaseModel):
     mask: Literal["none", "sigmoid", "tanh"] = "none"
     input_compression: float = Field(default=0.3, gt=0, le=1, allow_inf_nan=False)
     resnet: bool = False
-    name: str = Field(default="fastenhancer", min_length=1, pattern=r"^[A-Za-z0-9_.-]+$")
 
     @model_validator(mode="after")
     def _consistent_geometry(self) -> "FastEnhancerParams":
@@ -77,21 +77,12 @@ class FastEnhancerParams(BaseModel):
         """Frequency positions after the strided input convolution."""
         return self.n_fft // 2 // self.stride
 
-    def get_config(self) -> dict[str, Any]:
-        """Return a JSON-compatible constructor config without weights."""
-        return self.model_dump(mode="json")
-
-    @classmethod
-    def from_config(cls, config: Mapping[str, Any]) -> "FastEnhancerParams":
-        """Validate external config, rejecting unknown keys and coercions."""
-        return cls.model_validate_json(json.dumps(dict(config)))
-
 
 FASTENHANCER_PRESET_SOURCE = "aask1357/fastenhancer@e74cab157662dd0d28f381959f9b4870654d5d1f"
 
 FASTENHANCER_PRESETS: Mapping[str, FastEnhancerParams] = {
     # configs/fastenhancer/t.yaml at FASTENHANCER_PRESET_SOURCE (onnx-vd-v1.0.0 era).
-    "fastenhancer_t": FastEnhancerParams(name="fastenhancer_t"),
+    "fastenhancer_t": FastEnhancerParams(),
 }
 
 
@@ -121,7 +112,7 @@ def resolve_fastenhancer(preset: str, overrides: Mapping[str, Any] | None = None
         overrides = json.loads(json.dumps(dict(overrides or {})))
     except TypeError as exc:
         raise ValueError(f"FastEnhancer overrides must be JSON-compatible: {exc}") from exc
-    base = FASTENHANCER_PRESETS[preset].get_config()
+    base = FASTENHANCER_PRESETS[preset].model_dump(mode="json")
     for key, value in overrides.items():
         if key not in base:
             raise ValueError(f"unknown FastEnhancer override {key!r}")
@@ -129,7 +120,7 @@ def resolve_fastenhancer(preset: str, overrides: Mapping[str, Any] | None = None
             base[key] = {**base[key], **value}
         else:
             base[key] = value
-    params = FastEnhancerParams.from_config(base)
+    params = FastEnhancerParams.model_validate_json(json.dumps(base))
     official = params == FASTENHANCER_PRESETS[preset]
     return FastEnhancerResolvedConfig(
         preset=preset,

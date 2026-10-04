@@ -1,8 +1,6 @@
 """Validated CorNET architecture config; no backend imports."""
 
-import json
-from collections.abc import Mapping
-from typing import Any, Literal
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -15,10 +13,13 @@ class CorNetParams(BaseModel):
     Defaults are the paper's HR network (Sec. III, Fig. 6, Table III): two
     Conv1D(32, 40) stages with batch normalization, ReLU, max pooling 4 and
     dropout 0.1, then LSTM(128) twice and a single linear output. The paper
-    publishes no code or weights; changed values are new architectures.
+    publishes no code or weights; changed values are new architectures. ``unroll`` builds the LSTMs as
+    per-timestep operations instead of a loop; weights are identical.
     """
 
-    model_config = ConfigDict(extra="forbid", strict=True, frozen=True)
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    family: Literal["cornet"] = "cornet"
 
     conv_stages: int = Field(default=2, ge=1)
     filters: int = Field(default=32, gt=0)
@@ -28,13 +29,4 @@ class CorNetParams(BaseModel):
     lstm_layers: int = Field(default=2, ge=1)
     lstm_units: int = Field(default=128, gt=0)
     recurrent_activation: Literal["sigmoid", "hard_sigmoid"] = "sigmoid"
-    name: str = Field(default="cornet", min_length=1, pattern=r"^[A-Za-z0-9_.-]+$")
-
-    def get_config(self) -> dict[str, Any]:
-        """Return a JSON-compatible constructor config without weights."""
-        return self.model_dump(mode="json")
-
-    @classmethod
-    def from_config(cls, config: Mapping[str, Any]) -> "CorNetParams":
-        """Validate external config, rejecting unknown keys and coercions."""
-        return cls.model_validate_json(json.dumps(dict(config)))
+    unroll: bool = False

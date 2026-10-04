@@ -10,14 +10,16 @@ import numpy as np
 import pytest
 from pydantic import ValidationError
 
-from helia_edge.models import CorNetModel, CorNetParams
+from helia_edge.models import CorNetParams, ModelSpec
+from helia_edge.models import build as build_spec
 
 # Table III, HR network: trainable parameters per layer (the dense head here is the 1-neuron HR output).
 TABLE_III = {"conv0_conv": 1312, "conv1_conv": 40992, "lstm0": 82432, "lstm1": 131584, "hr": 129}
 
 
-def build(unroll=False, params=CorNetParams()):
-    return CorNetModel.model_from_params(keras.Input((1000, 1)), params, unroll=unroll)
+def build(unroll=False, params=CorNetParams(), batch_size=None):
+    params = params.model_copy(update={"unroll": unroll})
+    return build_spec(ModelSpec(params=params, input_shape=(1000, 1)), batch_size=batch_size)
 
 
 def test_default_matches_paper_table_iii():
@@ -52,13 +54,13 @@ def test_unrolled_equals_rolled():
 
 
 def test_invalid_configs_fail():
-    for config in ({"filters": 0}, {"dropout": 1.0}, {"lstm_layers": 0}, {"width": 2}, {"filters": "32"}):
+    for config in ({"filters": 0}, {"dropout": 1.0}, {"lstm_layers": 0}, {"width": 2}, {"name": "cornet"}):
         with pytest.raises(ValidationError):
-            CorNetParams.from_config(config)
+            CorNetParams.model_validate(config)
     with pytest.raises(ValueError, match="too short"):
-        CorNetModel.model_from_params(keras.Input((100, 1)), CorNetParams())
-    with pytest.raises(TypeError):
-        CorNetModel.model_from_params(keras.Input((1000, 1)), {"filters": 32})
+        build_spec(ModelSpec(params=CorNetParams(), input_shape=(100, 1)))
+    with pytest.raises(ValueError, match="time, channels"):
+        build_spec(ModelSpec(params=CorNetParams(), input_shape=(1000,)))
 
 
 def test_keras_file_roundtrip(tmp_path):
@@ -77,8 +79,7 @@ def test_litert_lowering_form(unroll):
 
     from helia_edge.converters.litert import ConversionType, LiteRTKerasConverter, QuantizationType
 
-    params = CorNetParams(lstm_units=16)
-    model = CorNetModel.model_from_params(keras.Input((1000, 1), batch_size=1), params, unroll=unroll)
+    model = build(unroll=unroll, params=CorNetParams(lstm_units=16), batch_size=1)
     converter = LiteRTKerasConverter(model)
     try:
         content = converter.convert(quantization=QuantizationType.FP32, mode=ConversionType.CONCRETE)
@@ -107,9 +108,9 @@ class NoBackend(importlib.abc.MetaPathFinder):
         if fullname.split('.')[0] in {'keras', 'tensorflow', 'torch', 'jax'}:
             raise AssertionError('config imported optional backend: ' + fullname)
 sys.meta_path.insert(0, NoBackend())
-from helia_edge.models import CorNetParams
-params = CorNetParams()
-assert CorNetParams.from_config(params.get_config()) == params
+from helia_edge.models import CorNetParams, ModelSpec
+spec = ModelSpec(params=CorNetParams(unroll=True), input_shape=(1000, 1))
+assert ModelSpec.model_validate_json(spec.model_dump_json()) == spec
 """
     subprocess.run(
         [sys.executable, "-c", code],

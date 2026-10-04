@@ -11,51 +11,54 @@ import keras
 
 from .cornet_params import CorNetParams
 
-keras.saving.register_keras_serializable(package="helia_edge")(CorNetParams)
 
+def build(
+    params: CorNetParams, input_shape: tuple[int | None, ...], *, batch_size: int | None = None, name: str | None = None
+) -> keras.Model:
+    """Construct an untrained CorNET regressor with one linear output.
 
-class CorNetModel:
-    """Build a standard Keras Functional model from typed architecture config."""
+    Each convolution stage is Conv1D (valid, stride 1), batch normalization,
+    ReLU, max pooling and dropout, following Fig. 6; the paper's text
+    places batch normalization after ReLU instead. Stride and padding are
+    not stated and are inferred from Table III's MAC counts. Every LSTM but
+    the last returns its sequence.
 
-    @staticmethod
-    def model_from_params(inputs: keras.KerasTensor, params: CorNetParams, *, unroll: bool = False) -> keras.Model:
-        """Construct an untrained regressor with one linear output.
+    Args:
+        params (CorNetParams): Model parameters.
+        input_shape (tuple[int | None, ...]): ``(time, channels)``, both known.
+        batch_size (int | None): Static batch size; None for a dynamic batch.
+        name (str | None): Model name; the family when None.
 
-        Each convolution stage is Conv1D (valid, stride 1), batch normalization,
-        ReLU, max pooling and dropout, following Fig. 6; the paper's text
-        places batch normalization after ReLU instead. Stride and padding are
-        not stated and are inferred from Table III's MAC counts. Every LSTM but
-        the last returns its sequence. ``unroll`` builds the LSTMs as
-        per-timestep operations instead of a loop; weights are identical.
-        """
-        if not isinstance(params, CorNetParams):
-            raise TypeError("params must be CorNetParams; use from_config for mappings")
-        if not keras.backend.is_keras_tensor(inputs) or len(inputs.shape) != 3:
-            raise ValueError("inputs must be a rank-3 (batch, time, channels) Keras tensor")
-        if inputs.shape[1] is None or inputs.shape[2] is None:
-            raise ValueError("inputs need a known time length and channel count")
+    Returns:
+        keras.Model: The model, named ``cornet`` unless ``name`` is given.
+    """
+    if len(input_shape) != 2:
+        raise ValueError("input_shape must be (time, channels)")
+    if input_shape[0] is None or input_shape[1] is None:
+        raise ValueError("inputs need a known time length and channel count")
+    inputs = keras.Input(shape=input_shape, batch_size=batch_size, name="inputs")
 
-        x = inputs
-        for stage in range(params.conv_stages):
-            name = f"conv{stage}"
-            if x.shape[1] < params.kernel_size:
-                raise ValueError("input window is too short for the convolution stages")
-            x = keras.layers.Conv1D(params.filters, params.kernel_size, name=f"{name}_conv")(x)
-            x = keras.layers.BatchNormalization(name=f"{name}_bn")(x)
-            x = keras.layers.Activation("relu", name=f"{name}_relu")(x)
-            x = keras.layers.MaxPooling1D(params.pool_size, name=f"{name}_pool")(x)
-            if params.dropout:
-                x = keras.layers.Dropout(params.dropout, name=f"{name}_dropout")(x)
-        if x.shape[1] < 1:
+    x = inputs
+    for stage in range(params.conv_stages):
+        prefix = f"conv{stage}"
+        if x.shape[1] < params.kernel_size:
             raise ValueError("input window is too short for the convolution stages")
-        for index in range(params.lstm_layers):
-            last = index == params.lstm_layers - 1
-            x = keras.layers.LSTM(
-                params.lstm_units,
-                recurrent_activation=params.recurrent_activation,
-                return_sequences=not last,
-                unroll=unroll,
-                name=f"lstm{index}",
-            )(x)
-        outputs = keras.layers.Dense(1, name="hr")(x)
-        return keras.Model(inputs=inputs, outputs=outputs, name=params.name)
+        x = keras.layers.Conv1D(params.filters, params.kernel_size, name=f"{prefix}_conv")(x)
+        x = keras.layers.BatchNormalization(name=f"{prefix}_bn")(x)
+        x = keras.layers.Activation("relu", name=f"{prefix}_relu")(x)
+        x = keras.layers.MaxPooling1D(params.pool_size, name=f"{prefix}_pool")(x)
+        if params.dropout:
+            x = keras.layers.Dropout(params.dropout, name=f"{prefix}_dropout")(x)
+    if x.shape[1] < 1:
+        raise ValueError("input window is too short for the convolution stages")
+    for index in range(params.lstm_layers):
+        last = index == params.lstm_layers - 1
+        x = keras.layers.LSTM(
+            params.lstm_units,
+            recurrent_activation=params.recurrent_activation,
+            return_sequences=not last,
+            unroll=params.unroll,
+            name=f"lstm{index}",
+        )(x)
+    outputs = keras.layers.Dense(1, name="hr")(x)
+    return keras.Model(inputs=inputs, outputs=outputs, name=name or params.family)

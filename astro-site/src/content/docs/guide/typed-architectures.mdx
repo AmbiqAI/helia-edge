@@ -10,19 +10,18 @@ models. Backend selection must happen before importing Keras.
 ## Faithful MLPerf Tiny family
 
 ```python
-from helia_edge.models import MlperfTinyParams, MlperfTinyModel
+from helia_edge.models import MlperfTinyParams, ModelSpec, build
 
-params = MlperfTinyParams(architecture="kws")
-model = MlperfTinyModel.model_from_params(params)
-restored_params = MlperfTinyParams.model_validate_json(params.model_dump_json())
+spec = ModelSpec(params=MlperfTinyParams(architecture="kws"))  # the input shape is fixed
+model = build(spec)
+restored = ModelSpec.model_validate_json(spec.model_dump_json())
 ```
 
 The strict, immutable config selects `kws`, `vww`, `resnet` or `ad`. It rejects
 unknown fields and unsupported architectures; there are no scaling, seed,
 calibration or precision controls. These are the same fixed architectures as the
-[reference constructors](/helia-edge/examples/mlperf-tiny/). Existing `mlperf_tiny_*` functions and
-their default names remain unchanged. An optional `name=` on the family factory
-names the model instance without changing its architecture.
+[MLPerf Tiny page](/helia-edge/examples/mlperf-tiny/). An optional `name=` on
+`build` names the model instance without changing its architecture.
 
 ## Compact TCN preset
 

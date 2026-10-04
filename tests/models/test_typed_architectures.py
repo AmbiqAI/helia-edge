@@ -8,33 +8,29 @@ import pytest
 from pydantic import ValidationError
 
 from helia_edge.models import (
-    MlperfTinyModel,
     MlperfTinyParams,
     ModelSpec,
     TcnParams,
     build,
     compact_tcn_params,
-    mlperf_tiny_ad,
-    mlperf_tiny_kws,
-    mlperf_tiny_resnet,
-    mlperf_tiny_vww,
 )
+from helia_edge.models.mlperf_tiny import build as mlperf_build
 from helia_edge.models.tcn import build as tcn_build
 
-BUILDERS = {"kws": mlperf_tiny_kws, "vww": mlperf_tiny_vww, "resnet": mlperf_tiny_resnet, "ad": mlperf_tiny_ad}
+ARCHITECTURES = ("kws", "vww", "resnet", "ad")
 
 
-@pytest.mark.parametrize("architecture", BUILDERS)
-def test_family_adapter_preserves_wrapper_config_weights_and_serialization(architecture, tmp_path):
-    params = MlperfTinyParams(architecture=architecture)
-    assert MlperfTinyParams.model_validate_json(params.model_dump_json()) == params
+@pytest.mark.parametrize("architecture", ARCHITECTURES)
+def test_mlperf_spec_round_trips_builds_and_serializes(architecture, tmp_path):
+    spec = ModelSpec(params=MlperfTinyParams(architecture=architecture))
+    assert ModelSpec.model_validate_json(spec.model_dump_json()) == spec
     keras.backend.clear_session()
     keras.utils.set_random_seed(123)
-    original = BUILDERS[architecture]()
+    original = mlperf_build(spec.params)
     keras.backend.clear_session()
     keras.utils.set_random_seed(123)
-    adapted = MlperfTinyModel.model_from_params(params)
-    assert original.to_json() == adapted.to_json()
+    adapted = build(spec)
+    assert original.to_json() == adapted.to_json() and adapted.name == "mlperf_tiny"
     for left, right in zip(original.get_weights(), adapted.get_weights(), strict=True):
         np.testing.assert_array_equal(left, right)
     x = np.ones((1, *adapted.input_shape[1:]), np.float32)
@@ -50,14 +46,17 @@ def test_family_adapter_preserves_wrapper_config_weights_and_serialization(archi
 )
 def test_fixed_family_rejects_unsupported_fields(config):
     with pytest.raises(ValidationError):
-        MlperfTinyModel.model_from_params(config)
+        MlperfTinyParams.model_validate(config)
 
 
-def test_config_is_immutable_and_name_is_instantiation_option():
+def test_mlperf_input_shape_is_fixed_and_name_is_an_option():
     params = MlperfTinyParams(architecture="ad")
     with pytest.raises(ValidationError):
         params.architecture = "kws"
-    assert MlperfTinyModel.model_from_params({"architecture": "ad"}, name="custom_ad").name == "custom_ad"
+    assert mlperf_build(params, name="custom_ad").name == "custom_ad"
+    assert build(ModelSpec(params=params, input_shape=(640,))).input_shape == (None, 640)
+    with pytest.raises(ValueError, match="takes input shape"):
+        build(ModelSpec(params=params, input_shape=(320,)))
 
 
 @pytest.mark.parametrize("filters", [8, 16])
@@ -106,8 +105,8 @@ def test_public_factories_do_not_reset_seed_or_session(monkeypatch):
 
     monkeypatch.setattr(keras.utils, "set_random_seed", forbidden)
     monkeypatch.setattr(keras.backend, "clear_session", forbidden)
-    for architecture in BUILDERS:
-        MlperfTinyModel.model_from_params(MlperfTinyParams(architecture=architecture))
+    for architecture in ARCHITECTURES:
+        mlperf_build(MlperfTinyParams(architecture=architecture))
     spec = ModelSpec(params=compact_tcn_params(num_classes=4), input_shape=(32, 3))
     first, second = build(spec), build(spec)
     assert first.output_shape == second.output_shape == (None, 32, 4)

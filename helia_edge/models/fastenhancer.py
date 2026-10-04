@@ -6,7 +6,7 @@ Adapted from aask1357/fastenhancer (revision e74cab1, models/fastenhancer/
 default/model.py), the revision of the onnx-vd-v1.0.0 release. One call processes one STFT frame: ``spec_in`` is
 (n_fft // 2 + 1, 1, 2) real/imag, and each RNNFormer block carries a GRU state
 (freq, channels). Callers zero the states only at independent sequence starts
-and feed each ``cache_out_i`` back as ``cache_in_i``. The graph matches the
+and feed each ``state_out_k`` back as ``state_in_k``. The graph matches the
 released ONNX inference form, with BatchNorm and weight normalization folded.
 STFT/iSTFT framing, weight files and weight terms are the caller's concern.
 """
@@ -16,10 +16,9 @@ from collections.abc import Mapping
 import keras
 import numpy as np
 
+from ..layers.streaming import state_input, state_output
 from ..utils import helia_export
 from .fastenhancer_params import FastEnhancerParams
-
-keras.saving.register_keras_serializable(package="helia_edge")(FastEnhancerParams)
 
 
 def linear_filterbanks(n_freq: int, n_filter: int) -> tuple[np.ndarray, np.ndarray]:
@@ -187,83 +186,94 @@ def _act(x, params: FastEnhancerParams, name: str):
     return keras.layers.Activation(params.activation, name=name)(x)
 
 
-class FastEnhancerModel:
-    """Build the folded-inference FastEnhancer as a Keras Functional model."""
+def build(
+    params: FastEnhancerParams,
+    input_shape: tuple[int | None, ...] | None = None,
+    *,
+    batch_size: int | None = None,
+    name: str | None = None,
+) -> keras.Model:
+    """Construct an untrained one-frame FastEnhancer with named streaming inputs and outputs.
 
-    @staticmethod
-    def model_from_params(params: FastEnhancerParams) -> keras.Model:
-        """Construct an untrained one-frame model with named streaming inputs/outputs.
+    Inputs: ``spec_in`` (bins, 1, 2) and ``state_in_k`` (freq, channels) per block. Outputs: ``spec_out``
+    and ``state_out_k``. Fixed linear filterbanks are initialized and frozen; other weights are untrained
+    until :func:`load_fastenhancer_weights` hydrates matching tensors.
 
-        Inputs: ``spec_in`` (bins, 1, 2) and ``cache_in_i`` (freq, channels) per
-        block. Outputs: ``spec_out`` and ``cache_out_i``. Fixed linear
-        filterbanks are initialized and frozen; other weights are untrained
-        until :func:`load_fastenhancer_weights` hydrates matching tensors.
-        """
-        if not isinstance(params, FastEnhancerParams):
-            raise TypeError("params must be FastEnhancerParams; use from_config for mappings")
-        rf = params.rnnformer
-        channels = params.channels
-        k0, stride = params.kernel_size[0], params.stride
-        pad = (k0 - stride) // 2
+    Args:
+        params (FastEnhancerParams): Model parameters.
+        input_shape (tuple[int | None, ...] | None): None, or ``spec_in``'s fixed shape ``(bins, 1, 2)``.
+        batch_size (int | None): Static batch size; None for a dynamic batch.
+        name (str | None): Model name; the family when None.
 
-        spec_in = keras.Input(shape=(params.spectral_bins, 1, 2), name="spec_in")
-        caches_in = [keras.Input(shape=(rf.freq, rf.channels), name=f"cache_in_{i}") for i in range(rf.num_blocks)]
+    Returns:
+        keras.Model: The model, named ``fastenhancer`` unless ``name`` is given.
+    """
+    shape = (params.spectral_bins, 1, 2)
+    if input_shape is not None and tuple(input_shape) != shape:
+        raise ValueError(f"FastEnhancer takes spec_in shape {shape}, not {tuple(input_shape)}")
+    rf = params.rnnformer
+    channels = params.channels
+    k0, stride = params.kernel_size[0], params.stride
+    pad = (k0 - stride) // 2
 
-        compressed = FastEnhancerCompression(params.input_compression, name="compress")(spec_in)
-        x = keras.layers.ZeroPadding1D(pad, name="enc_pre_pad")(compressed)
-        x = keras.layers.Conv1D(channels, k0, strides=stride, name="enc_pre_conv")(x)
-        x = _act(x, params, "enc_pre_act")
-        skips = [x]
-        for index, kernel in enumerate(params.kernel_size[1:]):
-            y = _act(_conv(x, channels, kernel, f"encoder_{index}_conv"), params, f"encoder_{index}_act")
-            # The source adds the residual in place, so the skip includes it.
-            x = keras.layers.Add(name=f"encoder_{index}_res")([y, x]) if params.resnet else y
-            skips.append(x)
+    spec_in = keras.Input(shape=shape, batch_size=batch_size, name="spec_in")
+    caches_in = [state_input(i, (rf.freq, rf.channels), batch_size) for i in range(rf.num_blocks)]
 
-        rf_in = x
-        pre, post = linear_filterbanks(params.encoder_bins, rf.freq)
-        x = FastEnhancerFrequencyProjection(rf.freq, trainable=False, name="rf_pre_proj")(x)
-        x = _conv(x, rf.channels, 1, "rf_pre_conv")
-        caches_out = []
-        for index, cache in enumerate(caches_in):
-            block = f"rf_block_{index}"
-            h = FastEnhancerGRUStep(rf.channels, name=f"{block}_gru")([x, cache])
-            caches_out.append(keras.layers.Identity(name=f"cache_out_{index}")(h))
-            y = keras.layers.Dense(rf.channels, name=f"{block}_rnn_fc")(h)
-            if rf.post_act:
-                y = _act(y, params, f"{block}_rnn_act")
-            x = keras.layers.Add(name=f"{block}_rnn_res")([y, x])
-            if rf.positional_embedding and index == 0:
-                x = FastEnhancerPositionalEmbedding(name=f"{block}_pe")(x)
-            y = FastEnhancerFrequencyAttention(rf.num_heads, rf.attn_bias, name=f"{block}_attn")(x)
-            y = keras.layers.Dense(rf.channels, name=f"{block}_attn_fc")(y)
-            if rf.post_act:
-                y = _act(y, params, f"{block}_attn_act")
-            x = keras.layers.Add(name=f"{block}_attn_res")([y, x])
-        x = FastEnhancerFrequencyProjection(params.encoder_bins, trainable=False, name="rf_post_proj")(x)
-        x = _conv(x, channels, 1, "rf_post_conv")
+    compressed = FastEnhancerCompression(params.input_compression, name="compress")(spec_in)
+    x = keras.layers.ZeroPadding1D(pad, name="enc_pre_pad")(compressed)
+    x = keras.layers.Conv1D(channels, k0, strides=stride, name="enc_pre_conv")(x)
+    x = _act(x, params, "enc_pre_act")
+    skips = [x]
+    for index, kernel in enumerate(params.kernel_size[1:]):
+        y = _act(_conv(x, channels, kernel, f"encoder_{index}_conv"), params, f"encoder_{index}_act")
+        # The source adds the residual in place, so the skip includes it.
+        x = keras.layers.Add(name=f"encoder_{index}_res")([y, x]) if params.resnet else y
+        skips.append(x)
+
+    rf_in = x
+    pre, post = linear_filterbanks(params.encoder_bins, rf.freq)
+    x = FastEnhancerFrequencyProjection(rf.freq, trainable=False, name="rf_pre_proj")(x)
+    x = _conv(x, rf.channels, 1, "rf_pre_conv")
+    caches_out = []
+    for index, cache in enumerate(caches_in):
+        block = f"rf_block_{index}"
+        h = FastEnhancerGRUStep(rf.channels, name=f"{block}_gru")([x, cache])
+        caches_out.append(state_output(index, h))
+        y = keras.layers.Dense(rf.channels, name=f"{block}_rnn_fc")(h)
+        if rf.post_act:
+            y = _act(y, params, f"{block}_rnn_act")
+        x = keras.layers.Add(name=f"{block}_rnn_res")([y, x])
+        if rf.positional_embedding and index == 0:
+            x = FastEnhancerPositionalEmbedding(name=f"{block}_pe")(x)
+        y = FastEnhancerFrequencyAttention(rf.num_heads, rf.attn_bias, name=f"{block}_attn")(x)
+        y = keras.layers.Dense(rf.channels, name=f"{block}_attn_fc")(y)
+        if rf.post_act:
+            y = _act(y, params, f"{block}_attn_act")
+        x = keras.layers.Add(name=f"{block}_attn_res")([y, x])
+    x = FastEnhancerFrequencyProjection(params.encoder_bins, trainable=False, name="rf_post_proj")(x)
+    x = _conv(x, channels, 1, "rf_post_conv")
+    if params.resnet:
+        x = keras.layers.Add(name="rf_res")([x, rf_in])
+
+    for index, kernel in enumerate(reversed(params.kernel_size[1:])):
+        x_in = x
+        x = keras.layers.Concatenate(name=f"decoder_{index}_cat")([x, skips.pop()])
+        x = _act(_conv(x, channels, 1, f"decoder_{index}_conv0"), params, f"decoder_{index}_act0")
+        x = _act(_conv(x, channels, kernel, f"decoder_{index}_conv1"), params, f"decoder_{index}_act1")
         if params.resnet:
-            x = keras.layers.Add(name="rf_res")([x, rf_in])
+            x = keras.layers.Add(name=f"decoder_{index}_res")([x, x_in])
+    x = keras.layers.Concatenate(name="dec_post_cat")([x, skips.pop()])
+    x = _act(_conv(x, channels, 1, "dec_post_conv"), params, "dec_post_act")
+    x = keras.layers.Conv1DTranspose(2, k0, strides=stride, name="dec_post_upsample")(x)
+    x = keras.layers.Cropping1D(pad, name="dec_post_crop")(x)
+    if params.mask != "none":
+        x = keras.layers.Activation(params.mask, name="mask_act")(x)
+    spec_out = FastEnhancerMaskOutput(params.input_compression, name="spec_out")([compressed, x])
 
-        for index, kernel in enumerate(reversed(params.kernel_size[1:])):
-            x_in = x
-            x = keras.layers.Concatenate(name=f"decoder_{index}_cat")([x, skips.pop()])
-            x = _act(_conv(x, channels, 1, f"decoder_{index}_conv0"), params, f"decoder_{index}_act0")
-            x = _act(_conv(x, channels, kernel, f"decoder_{index}_conv1"), params, f"decoder_{index}_act1")
-            if params.resnet:
-                x = keras.layers.Add(name=f"decoder_{index}_res")([x, x_in])
-        x = keras.layers.Concatenate(name="dec_post_cat")([x, skips.pop()])
-        x = _act(_conv(x, channels, 1, "dec_post_conv"), params, "dec_post_act")
-        x = keras.layers.Conv1DTranspose(2, k0, strides=stride, name="dec_post_upsample")(x)
-        x = keras.layers.Cropping1D(pad, name="dec_post_crop")(x)
-        if params.mask != "none":
-            x = keras.layers.Activation(params.mask, name="mask_act")(x)
-        spec_out = FastEnhancerMaskOutput(params.input_compression, name="spec_out")([compressed, x])
-
-        model = keras.Model(inputs=[spec_in, *caches_in], outputs=[spec_out, *caches_out], name=params.name)
-        model.get_layer("rf_pre_proj").kernel.assign(pre)
-        model.get_layer("rf_post_proj").kernel.assign(post)
-        return model
+    model = keras.Model(inputs=[spec_in, *caches_in], outputs=[spec_out, *caches_out], name=name or params.family)
+    model.get_layer("rf_pre_proj").kernel.assign(pre)
+    model.get_layer("rf_post_proj").kernel.assign(post)
+    return model
 
 
 def fastenhancer_weight_shapes(params: FastEnhancerParams) -> dict[str, tuple[int, ...]]:

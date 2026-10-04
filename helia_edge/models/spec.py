@@ -12,14 +12,22 @@ from pydantic import BaseModel, ConfigDict, Field
 from .composer_params import ComposerParams
 from .conformer_params import ConformerParams
 from .convmixer_params import ConvMixerParams
+from .cornet_params import CorNetParams
 from .efficientnet_params import EfficientNetParams
+from .fastenhancer_params import FastEnhancerParams
 from .metaformer_params import MetaFormerParams
+from .miniresnet_params import MiniResNetV1Params
+from .mlperf_tiny_params import MlperfTinyParams
 from .mobilenet_params import MobileNetV1Params
 from .mobileone_params import MobileOneParams
 from .regnet_params import RegNetParams
 from .resnet_params import ResNetParams
+from .silero_vad_params import SileroVadParams
 from .tcn_params import TcnParams
+from .timeppg_params import TimePPGParams
 from .tsmixer_params import TsMixerParams
+from .unet_params import UNetParams
+from .unext_params import UNextParams
 
 if TYPE_CHECKING:
     import keras
@@ -28,17 +36,28 @@ ModelParams = Annotated[
     ComposerParams
     | ConformerParams
     | ConvMixerParams
+    | CorNetParams
     | EfficientNetParams
+    | FastEnhancerParams
     | MetaFormerParams
+    | MiniResNetV1Params
+    | MlperfTinyParams
     | MobileNetV1Params
     | MobileOneParams
     | RegNetParams
     | ResNetParams
+    | SileroVadParams
     | TcnParams
-    | TsMixerParams,
+    | TimePPGParams
+    | TsMixerParams
+    | UNetParams
+    | UNextParams,
     Field(discriminator="family"),
 ]
 """The Params of any family, discriminated by ``family``."""
+
+FIXED_INPUT = (FastEnhancerParams, MlperfTinyParams, SileroVadParams)
+"""Families whose input shape follows from their Params; their ``input_shape`` may be None."""
 
 
 class ModelSpec(BaseModel):
@@ -46,13 +65,14 @@ class ModelSpec(BaseModel):
 
     Attributes:
         params (ModelParams): The family's typed Params; ``params.family`` selects the family.
-        input_shape (tuple[int | None, ...]): Input shape without the batch axis; None for a variable axis.
+        input_shape (tuple[int | None, ...] | None): Input shape without the batch axis; None for a variable
+            axis. None for the families in ``FIXED_INPUT``, whose shape follows from their Params.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     params: ModelParams
-    input_shape: Annotated[tuple[Annotated[int, Field(gt=0)] | None, ...], Field(min_length=1)]
+    input_shape: Annotated[tuple[Annotated[int, Field(gt=0)] | None, ...], Field(min_length=1)] | None = None
 
 
 def build(spec: ModelSpec, *, batch_size: int | None = None, name: str | None = None) -> "keras.Model":
@@ -68,6 +88,8 @@ def build(spec: ModelSpec, *, batch_size: int | None = None, name: str | None = 
         keras.Model: The model.
     """
     params = spec.params
+    if spec.input_shape is None and not isinstance(params, FIXED_INPUT):
+        raise ValueError(f"{params.family} needs an input_shape")
     match params:
         case ComposerParams():
             from .composer import build as family_build
@@ -75,10 +97,18 @@ def build(spec: ModelSpec, *, batch_size: int | None = None, name: str | None = 
             from .conformer import build as family_build
         case ConvMixerParams():
             from .convmixer import build as family_build
+        case CorNetParams():
+            from .cornet import build as family_build
         case EfficientNetParams():
             from .efficientnet import build as family_build
+        case FastEnhancerParams():
+            from .fastenhancer import build as family_build
         case MetaFormerParams():
             from .metaformer import build as family_build
+        case MiniResNetV1Params():
+            from .miniresnet import build as family_build
+        case MlperfTinyParams():
+            from .mlperf_tiny import build as family_build
         case MobileNetV1Params():
             from .mobilenet import build as family_build
         case MobileOneParams():
@@ -87,10 +117,18 @@ def build(spec: ModelSpec, *, batch_size: int | None = None, name: str | None = 
             from .regnet import build as family_build
         case ResNetParams():
             from .resnet import build as family_build
+        case SileroVadParams():
+            from .silero_vad import build as family_build
         case TcnParams():
             from .tcn import build as family_build
+        case TimePPGParams():
+            from .timeppg import build as family_build
         case TsMixerParams():
             from .tsmixer import build as family_build
+        case UNetParams():
+            from .unet import build as family_build
+        case UNextParams():
+            from .unext import build as family_build
         case _:
             raise TypeError(f"Not a family's Params: {type(params).__name__}")
     return family_build(params, spec.input_shape, batch_size=batch_size, name=name)

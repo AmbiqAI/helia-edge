@@ -14,9 +14,10 @@ import numpy as np
 from ai_edge_litert.interpreter import Interpreter, OpResolverType
 
 from helia_edge.export import ExportSpec, export_model
-from helia_edge.models.mlperf_tiny import mlperf_tiny_ad, mlperf_tiny_kws, mlperf_tiny_resnet, mlperf_tiny_vww
+from helia_edge.models import MlperfTinyParams
+from helia_edge.models.mlperf_tiny import build
 
-BUILDERS = {"kws": mlperf_tiny_kws, "vww": mlperf_tiny_vww, "resnet": mlperf_tiny_resnet, "ad": mlperf_tiny_ad}
+BUILDERS = {a: (lambda a=a: build(MlperfTinyParams(architecture=a))) for a in ("kws", "vww", "resnet", "ad")}
 
 
 def digest(path):

@@ -43,10 +43,14 @@ def _require(name: str, input_shape, num_classes, *, shape: bool, classes: bool 
         raise ValueError(f"{name} has no num_classes")
 
 
-def _input(input_shape):
-    import keras
-
-    return keras.Input(tuple(input_shape), batch_size=1)
+def _with_classes(name: str, params, num_classes):
+    if num_classes is not None:
+        if params.get("num_classes") not in (None, num_classes):
+            raise ValueError(
+                f"{name}: num_classes {num_classes} differs from params num_classes {params['num_classes']}"
+            )
+        params = {**params, "num_classes": num_classes}
+    return params
 
 
 def build_tcn(params, input_shape, num_classes):
@@ -55,48 +59,51 @@ def build_tcn(params, input_shape, num_classes):
     from ..models.tcn import build
 
     _require("tcn", input_shape, num_classes, shape=True, classes=None)
-    if num_classes is not None:
-        if params.get("num_classes") not in (None, num_classes):
-            raise ValueError(f"tcn: num_classes {num_classes} differs from params num_classes {params['num_classes']}")
-        params = {**params, "num_classes": num_classes}
+    params = _with_classes("tcn", params, num_classes)
     return build(TcnParams.model_validate(params), tuple(input_shape), batch_size=1)
 
 
 def build_mlperf_tiny(params, input_shape, num_classes):
     """Build an MLPerf Tiny reference model from ``MlperfTinyParams``; its input shape is fixed."""
-    from ..models import MlperfTinyModel, MlperfTinyParams
+    from ..models import MlperfTinyParams
+    from ..models.mlperf_tiny import build
 
     _require("mlperf_tiny", input_shape, num_classes, shape=False, classes=False)
-    return MlperfTinyModel.model_from_params(MlperfTinyParams.model_validate(params))
+    return build(MlperfTinyParams.model_validate(params))
 
 
 def build_miniresnet_v1(params, input_shape, num_classes):
     """Build MiniResNet-v1 from ``MiniResNetV1Params``; needs ``input_shape`` and ``num_classes``."""
-    from ..models import MiniResNetV1Model, MiniResNetV1Params
+    from ..models import MiniResNetV1Params
+    from ..models.miniresnet import build
 
     _require("miniresnet_v1", input_shape, num_classes, shape=True, classes=True)
-    return MiniResNetV1Model.model_from_params(_input(input_shape), MiniResNetV1Params.from_config(params), num_classes)
+    params = _with_classes("miniresnet_v1", params, num_classes)
+    return build(MiniResNetV1Params.model_validate(params), tuple(input_shape), batch_size=1)
 
 
 def build_timeppg(params, input_shape, num_classes):
     """Build TimePPG from ``TimePPGParams``; needs ``input_shape``, one regression output."""
-    from ..models import TimePPGModel, TimePPGParams
+    from ..models import TimePPGParams
+    from ..models.timeppg import build
 
     _require("timeppg", input_shape, num_classes, shape=True, classes=False)
-    return TimePPGModel.model_from_params(_input(input_shape), TimePPGParams.from_config(params))
+    return build(TimePPGParams.model_validate(params), tuple(input_shape), batch_size=1)
 
 
 def build_cornet(params, input_shape, num_classes):
     """Build CorNET from ``CorNetParams``; needs ``input_shape``, one regression output."""
-    from ..models import CorNetModel, CorNetParams
+    from ..models import CorNetParams
+    from ..models.cornet import build
 
     _require("cornet", input_shape, num_classes, shape=True, classes=False)
-    return CorNetModel.model_from_params(_input(input_shape), CorNetParams.from_config(params))
+    return build(CorNetParams.model_validate(params), tuple(input_shape), batch_size=1)
 
 
 def build_vad_silero_v6(params, input_shape, num_classes):
     """Build the Silero VAD v6 streaming model from ``SileroVadParams``; its input shape is fixed."""
-    from ..models import SileroVadParams, silero_vad_v6
+    from ..models import SileroVadParams
+    from ..models.silero_vad import build
 
     _require("vad_silero_v6", input_shape, num_classes, shape=False, classes=False)
-    return silero_vad_v6(SileroVadParams.model_validate(params))
+    return build(SileroVadParams.model_validate(params), batch_size=1)

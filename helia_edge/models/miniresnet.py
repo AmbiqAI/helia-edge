@@ -14,8 +14,6 @@ import keras
 
 from .miniresnet_params import MiniResNetV1Params
 
-keras.saving.register_keras_serializable(package="helia_edge")(MiniResNetV1Params)
-
 
 def _block(inputs: keras.KerasTensor, filters: int, *, projection: bool, name: str) -> keras.KerasTensor:
     stride = 2 if projection else 1
@@ -35,47 +33,58 @@ def _block(inputs: keras.KerasTensor, filters: int, *, projection: bool, name: s
     return keras.layers.Activation("relu", name=f"{name}_out")(x)
 
 
-class MiniResNetV1Model:
-    """Build a standard Keras Functional model from typed architecture config."""
+def build(
+    params: MiniResNetV1Params,
+    input_shape: tuple[int | None, ...],
+    *,
+    batch_size: int | None = None,
+    name: str | None = None,
+) -> keras.Model:
+    """Construct an untrained MiniResNet-v1 classifier for NHWC spectrogram patches.
 
-    @staticmethod
-    def model_from_params(inputs: keras.KerasTensor, params: MiniResNetV1Params, num_classes: int) -> keras.Model:
-        """Construct an untrained classifier for NHWC spectrogram patches.
+    Hydration is explicit: ``model.load_weights(checkpoint_path)``. Only matching architecture, input
+    dimensions and class count can reuse a checkpoint. This function does not read files or alter global
+    settings.
 
-        Hydration is explicit: ``model.load_weights(checkpoint_path)``. Only
-        matching architecture, input dimensions and class count can reuse a
-        checkpoint. This method does not read files or alter global settings.
-        """
-        if not isinstance(params, MiniResNetV1Params):
-            raise TypeError("params must be MiniResNetV1Params; use from_config for mappings")
-        if type(num_classes) is not int or num_classes < 1:
-            raise ValueError("num_classes must be a positive integer")
-        if not keras.backend.is_keras_tensor(inputs) or len(inputs.shape) != 4:
-            raise ValueError("inputs must be a rank-4 NHWC Keras tensor")
-        if inputs.shape[-1] is None or inputs.shape[-1] < 1:
-            raise ValueError("inputs must have a known positive channel count")
-        if any(dim is not None and dim < 1 for dim in inputs.shape[1:3]):
-            raise ValueError("spatial dimensions must be positive")
-        if params.pooling == "flatten" and any(dim is None for dim in inputs.shape[1:3]):
-            raise ValueError("flatten pooling requires fixed spatial dimensions")
+    Args:
+        params (MiniResNetV1Params): Model parameters; ``num_classes`` is required.
+        input_shape (tuple[int | None, ...]): ``(height, width, channels)``; flatten pooling needs fixed
+            spatial dimensions.
+        batch_size (int | None): Static batch size; None for a dynamic batch.
+        name (str | None): Model name; the family when None.
 
-        x = keras.layers.ZeroPadding2D(3, data_format="channels_last", name="conv1_pad")(inputs)
-        x = keras.layers.Conv2D(params.base_filters, 7, strides=2, data_format="channels_last", name="conv1_conv")(x)
-        x = keras.layers.BatchNormalization(axis=3, epsilon=1.001e-5, name="conv1_bn")(x)
-        x = keras.layers.Activation("relu", name="conv1_relu")(x)
-        x = keras.layers.ZeroPadding2D(1, data_format="channels_last", name="pool1_pad")(x)
-        x = keras.layers.MaxPooling2D(3, strides=2, data_format="channels_last", name="pool1_pool")(x)
-        for index in range(params.stacks):
-            filters = params.base_filters * 2**index
-            x = _block(x, filters, projection=True, name=f"conv{index + 2}_block1")
-            x = _block(x, filters, projection=False, name=f"conv{index + 2}_block2")
-        if params.pooling == "flatten":
-            x = keras.layers.Flatten(data_format="channels_last", name="flatten")(x)
-        elif params.pooling == "avg":
-            x = keras.layers.GlobalAveragePooling2D(data_format="channels_last", name="avg_pool")(x)
-        else:
-            x = keras.layers.GlobalMaxPooling2D(data_format="channels_last", name="max_pool")(x)
-        if params.dropout:
-            x = keras.layers.Dropout(params.dropout, name="head_dropout")(x)
-        outputs = keras.layers.Dense(num_classes, activation=params.output_activation, name="new_head")(x)
-        return keras.Model(inputs=inputs, outputs=outputs, name=params.name)
+    Returns:
+        keras.Model: The model, named ``miniresnet`` unless ``name`` is given.
+    """
+    if params.num_classes is None:
+        raise ValueError("MiniResNet needs num_classes")
+    if len(input_shape) != 3:
+        raise ValueError("input_shape must be (height, width, channels)")
+    if input_shape[-1] is None or input_shape[-1] < 1:
+        raise ValueError("inputs must have a known positive channel count")
+    if any(dim is not None and dim < 1 for dim in input_shape[:2]):
+        raise ValueError("spatial dimensions must be positive")
+    if params.pooling == "flatten" and any(dim is None for dim in input_shape[:2]):
+        raise ValueError("flatten pooling requires fixed spatial dimensions")
+    inputs = keras.Input(shape=input_shape, batch_size=batch_size, name="inputs")
+
+    x = keras.layers.ZeroPadding2D(3, data_format="channels_last", name="conv1_pad")(inputs)
+    x = keras.layers.Conv2D(params.base_filters, 7, strides=2, data_format="channels_last", name="conv1_conv")(x)
+    x = keras.layers.BatchNormalization(axis=3, epsilon=1.001e-5, name="conv1_bn")(x)
+    x = keras.layers.Activation("relu", name="conv1_relu")(x)
+    x = keras.layers.ZeroPadding2D(1, data_format="channels_last", name="pool1_pad")(x)
+    x = keras.layers.MaxPooling2D(3, strides=2, data_format="channels_last", name="pool1_pool")(x)
+    for index in range(params.stacks):
+        filters = params.base_filters * 2**index
+        x = _block(x, filters, projection=True, name=f"conv{index + 2}_block1")
+        x = _block(x, filters, projection=False, name=f"conv{index + 2}_block2")
+    if params.pooling == "flatten":
+        x = keras.layers.Flatten(data_format="channels_last", name="flatten")(x)
+    elif params.pooling == "avg":
+        x = keras.layers.GlobalAveragePooling2D(data_format="channels_last", name="avg_pool")(x)
+    else:
+        x = keras.layers.GlobalMaxPooling2D(data_format="channels_last", name="max_pool")(x)
+    if params.dropout:
+        x = keras.layers.Dropout(params.dropout, name="head_dropout")(x)
+    outputs = keras.layers.Dense(params.num_classes, activation=params.output_activation, name="new_head")(x)
+    return keras.Model(inputs=inputs, outputs=outputs, name=name or params.family)

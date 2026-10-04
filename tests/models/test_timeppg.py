@@ -10,7 +10,8 @@ import numpy as np
 import pytest
 from pydantic import ValidationError
 
-from helia_edge.models import TIMEPPG_PRESETS, TimePPGModel, TimePPGParams
+from helia_edge.models import TIMEPPG_PRESETS, ModelSpec, TimePPGParams
+from helia_edge.models import build as build_spec
 
 
 def upstream_params(channels, c_in=4, time=256):
@@ -69,7 +70,7 @@ def reference(model, params, x):
 
 def randomized(params, seed=0):
     keras.utils.set_random_seed(seed)
-    model = TimePPGModel.model_from_params(keras.Input((256, 4)), params)
+    model = build_spec(ModelSpec(params=params, input_shape=(256, 4)))
     rng = np.random.default_rng(seed)
     for layer in model.layers:
         if isinstance(layer, keras.layers.BatchNormalization):
@@ -83,7 +84,7 @@ def randomized(params, seed=0):
 @pytest.mark.parametrize("preset", sorted(TIMEPPG_PRESETS))
 def test_presets_match_upstream_parameter_count_and_geometry(preset):
     params = TIMEPPG_PRESETS[preset]
-    model = TimePPGModel.model_from_params(keras.Input((256, 4)), params)
+    model = build_spec(ModelSpec(params=params, input_shape=(256, 4)))
     trainable = sum(int(np.prod(w.shape)) for w in model.trainable_weights)
     assert trainable == upstream_params(params.channels)
     assert model.output_shape == (None, 1)
@@ -108,11 +109,12 @@ def test_forward_matches_upstream_layout(preset):
 
 
 def test_invalid_configs_fail():
-    for config in ({"channels": [1] * 10}, {"channels": [0] + [1] * 10}, {"width": 2}, {"channels": ["8"] * 11}):
+    for config in ({"channels": [1] * 10}, {"channels": [0] + [1] * 10}, {"width": 2}, {"name": "timeppg"}):
         with pytest.raises(ValidationError):
-            TimePPGParams.from_config(config)
+            TimePPGParams.model_validate(config)
+    assert TimePPGParams.model_validate({"channels": [8] * 11}).channels == (8,) * 11  # lists from JSON or YAML
     with pytest.raises(ValueError, match="time length"):
-        TimePPGModel.model_from_params(keras.Input((32, 4)), TimePPGParams())
+        build_spec(ModelSpec(params=TimePPGParams(), input_shape=(32, 4)))
 
 
 def test_keras_file_roundtrip(tmp_path):
@@ -134,9 +136,10 @@ class NoBackend(importlib.abc.MetaPathFinder):
         if fullname.split('.')[0] in {'keras', 'tensorflow', 'torch', 'jax'}:
             raise AssertionError('config imported optional backend: ' + fullname)
 sys.meta_path.insert(0, NoBackend())
-from helia_edge.models import TIMEPPG_PRESETS, TimePPGParams
-params = TIMEPPG_PRESETS['timeppg_medium']
-assert TimePPGParams.from_config(params.get_config()) == params
+from helia_edge.models import TIMEPPG_PRESETS, ModelSpec
+import json
+spec = ModelSpec(params=TIMEPPG_PRESETS['timeppg_medium'], input_shape=(256, 4))
+assert ModelSpec.model_validate(json.loads(spec.model_dump_json())) == spec
 """
     subprocess.run(
         [sys.executable, "-c", code],

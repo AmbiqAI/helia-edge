@@ -38,16 +38,9 @@ SENSITIVITY = 1e-4
 
 def models():
     """Name -> (builder from params JSON, params JSON, input shape without batch)."""
-    import keras
-
-    from helia_edge.models import (
-        MiniResNetV1Model,
-        MiniResNetV1Params,
-        MlperfTinyModel,
-        MlperfTinyParams,
-        TcnParams,
-        compact_tcn_params,
-    )
+    from helia_edge.models import MiniResNetV1Params, MlperfTinyParams, TcnParams, compact_tcn_params
+    from helia_edge.models.miniresnet import build as miniresnet_build
+    from helia_edge.models.mlperf_tiny import build as mlperf_build
     from helia_edge.models.tcn import build as tcn_build
 
     tcn = compact_tcn_params(filters=8)
@@ -60,12 +53,12 @@ def models():
             (64, 14),
         ),
         "miniresnet-v1": (
-            lambda p: MiniResNetV1Model.model_from_params(keras.Input((32, 20, 1)), MiniResNetV1Params(**p), 4),
+            lambda p: miniresnet_build(MiniResNetV1Params.model_validate({**p, "num_classes": 4}), (32, 20, 1)),
             miniresnet.model_dump(mode="json"),
             (32, 20, 1),
         ),
         "mlperf-kws": (
-            lambda p: MlperfTinyModel.model_from_params(MlperfTinyParams(**p)),
+            lambda p: mlperf_build(MlperfTinyParams.model_validate(p)),
             kws.model_dump(mode="json"),
             (49, 10, 1),
         ),

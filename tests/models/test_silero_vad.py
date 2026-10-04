@@ -10,7 +10,8 @@ import numpy as np
 import pytest
 
 from helia_edge.importers import SourcePin, import_weights
-from helia_edge.models.silero_vad import SAMPLES, SILERO_VAD_V6_ONNX, UNITS, silero_vad_v6
+from helia_edge.models import SileroVadParams
+from helia_edge.models.silero_vad import SAMPLES, SILERO_VAD_V6_ONNX, UNITS, build
 
 SHAPES = {
     "model.stft.forward_basis_buffer": (258, 1, 256),
@@ -100,13 +101,13 @@ def imported(tmp_path, write_safetensors):
     mapping = SILERO_VAD_V6_ONNX.model_copy(
         update={"format": "safetensors", "source": SourcePin(uri="file://s", sha256=sha256)}
     )
-    model = silero_vad_v6()
+    model = build(SileroVadParams(), batch_size=1)
     report = import_weights(model, mapping, path)
     return model, tensors, report
 
 
 def test_the_model_has_the_streaming_interface():
-    model = silero_vad_v6()
+    model = build(SileroVadParams(), batch_size=1)
     assert [t.name for t in model.inputs] == ["audio", "state_in_0", "state_in_1"]
     assert model.output_names == ["prob", "state_out_0", "state_out_1"]
     assert tuple(model.inputs[0].shape) == (1, SAMPLES)
@@ -164,7 +165,7 @@ def test_imported_weights_match_onnx_runtime():
         pytest.skip("needs onnx and onnxruntime")
     import onnxruntime
 
-    model = silero_vad_v6()
+    model = build(SileroVadParams(), batch_size=1)
     import_weights(model, SILERO_VAD_V6_ONNX, ONNX_FILE)
     session = onnxruntime.InferenceSession(ONNX_FILE)
     state = np.zeros((2, 1, UNITS), np.float32)

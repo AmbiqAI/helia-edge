@@ -14,8 +14,8 @@ Keras 3 add-on for training and exporting models to Ambiq edge targets. Full gui
 - Model families: Keras-free `XParams` in `models/<family>_params.py` (strict, frozen, with a `family` field and
   `num_classes`), one `models/<family>.build(params, input_shape, *, batch_size=None, name=None)`, and
   `helia_edge.models.build(ModelSpec(params=..., input_shape=...))`. Add a family by adding it to `ModelParams` and
-  the `match` in `models/spec.py`; no registries or `XModel` classes. UNet, UNext, MiniResNet, FastEnhancer, CorNET,
-  TimePPG, MLPerf Tiny and Silero VAD still use their own constructors.
+  the `match` in `models/spec.py`; no registries or `XModel` classes. MLPerf Tiny, FastEnhancer and Silero VAD take
+  `input_shape=None` (fixed by their params).
 - Export with `helia_edge.export.export_model` and run with `LiteRTRunner`, or `LiteRTStreamRunner` for streaming
   models with state pairs (export guide); the `converters` and `interpreters.tflite` classes are deprecated
   (they warn) and must not be used in new code or examples.

@@ -11,9 +11,9 @@ heliaEDGE includes a Silero VAD v6 model builder with its mapping from the v6.2.
 
 ```python
 from helia_edge.importers import import_weights
-from helia_edge.models import SILERO_VAD_V6_ONNX, silero_vad_v6
+from helia_edge.models import SILERO_VAD_V6_ONNX, ModelSpec, SileroVadParams, build
 
-model = silero_vad_v6()
+model = build(ModelSpec(params=SileroVadParams()), batch_size=1)
 report = import_weights(model, SILERO_VAD_V6_ONNX, "silero_vad_16k_op15.onnx")
 print(report.source_sha256, len(report.assignments))
 ```

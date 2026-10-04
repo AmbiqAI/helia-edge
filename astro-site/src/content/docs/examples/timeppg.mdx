@@ -3,18 +3,16 @@ title: "TimePPG (PPG heart-rate regression)"
 description: Configure a TimePPG heart-rate regressor and understand input, weight and licensing requirements.
 ---
 
-`TimePPGModel` builds the TEMPONet-derived TimePPG regressor from
+`helia_edge.models.timeppg.build` builds the TEMPONet-derived TimePPG regressor from
 [Q-PPG](https://arxiv.org/abs/2203.14907) (Burrello et al., 2022).
 `TimePPGParams` holds the backend-free config. The presets
 `timeppg_big`, `timeppg_medium` and `timeppg_small` use the channel widths in
 upstream `precision_search/model/TimePPG_float.py` at `eml-eda/q-ppg@ddf3866d`.
 
 ```python
-import keras
-from helia_edge.models import TIMEPPG_PRESETS, TimePPGModel
+from helia_edge.models import TIMEPPG_PRESETS, ModelSpec, build
 
-params = TIMEPPG_PRESETS["timeppg_medium"]
-model = TimePPGModel.model_from_params(keras.Input((256, 4)), params)
+model = build(ModelSpec(params=TIMEPPG_PRESETS["timeppg_medium"], input_shape=(256, 4)))
 ```
 
 **Input:** a channels-last window. The reference uses 256 samples: blood

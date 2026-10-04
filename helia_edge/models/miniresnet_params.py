@@ -1,7 +1,6 @@
 """Lightweight validated MiniResNet-v1 architecture config; no backend imports."""
 
-from collections.abc import Mapping
-from typing import Any, Literal
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -15,20 +14,12 @@ class MiniResNetV1Params(BaseModel):
     defaults to True; freeze layers explicitly when fine-tuning a new head.
     """
 
-    model_config = ConfigDict(extra="forbid", strict=True, frozen=True)
+    model_config = ConfigDict(frozen=True, extra="forbid")
 
+    family: Literal["miniresnet"] = "miniresnet"
     stacks: int = Field(default=1, ge=1, le=3)
     base_filters: int = Field(default=64, gt=0)
     pooling: Literal["flatten", "avg", "max"] = "flatten"
     dropout: float = Field(default=0.0, ge=0, lt=1, allow_inf_nan=False)
     output_activation: Literal["softmax", "sigmoid", "linear"] = "softmax"
-    name: str = Field(default="miniresnet_v1", min_length=1, pattern=r"^[A-Za-z0-9_.-]+$")
-
-    def get_config(self) -> dict[str, Any]:
-        """Return a JSON-compatible constructor config without weights."""
-        return self.model_dump(mode="json")
-
-    @classmethod
-    def from_config(cls, config: Mapping[str, Any]) -> "MiniResNetV1Params":
-        """Validate external config, rejecting unknown keys and coercions."""
-        return cls.model_validate(dict(config))
+    num_classes: int | None = Field(default=None, gt=0, description="Classes of the output layer; required")
