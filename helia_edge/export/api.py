@@ -394,8 +394,6 @@ def export(
     resets = _steps(resets)
     if resets and calibration is None:
         raise ValueError("resets apply to the calibration of a streaming model; no calibration was given")
-    if batch_size != 1 and Precision(precision) in CALIBRATED:
-        raise ValueError("Calibrated precisions export with batch_size 1: calibration runs one sample at a time")
     settings = ExportSettings(
         precision=Precision(precision),
         io_dtype=IODType(io_dtype),
