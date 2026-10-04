@@ -94,6 +94,8 @@ class SileroFrameConv(keras.layers.Layer):
 
     def __init__(self, filters: int, strides: int = 1, **kwargs):
         super().__init__(**kwargs)
+        if isinstance(strides, bool) or not isinstance(strides, int) or strides < 1:
+            raise ValueError(f"strides is a positive integer, not {strides!r}")
         self.filters = filters
         self.strides = strides
 
@@ -125,7 +127,7 @@ class SileroLiveTaps(keras.layers.Layer):
 
     def __init__(self, filters: int, taps: tuple[int, ...], **kwargs):
         super().__init__(**kwargs)
-        if not taps or len(set(taps)) != len(taps) or not set(taps) <= {0, 1, 2}:
+        if not taps or len(set(taps)) != len(taps) or any(isinstance(t, bool) or t not in (0, 1, 2) for t in taps):
             raise ValueError(f"taps are distinct kernel taps from 0 to 2, not {taps}")
         self.filters = filters
         self.taps = tuple(taps)

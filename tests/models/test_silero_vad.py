@@ -13,7 +13,7 @@ import pytest
 from helia_edge.importers import SourcePin, import_weights
 from helia_edge.layers import StftMagnitude
 from helia_edge.models import SileroVadParams
-from helia_edge.models.silero_vad import SAMPLES, UNITS, SileroBlockStft, SileroLiveTaps, build
+from helia_edge.models.silero_vad import SAMPLES, UNITS, SileroBlockStft, SileroFrameConv, SileroLiveTaps, build
 from helia_edge.models.silero_vad_params import SILERO_VAD_V6_ONNX
 
 SHAPES = {
@@ -170,6 +170,7 @@ def test_every_variant_takes_the_same_weights(importer, params):
     assert [t.name for t in model.inputs] == ["audio", "state_in_0", "state_in_1"]
     assert model.output_names == ["prob", "state_out_0", "state_out_1"]
     assert {w.path: tuple(w.shape) for w in model.weights} == {w.path: tuple(w.shape) for w in default.weights}
+    assert {w.path for w in model.trainable_weights} == {w.path for w in default.trainable_weights}
     assert {name for _, sources in report.assignments for name in sources} == set(tensors)
 
 
@@ -249,7 +250,7 @@ def test_the_npu_options_export_with_folded_weights_and_no_square_root(importer)
     assert filters and not produced & set(filters)
 
 
-def test_the_default_keeps_its_layers_so_saved_weights_still_load():
+def test_the_default_keeps_the_layer_classes_of_earlier_versions():
     """Keras weight files are keyed by layer class: the default model keeps the classes of earlier versions."""
     model = build(SileroVadParams(), batch_size=1)
     assert type(model.get_layer("stft")) is StftMagnitude
@@ -259,13 +260,15 @@ def test_the_default_keeps_its_layers_so_saved_weights_still_load():
 def test_the_layers_refuse_other_geometries():
     with pytest.raises(ValueError, match="576 samples"):
         SileroBlockStft().build((1, 2 * SAMPLES))
-    for taps in ((), (1, 1), (-1,), (3,)):
+    for taps in ((), (1, 1), (-1,), (3,), (True,)):
         with pytest.raises(ValueError, match="distinct kernel taps"):
             SileroLiveTaps(8, taps)
     with pytest.raises(ValueError, match="split over the taps"):
         SileroLiveTaps(8, (1, 2)).build((1, 127))
     with pytest.raises(ValueError, match="magnitude"):
         SileroBlockStft("power")
+    with pytest.raises(ValueError, match="strides"):
+        SileroFrameConv(8, 0)
     built = SileroBlockStft()
     built.build((1, SAMPLES))
     with pytest.raises(ValueError, match="576 samples"):
@@ -306,6 +309,30 @@ np.testing.assert_array_equal(got, np.load({str(tmp_path / "want.npy")!r}))
 """
     result = subprocess.run([sys.executable, "-c", source], text=True, capture_output=True, timeout=300)
     assert result.returncode == 0, result.stderr[-2000:]
+
+
+@pytest.mark.skipif(keras.backend.backend() != "tensorflow", reason="LiteRT export runs on the TensorFlow backend")
+def test_the_npu_options_export_to_int16(importer):
+    pytest.importorskip("ai_edge_litert")
+    from helia_edge.export import ExportSpec, LiteRTStreamRunner, export_model, stream_calibration
+    from helia_edge.export.litert import operator_names
+    from helia_edge.export.result import state_scales_tied
+
+    model, _, _ = importer(NPU)
+    signal = np.concatenate([np.zeros(64, np.float32), audio(48)])
+    calls = np.stack([signal[i * 512 : i * 512 + SAMPLES] for i in range(48)])
+    result = export_model(
+        model,
+        ExportSpec(precision="a16w8", io_dtype="int16", mode="keras"),
+        stream_calibration(model, {"audio": calls}),
+    )
+    assert "SQRT" not in operator_names(result.content)
+    assert state_scales_tied(result.inputs, result.outputs) is True
+    runner = LiteRTStreamRunner(result.content, reference_kernels=True)
+    _, outputs = runner.run({"audio": runner.encode("audio", calls[:, None])})
+    got = runner.decode("prob", outputs["prob"]).ravel()
+    want = np.array([p for p, _, _ in stream(keras_step(model), audio(48))])
+    assert np.abs(got - want).max() < 0.01  # measured 7.5e-4
 
 
 def test_the_model_saves_and_reloads(imported, tmp_path):
