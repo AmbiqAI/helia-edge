@@ -10,7 +10,7 @@ import hashlib
 from pathlib import Path
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, StrictInt
+from pydantic import BaseModel, ConfigDict, Field, StrictInt, field_validator
 
 from ..importers.mapping import SHA256
 from ..models.spec import ModelSpec
@@ -22,32 +22,37 @@ GOLDEN_SCHEMA = "helia-model-zoo/golden@2"
 DIGEST = Annotated[str, Field(pattern=r"^sha256:[0-9a-f]{64}$")]
 
 
-class _Record(BaseModel):
-    model_config = ConfigDict(frozen=True, extra="forbid", populate_by_name=True)
+_CONFIG = ConfigDict(frozen=True, extra="forbid", populate_by_name=True)
 
 
-class Source(_Record):
+class Source(BaseModel):
     """A file named by content: its sha256 and, optionally, where to fetch it (never a local path)."""
+
+    model_config = _CONFIG
 
     sha256: SHA256
     uri: str | None = None
 
 
-class WeightImport(_Record):
+class WeightImport(BaseModel):
     """Weights imported from another framework through ``mapping`` (a name in the family's ``MAPPINGS``)."""
+
+    model_config = _CONFIG
 
     mapping: str
     source: Source
 
 
-class WeightsRecord(_Record):
+class WeightsRecord(BaseModel):
     """The weights, by ``weights_digest``, and their import when they came from another framework."""
+
+    model_config = _CONFIG
 
     digest: DIGEST
     import_: WeightImport | None = Field(default=None, alias="import")
 
 
-class ExportOptions(_Record):
+class ExportOptions(BaseModel):
     """Format options of a LiteRT export.
 
     Attributes:
@@ -57,13 +62,17 @@ class ExportOptions(_Record):
         mode: How the model is traced: ``keras`` or ``concrete``, both of which keep the model's batch.
     """
 
+    model_config = _CONFIG
+
     strict: bool = True
     state_tie_tolerance: float = Field(default=0.01, ge=0.0, le=0.5)
     mode: Literal[ConversionMode.KERAS, ConversionMode.CONCRETE] = ConversionMode.KERAS
 
 
-class CalibrationRecord(_Record):
+class CalibrationRecord(BaseModel):
     """The calibration array as stored (``.npy``), its length and, for a streaming model, the state resets."""
+
+    model_config = _CONFIG
 
     sha256: SHA256
     uri: str | None = None
@@ -71,28 +80,41 @@ class CalibrationRecord(_Record):
     resets: tuple[int, ...] = ()
 
 
-class ExportSettings(_Record):
+class ExportSettings(BaseModel):
     """How the artifact was exported. ``batch_size`` is the batch of every model input."""
 
+    model_config = _CONFIG
+
     format: Literal["litert"] = "litert"
-    precision: Literal[Precision.FP32, Precision.FP16, Precision.A8W8, Precision.A16W8]
+    precision: Precision
     io_dtype: IODType
     batch_size: StrictInt = Field(ge=1)
     options: ExportOptions = ExportOptions()
     calibration: CalibrationRecord | None = None
 
+    @field_validator("precision")
+    @classmethod
+    def _working_precision(cls, precision: Precision) -> Precision:
+        if precision is Precision.FP32_FP16W:
+            raise ValueError("precision is fp32, fp16, a8w8 or a16w8; fp32-w16 is not recorded")
+        return precision
 
-class FileRecord(_Record):
+
+class FileRecord(BaseModel):
     """A file written next to the record, by name, sha256 and size."""
+
+    model_config = _CONFIG
 
     file: str
     sha256: SHA256
     bytes: int = Field(ge=0)
 
 
-class TensorEntry(_Record):
+class TensorEntry(BaseModel):
     """A model input or output; dynamic dimensions are -1. A state tensor has the index ``pair`` of its
     state pair (``state_in_k`` and ``state_out_k``)."""
+
+    model_config = _CONFIG
 
     name: str
     role: TensorRole
@@ -107,21 +129,25 @@ class TensorEntry(_Record):
         return cls(**vars(record))
 
 
-class IORecord(_Record):
+class IORecord(BaseModel):
     """The artifact's inputs and outputs in subgraph order, read back from the artifact.
 
     ``state_scales_tied`` is True when every integer state pair has one scale and zero point, and None
     without integer state pairs.
     """
 
+    model_config = _CONFIG
+
     inputs: tuple[TensorEntry, ...]
     outputs: tuple[TensorEntry, ...]
     state_scales_tied: bool | None = None
 
 
-class GoldenRecord(_Record):
+class GoldenRecord(BaseModel):
     """A ``helia-model-zoo/golden@2`` sequence: ``steps`` calls with the state carried and reset at
     ``resets``, run with LiteRT's reference kernels from the signal named by ``inputs``."""
+
+    model_config = _CONFIG
 
     file: FileRecord
     schema_: Literal["helia-model-zoo/golden@2"] = Field(default=GOLDEN_SCHEMA, alias="schema")
@@ -131,17 +157,21 @@ class GoldenRecord(_Record):
     inputs: Source
 
 
-class HeliaEdgeRecord(_Record):
+class HeliaEdgeRecord(BaseModel):
     """The helia-edge that exported: its version, how the version identifies the code, and the commit
     for a VCS install."""
+
+    model_config = _CONFIG
 
     version: str
     source: HeliaEdgeSource
     commit: str | None = None
 
 
-class EnvironmentEntry(_Record):
+class EnvironmentEntry(BaseModel):
     """Versions that can change exported bytes."""
+
+    model_config = _CONFIG
 
     helia_edge: HeliaEdgeRecord
     python: str
@@ -160,12 +190,14 @@ class EnvironmentEntry(_Record):
         )
 
 
-class ExportRecord(_Record):
+class ExportRecord(BaseModel):
     """One exported artifact: the model, its weights, how it was exported, and the result.
 
     ``model``, ``weights`` and ``export`` together identify the export. ``model`` is None for a model
     that no ``ModelSpec`` describes; such a record cannot be rebuilt.
     """
+
+    model_config = _CONFIG
 
     schema_: Literal["helia-edge/export-record@1"] = Field(default=RECORD_SCHEMA, alias="schema")
     model: ModelSpec | None

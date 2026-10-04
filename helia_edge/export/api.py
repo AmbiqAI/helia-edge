@@ -27,7 +27,16 @@ from .record import (
     weights_digest,
 )
 from .result import ExportResult, state_scales_tied
-from .spec import CALIBRATED, BackendUnavailable, ExportSpec, state_input_name, state_output_name, state_pair
+from .spec import (
+    CALIBRATED,
+    BackendUnavailable,
+    ExportSpec,
+    IODType,
+    Precision,
+    state_input_name,
+    state_output_name,
+    state_pair,
+)
 
 
 def check_calibration(spec: ExportSpec, calibration: npt.NDArray | None, input_shape: tuple) -> None:
@@ -286,8 +295,8 @@ class Export:
 def export(
     model,
     *,
-    precision: str,
-    io_dtype: str,
+    precision: Precision | str,
+    io_dtype: IODType | str,
     calibration: npt.NDArray | None = None,
     resets: Collection[int] = (),
     spec=None,
@@ -326,8 +335,8 @@ def export(
     """
     calibration = None if calibration is None else np.asarray(calibration)
     settings = ExportSettings(
-        precision=precision,
-        io_dtype=io_dtype,
+        precision=Precision(precision),
+        io_dtype=IODType(io_dtype),
         batch_size=batch_size,
         options=options,
         calibration=None
