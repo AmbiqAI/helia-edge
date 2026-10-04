@@ -283,9 +283,7 @@ def test_conformer_layer_norms_normalize_features():
 
 def test_conformer_params_requires_at_least_one_subsample():
     """Regression: ConformerParams with empty subsamples must raise ValidationError (min_length=1)."""
-    import pytest
     from pydantic import ValidationError
-    from helia_edge.models.conformer_params import ConformerParams
 
     # Empty subsamples via explicit list
     with pytest.raises(ValidationError):
