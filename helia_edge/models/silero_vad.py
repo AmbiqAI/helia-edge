@@ -18,6 +18,7 @@ weights inside the graph, so an exporter folds them into constants.
 import keras
 import numpy as np
 
+from ..layers.spectral import StftMagnitude, max_projection
 from ..layers.streaming import StreamingLSTMCell, state_input, state_output
 from ..utils.export import helia_export
 from .silero_vad_params import SileroVadParams
@@ -25,36 +26,37 @@ from .silero_vad_params import SileroVadParams
 SAMPLES = 576
 """Samples per call: 64 of context and 512 new ones."""
 UNITS = 128
-FRAME, STEP, BINS, BLOCK, DIRECTIONS = 256, 128, 129, 64, 9
-
-
-def _projection_kernel() -> np.ndarray:
-    """(1, 1, 2, 9) unit directions from 0 to 90 degrees, scaled so the error is centred within +-0.24%."""
-    theta = np.linspace(0, np.pi / 2, DIRECTIONS)
-    gain = 2 / (1 + np.cos(np.pi / 4 / (DIRECTIONS - 1)))
-    return (gain * np.stack([np.cos(theta), np.sin(theta)]))[None, None].astype(np.float32)
+FRAME, STEP, BINS, BLOCK = 256, 128, 129, 64
 
 
 @helia_export()
-class SileroStft(keras.layers.Layer):
-    """STFT magnitude of one call from the stored basis (256, 1, 258).
+class SileroBlockStft(keras.layers.Layer):
+    """STFT magnitude of one call (576 samples) from convolutions over 64-sample blocks.
 
-    The basis holds the real parts of every bin, then the imaginary parts, and frames are reflect-padded
-    by 64 samples at the end. ``stft`` and ``magnitude`` are the ``SileroVadParams`` options. The output
-    is (batch, 4, 129) with ``conv1d``; with ``conv_blocks`` it is (batch, 4, 1, 129), the frames as rows
-    of an image, which the encoder convolves without reshapes.
+    The same transform as ``StftMagnitude(256, 128, 129, padding=(0, 64))`` with the same stored basis
+    (256, 1, 258): frames 0 to 2 are a convolution over blocks with stride 2, and the last frame's right
+    reflect padding is folded into its kernel, so no reflect pad or strided frames over samples remain.
+    The kernels are derived from the basis in the graph and an exporter folds them into constants. The
+    output is (batch, 4, 1, 129), the frames as rows of an image, which the encoder convolves without
+    reshapes.
+
+    Args:
+        magnitude: ``sqrt`` (exact) or ``max_projection`` (no square root, within 0.25%).
     """
 
-    def __init__(self, stft: str = "conv1d", magnitude: str = "sqrt", **kwargs):
+    def __init__(self, magnitude: str = "sqrt", **kwargs):
         super().__init__(**kwargs)
-        self.stft = stft
+        if magnitude not in ("sqrt", "max_projection"):
+            raise ValueError(f"magnitude is 'sqrt' or 'max_projection', not {magnitude!r}")
         self.magnitude = magnitude
 
     def build(self, input_shape):
+        if input_shape[-1] != SAMPLES:
+            raise ValueError(f"SileroBlockStft takes {SAMPLES} samples per call, not {input_shape[-1]}")
         self.basis = self.add_weight(name="basis", shape=(FRAME, 1, 2 * BINS), initializer="zeros", trainable=False)
 
-    def _blocks(self, audio):
-        """(batch, 4, 129, 2) real and imaginary parts, from convolutions over 64-sample blocks."""
+    def call(self, audio):
+        # Interleave the columns: 2b is the real part of bin b, 2b + 1 the imaginary part
         taps = keras.ops.take(self.basis[:, 0, :], np.stack([np.arange(BINS), np.arange(BINS) + BINS], 1).ravel(), 1)
         blocks = keras.ops.reshape(audio, (-1, SAMPLES // BLOCK, 1, BLOCK))
         main = keras.ops.reshape(taps, (FRAME // BLOCK, 1, BLOCK, 2 * BINS))
@@ -66,31 +68,18 @@ class SileroStft(keras.layers.Layer):
         last = keras.ops.conv(
             blocks[:, 6 : SAMPLES // BLOCK], keras.ops.reshape(folded, (3, 1, BLOCK, 2 * BINS)), padding="valid"
         )
-        return keras.ops.reshape(keras.ops.concatenate([first, last], axis=1), (-1, 4, BINS, 2))
-
-    def call(self, audio):
-        if self.stft == "conv_blocks":
-            pairs = self._blocks(audio)
-            if self.magnitude == "max_projection":
-                projected = keras.ops.conv(keras.ops.abs(pairs), _projection_kernel(), padding="valid")
-                magnitude = keras.ops.max(projected, axis=-1)
-            else:
-                magnitude = keras.ops.sqrt(keras.ops.sum(pairs * pairs, axis=-1))
-            return keras.ops.reshape(magnitude, (-1, 4, 1, BINS))
-        x = keras.ops.pad(audio, [(0, 0), (0, BLOCK)], mode="reflect")
-        spectrum = keras.ops.conv(x[..., None], self.basis, strides=STEP, padding="valid")
-        real, imag = spectrum[..., :BINS], spectrum[..., BINS:]
+        pairs = keras.ops.reshape(keras.ops.concatenate([first, last], axis=1), (-1, 4, BINS, 2))
         if self.magnitude == "max_projection":
-            pairs = keras.ops.stack([real, imag], axis=-1)
-            projected = keras.ops.conv(keras.ops.abs(pairs), _projection_kernel(), padding="valid")
-            return keras.ops.max(projected, axis=-1)
-        return keras.ops.sqrt(real * real + imag * imag)
+            magnitude = max_projection(pairs)
+        else:
+            magnitude = keras.ops.sqrt(keras.ops.sum(pairs * pairs, axis=-1))
+        return keras.ops.reshape(magnitude, (-1, 4, 1, BINS))
 
     def compute_output_shape(self, input_shape):
-        return (input_shape[0], 4, 1, BINS) if self.stft == "conv_blocks" else (input_shape[0], 4, BINS)
+        return (input_shape[0], 4, 1, BINS)
 
     def get_config(self):
-        return {**super().get_config(), "stft": self.stft, "magnitude": self.magnitude}
+        return {**super().get_config(), "magnitude": self.magnitude}
 
 
 @helia_export()
@@ -137,6 +126,8 @@ class SileroLiveTaps(keras.layers.Layer):
         self.taps = tuple(taps)
 
     def build(self, input_shape):
+        if not self.taps or input_shape[-1] % len(self.taps):
+            raise ValueError(f"{input_shape[-1]} input channels do not split over the taps {self.taps}")
         channels = input_shape[-1] // len(self.taps)
         self.kernel = self.add_weight(name="kernel", shape=(3, channels, self.filters), initializer="glorot_uniform")
         self.bias = self.add_weight(name="bias", shape=(self.filters,), initializer="zeros")
@@ -166,7 +157,7 @@ def build(
     ``batch_size=1``.
 
     Args:
-        params (SileroVadParams): Model parameters (all fixed by the v6.2.2 weights).
+        params (SileroVadParams): Model parameters: the geometry fixed by the v6.2.2 weights, and the options.
         input_shape (tuple[int | None, ...] | None): None, or the audio shape ``(576,)``.
         batch_size (int | None): Static batch size; None for a dynamic batch.
         name (str | None): Model name; the family when None.
@@ -178,7 +169,10 @@ def build(
         raise ValueError(f"Silero VAD takes audio shape ({params.samples},), not {tuple(input_shape)}")
     audio = keras.Input((params.samples,), batch_size=batch_size, name="audio")
     h, c = state_input(0, (UNITS,), batch_size=batch_size), state_input(1, (UNITS,), batch_size=batch_size)
-    x = SileroStft(params.stft, params.magnitude, name="stft")(audio)
+    if params.stft == "conv_blocks":
+        x = SileroBlockStft(params.magnitude, name="stft")(audio)
+    else:
+        x = StftMagnitude(FRAME, STEP, BINS, padding=(0, BLOCK), magnitude=params.magnitude, name="stft")(audio)
     layers = ((128, 1), (64, 2)) if params.encoder_tail == "live_taps" else ((128, 1), (64, 2), (64, 2), (128, 1))
     for index, (filters, strides) in enumerate(layers):
         if params.stft == "conv_blocks":

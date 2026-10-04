@@ -11,8 +11,9 @@ import numpy as np
 import pytest
 
 from helia_edge.importers import SourcePin, import_weights
+from helia_edge.layers import StftMagnitude
 from helia_edge.models import SileroVadParams
-from helia_edge.models.silero_vad import SAMPLES, UNITS, SileroStft, build
+from helia_edge.models.silero_vad import SAMPLES, UNITS, SileroBlockStft, SileroLiveTaps, build
 from helia_edge.models.silero_vad_params import SILERO_VAD_V6_ONNX
 
 SHAPES = {
@@ -102,6 +103,13 @@ VARIANTS = [
 VARIANT_IDS = ["/".join((p.stft, p.magnitude, p.encoder_tail)) for p in VARIANTS]
 NPU = SileroVadParams(stft="conv_blocks", magnitude="max_projection", encoder_tail="live_taps")
 """The options that run on integer NPUs: no square root, no reflect padding, no strided frames over samples."""
+
+
+def frontend(stft, magnitude="sqrt"):
+    """The model's ``stft`` layer for these options, built for one call."""
+    layer = SileroBlockStft(magnitude) if stft == "conv_blocks" else StftMagnitude(256, 128, 129, (0, 64), magnitude)
+    layer.build((1, SAMPLES))
+    return layer
 
 
 @pytest.fixture
@@ -198,9 +206,8 @@ def test_the_projected_magnitude_tracks_the_reference_graph(importer, params):
 def test_the_projected_magnitude_is_within_its_bound(stft):
     basis = synthetic_tensors()["model.stft.forward_basis_buffer"].transpose(2, 1, 0)  # ONNX (258, 1, 256)
     x = np.stack([audio(2, seed=s)[:SAMPLES] for s in range(3)])
-    layers = [SileroStft(stft, magnitude) for magnitude in ("sqrt", "max_projection")]
+    layers = [frontend(stft, magnitude) for magnitude in ("sqrt", "max_projection")]
     for layer in layers:
-        layer.build((1, SAMPLES))
         layer.basis.assign(basis)
     exact, projected = (keras.ops.convert_to_numpy(layer(x)).reshape(3, 4, 129) for layer in layers)
     relative = np.abs(projected - exact)[exact > 1e-3] / exact[exact > 1e-3]
@@ -212,9 +219,8 @@ def test_the_block_frames_fold_the_reflection():
     """Block convolutions with the folded last frame give the strided, reflect-padded frames."""
     basis = np.random.default_rng(4).standard_normal((256, 1, 258)).astype(np.float32)
     x = np.random.default_rng(5).standard_normal((2, SAMPLES)).astype(np.float32)
-    layers = [SileroStft(stft) for stft in ("conv1d", "conv_blocks")]
+    layers = [frontend(stft) for stft in ("conv1d", "conv_blocks")]
     for layer in layers:
-        layer.build((1, SAMPLES))
         layer.basis.assign(basis)
     strided, blocks = (keras.ops.convert_to_numpy(layer(x)).reshape(2, 4, 129) for layer in layers)
     np.testing.assert_allclose(blocks, strided, rtol=1e-4, atol=1e-4)
@@ -241,6 +247,59 @@ def test_the_npu_options_export_with_folded_weights_and_no_square_root(importer)
         op["inputs"][1] for op in interpreter._get_ops_details() if op["op_name"] in ("CONV_2D", "FULLY_CONNECTED")
     ]
     assert filters and not produced & set(filters)
+
+
+def test_the_default_keeps_its_layers_so_saved_weights_still_load():
+    """Keras weight files are keyed by layer class: the default model keeps the classes of earlier releases."""
+    model = build(SileroVadParams(), batch_size=1)
+    assert type(model.get_layer("stft")) is StftMagnitude
+    assert all(type(model.get_layer(f"encoder{i}")) is keras.layers.Conv1D for i in range(4))
+
+
+def test_the_layers_refuse_other_geometries():
+    with pytest.raises(ValueError, match="576 samples"):
+        SileroBlockStft().build((1, 2 * SAMPLES))
+    with pytest.raises(ValueError, match="split over the taps"):
+        SileroLiveTaps(8, ()).build((1, 128))
+    with pytest.raises(ValueError, match="split over the taps"):
+        SileroLiveTaps(8, (1, 2)).build((1, 127))
+    with pytest.raises(ValueError, match="magnitude"):
+        SileroBlockStft("power")
+
+
+@pytest.mark.parametrize("policy", ["mixed_float16", "mixed_bfloat16"])
+def test_the_npu_options_run_under_mixed_precision(policy):
+    previous = keras.config.dtype_policy()
+    keras.config.set_dtype_policy(policy)
+    try:
+        model = build(NPU, batch_size=1)
+        prob, *_ = model([audio(2)[None, :SAMPLES], np.zeros((1, UNITS), np.float32), np.zeros((1, UNITS), np.float32)])
+    finally:
+        keras.config.set_dtype_policy(previous)
+    assert prob.shape == (1, 1)
+
+
+@pytest.mark.parametrize("params", [SileroVadParams(), NPU], ids=["default", "npu"])
+def test_saved_models_load_in_a_new_process(importer, params, tmp_path):
+    import subprocess
+    import sys
+
+    model, _, _ = importer(params)
+    model.save(tmp_path / "silero.keras")
+    feed = [audio(2)[None, :SAMPLES], np.zeros((1, UNITS), np.float32), np.zeros((1, UNITS), np.float32)]
+    np.save(tmp_path / "want.npy", keras.ops.convert_to_numpy(model(feed)[0]))
+    np.save(tmp_path / "audio.npy", feed[0])
+    source = f"""
+import keras
+import numpy as np
+from helia_edge.models import load_model
+model = load_model({str(tmp_path / "silero.keras")!r})
+state = np.zeros((1, {UNITS}), np.float32)
+got = keras.ops.convert_to_numpy(model([np.load({str(tmp_path / "audio.npy")!r}), state, state])[0])
+np.testing.assert_array_equal(got, np.load({str(tmp_path / "want.npy")!r}))
+"""
+    result = subprocess.run([sys.executable, "-c", source], text=True, capture_output=True, timeout=300)
+    assert result.returncode == 0, result.stderr[-2000:]
 
 
 def test_the_model_saves_and_reloads(imported, tmp_path):

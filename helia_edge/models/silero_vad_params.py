@@ -9,7 +9,8 @@ from ..importers.mapping import Reshape, SourcePin, Transpose, WeightMapping, We
 
 class SileroVadParams(BaseModel):
     """Silero VAD v6 (16 kHz). The geometry is fixed by the v6.2.2 weights; the options choose how the
-    model computes it, and every option keeps the same weights.
+    model computes it. Every option has the same weights (paths and shapes), so one mapping imports into
+    each; Keras ``.weights.h5`` files are keyed by layer class, so save one per option set.
 
     Attributes:
         family: Model family.
@@ -21,8 +22,8 @@ class SileroVadParams(BaseModel):
             convolves 64-sample blocks instead, with the right reflect padding folded into the last
             frame's kernel; it is exact in float.
         magnitude: ``sqrt`` is the exact magnitude of each bin. ``max_projection`` is the largest of 9
-            projections of (|re|, |im|) onto directions from 0 to 90 degrees, within +-0.24%; it needs no
-            square root.
+            projections of (|re|, |im|) onto directions from 0 to 90 degrees, within 0.25%; it needs no
+            square root, so the model exports to int16 activations.
         encoder_tail: ``conv`` runs the last two encoder layers as convolutions. ``live_taps`` runs them as
             dense layers over the kernel taps that see real frames rather than padding; it is exact in float.
     """
