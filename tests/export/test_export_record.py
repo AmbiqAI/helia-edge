@@ -235,6 +235,18 @@ def test_the_record_refuses_what_it_does_not_describe():
             ExportRecord.model_validate({**data, "export": wrong})
 
 
+def test_the_weights_digest_is_the_documented_encoding():
+    import hashlib
+
+    model = keras.Sequential([keras.Input((2,)), keras.layers.Dense(3)])
+    kernel, bias = (np.arange(6, dtype=np.float32).reshape(2, 3), np.array([-1.0, 0.5, 2.0], np.float32))
+    model.set_weights([kernel, bias])
+    expected = hashlib.sha256()
+    for value in (kernel, bias):  # model.weights order: kernel, then bias
+        expected.update(b"float32\0" + ",".join(map(str, value.shape)).encode() + b"\0" + value.tobytes())
+    assert weights_digest(model) == f"sha256:{expected.hexdigest()}"
+
+
 def test_the_weights_digest_follows_the_weights_not_the_file(tmp_path):
     model = seeded(SPEC, batch_size=1)
     digest = weights_digest(model)
