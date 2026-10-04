@@ -425,8 +425,7 @@ def export(
 
 
 def load_export_record(path: Path | str, weights: Path | str | None = None):
-    """Rebuild the Keras model an export record describes, with its weights. Clears the Keras session first,
-    as ``export`` does.
+    """Rebuild the Keras model an export record describes, with its weights.
 
     Args:
         path: The ``record.json``.
@@ -438,14 +437,11 @@ def load_export_record(path: Path | str, weights: Path | str | None = None):
     Raises:
         ValueError: If the record has no model spec, or the weights do not have the record's digest.
     """
-    import keras
-
     from ..models.spec import build
 
     record = ExportRecord.read(path)
     if record.model is None:
         raise ValueError(f"{path} has no model spec, so the model cannot be rebuilt")
-    keras.backend.clear_session()  # as export() builds: layer names as in the exported model
     model = build(record.model, batch_size=record.export.batch_size)
     model.load_weights(Path(weights) if weights is not None else Path(path).with_name("model.weights.h5"))
     digest = weights_digest(model)
