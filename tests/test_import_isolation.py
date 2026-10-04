@@ -39,6 +39,8 @@ from helia_edge.models import fastenhancer_params, silero_vad_params
 assert callable(import_weights) and callable(readers.read)
 assert 'fastenhancer_t_onnx' in fastenhancer_params.MAPPINGS and 'silero_vad_v6_onnx' in silero_vad_params.MAPPINGS
 assert WeightRow(sources=('w',), transforms=(Transpose(perm=(1, 0)),), layer='l', weight='kernel').layer == 'l'
+from helia_edge.export import RECORD_SCHEMA, ExportRecord
+assert ExportRecord.model_json_schema()["properties"]["schema"]["const"] == RECORD_SCHEMA
 assert not {'keras', 'tensorflow', 'torch', 'onnx', 'onnxruntime'} & sys.modules.keys()
 """)
 

@@ -222,6 +222,11 @@ def test_the_record_refuses_what_it_does_not_describe():
         ExportOptions(strict="no")
     with pytest.raises(pydantic.ValidationError, match="state_tie_tolerance"):
         ExportOptions(state_tie_tolerance="0.1")
+    concrete = ExportOptions(mode="concrete")
+    with pytest.raises(pydantic.ValidationError, match="concrete mode traces batch 1"):
+        export(seeded(SPEC), precision="fp32", io_dtype="float32", spec=SPEC, batch_size=2, options=concrete)
+    at_one = export(seeded(SPEC), precision="fp32", io_dtype="float32", spec=SPEC, options=concrete).record
+    assert at_one.io.inputs[0].shape[0] == at_one.export.batch_size == 1
     record = export(model, precision="fp32", io_dtype="float32").record
     assert record.model is None and record.export.calibration is None
     data = json.loads(record.model_dump_json(by_alias=True))
@@ -244,6 +249,7 @@ def test_the_record_refuses_what_it_does_not_describe():
             {**settings, "precision": "a16w8", "io_dtype": "int16", "calibration": calibration, "batch_size": 2},
             "batch_size 1",
         ),
+        ({**settings, "batch_size": 2}, "input batch"),
     ):
         with pytest.raises(pydantic.ValidationError, match=message):
             ExportRecord.model_validate({**data, "export": wrong})
@@ -304,8 +310,8 @@ def test_a_written_export_loads_back_and_refuses_other_weights(tmp_path):
     seeded(SPEC, seed=9, batch_size=1).save_weights(tmp_path / "other.weights.h5")
     with pytest.raises(ValueError, match="digest"):
         load_export_record(path, tmp_path / "other.weights.h5")
-    with pytest.raises(ValueError, match="streaming models only"):
-        result.with_golden(samples(SPEC.input_shape, count=4), resets=(1,))
+    with pytest.raises(ValueError, match="for streaming models"):
+        result.with_golden(samples(SPEC.input_shape, count=4))
     unspecified = export(model, precision="fp32", io_dtype="float32").write(tmp_path / "bare")
     with pytest.raises(ValueError, match="no model spec"):
         load_export_record(unspecified)
@@ -398,7 +404,7 @@ def test_a_streaming_export_records_its_calibration_import_and_golden(tmp_path, 
             export(model, precision="a16w8", io_dtype="int16", calibration=calls, resets=resets, spec=spec)
     with pytest.raises(ValueError, match="resets"):
         result.with_golden(calls[:4], resets=(4,))
-    for resets in ([2.0], ["3"], 3, "3", b"\x08", [True]):
+    for resets in ([2.0], ["3"], 3, "3", b"\x08", bytearray(b"\x08"), [True]):
         with pytest.raises(ValueError, match="integer steps"):
             result.with_golden(calls[:4], resets=resets)
     with pytest.raises(ValueError, match="integer steps"):

@@ -269,12 +269,12 @@ def _reference_build():
 def _steps(resets: Collection[int]) -> tuple[int, ...]:
     """``resets`` as integer steps from an ordered collection.
 
-    Bools, floats, strings and bytes are refused rather than converted, and so are sets (no order) and
+    Bools, floats, strings and bytes-like objects are refused rather than converted, and so are sets (no order) and
     mappings (keys or values would be ambiguous).
     """
     if isinstance(resets, set | frozenset | Mapping):
         raise ValueError(f"resets are an ordered collection of steps, not {type(resets).__name__}")
-    if isinstance(resets, str | bytes):
+    if isinstance(resets, str | bytes | bytearray | memoryview):
         raise ValueError(f"resets are integer steps, not {resets!r:.80}")
     try:
         steps = [step for step in resets]
@@ -334,9 +334,10 @@ class Export:
         inputs = _float32_samples(inputs, "Golden inputs")
         if len(inputs) == 0 or not np.isfinite(inputs).all():
             raise ValueError("A golden needs at least one call of finite inputs")
-        stateful = any(entry.role is TensorRole.STATE for entry in self.record.io.inputs)
+        if not any(entry.role is TensorRole.STATE for entry in self.record.io.inputs):
+            raise ValueError("A golden@2 sequence is for streaming models (state_in_k inputs)")
         resets = _steps(resets)
-        check_resets(resets, len(inputs), stateful, "Golden")
+        check_resets(resets, len(inputs), stateful=True, what="Golden")
         data = golden_npz(self.content, inputs, resets)
         golden = GoldenRecord(
             file=file_record("golden.npz", data),

@@ -59,7 +59,8 @@ class ExportOptions(BaseModel):
         strict: For calibrated precisions, refuse operators without an integer kernel.
         state_tie_tolerance: For calibrated precisions with integer I/O, the largest relative difference
             between the scales of a state pair that export ties to one scale (see ``ExportSpec``).
-        mode: How the model is traced: ``keras`` or ``concrete``, both of which keep the model's batch.
+        mode: How the model is traced: ``keras`` keeps the model's batch; ``concrete`` traces batch 1, so it
+            exports ``batch_size`` 1 only.
     """
 
     model_config = _CONFIG
@@ -103,6 +104,8 @@ class ExportSettings(BaseModel):
     def _consistent(self) -> "ExportSettings":
         if self.io_dtype not in VALID_IO[self.precision]:
             raise ValueError(f"io_dtype {self.io_dtype} is not valid for precision {self.precision}")
+        if self.options.mode is ConversionMode.CONCRETE and self.batch_size != 1:
+            raise ValueError(f"concrete mode traces batch 1; it cannot export batch_size {self.batch_size}")
         if self.precision in CALIBRATED and self.batch_size != 1:
             raise ValueError(f"precision {self.precision} exports with batch_size 1, not {self.batch_size}")
         if (self.calibration is not None) != (self.precision in CALIBRATED):
@@ -227,6 +230,13 @@ class ExportRecord(BaseModel):
     io: IORecord
     golden: GoldenRecord | None = None
     environment: EnvironmentEntry
+
+    @model_validator(mode="after")
+    def _artifact_has_the_batch(self) -> "ExportRecord":
+        batches = {entry.shape[0] for entry in self.io.inputs if entry.shape}
+        if batches - {self.export.batch_size}:
+            raise ValueError(f"The artifact's input batch {sorted(batches)} is not batch_size {self.export.batch_size}")
+        return self
 
     def write(self, path: Path | str) -> None:
         """Write the record as JSON."""
