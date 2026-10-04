@@ -7,7 +7,7 @@ description: Load weights trained elsewhere (ONNX, safetensors, PyTorch) into a 
 
 ## Import a pinned model
 
-heliaEDGE includes a Silero VAD v6 model builder with its mapping from the v6.2.2 ONNX file. Download the file yourself; heliaEDGE never downloads sources:
+Each family's mappings live beside its params, as `MAPPINGS` in `helia_edge.models.<family>_params`, keyed by mapping name. heliaEDGE includes two: Silero VAD v6 from the v6.2.2 ONNX file (`SILERO_VAD_V6_ONNX`) and FastEnhancer-T from the `onnx-vd-v1.0.0` ONNX release (`FASTENHANCER_T_ONNX`, see [FastEnhancer](/helia-edge/examples/fastenhancer/)). Download the file yourself; heliaEDGE never downloads sources:
 
 ```python
 from helia_edge.importers import import_weights
@@ -20,7 +20,7 @@ print(report.source_sha256, len(report.assignments))
 
 The model is a streaming model (see [Streaming models](/helia-edge/guide/export/#streaming-models)). It exports to `fp32`; LiteRT cannot quantize its exact STFT magnitude (a square root) to int16 activations, so `a16w8` with the default `strict: true` is refused. Each call takes 576 samples at 16 kHz, the last 64 samples of the previous call followed by 512 new ones, and carries its LSTM state as `state_in_0`/`state_in_1` and `state_out_0`/`state_out_1`. Reading ONNX files needs the `onnx` extra (`uv sync --extra onnx`).
 
-An export recipe imports the same way with a `params_import` model source: `{kind: params_import, architecture: vad_silero_v6, params: {}, mapping: silero_vad_v6_onnx, weights: {kind: path, path: silero_vad_16k_op15.onnx, sha256: 7ed98ddb…}}` (see [Export recipes](/helia-edge/guide/export/#export-recipes-and-the-command-line)).
+An export recipe imports the same way with a `params_import` model source, naming the mapping: `{kind: params_import, architecture: vad_silero_v6, params: {}, mapping: silero_vad_v6_onnx, weights: {kind: path, path: silero_vad_16k_op15.onnx, sha256: 7ed98ddb…}}` (see [Export recipes](/helia-edge/guide/export/#export-recipes-and-the-command-line)).
 
 To check the import, the repository's parity test compares the model with ONNX Runtime with the state carried: set `HELIA_EDGE_SILERO_ONNX` to the file, and `HELIA_EDGE_SILERO_AUDIO` to 16 kHz speech (a 16-bit mono WAV) to also compare speech decisions, then run `pytest tests/models/test_silero_vad.py`.
 
@@ -29,7 +29,7 @@ To check the import, the repository's parity test compares the model with ONNX R
 - **Source:** the file's sha256 must equal the mapping's pinned `source.sha256`. A file with the same name but other weights is refused: for example, Silero's `silero_vad_16k.safetensors` holds different weights from the v6.2.2 ONNX.
 - **Sources used once:** every tensor in the file is used exactly once, or listed in `unused`. A tensor split into parts must have each part used once.
 - **Weights set once:** every weight of the model is assigned exactly once.
-- **Values:** shapes must match after the transforms, float weights take float sources and must be finite as stored (for example in bfloat16), and integer weights must stay within their range.
+- **Values:** sources must have their row's `source_shape`, when given, and shapes must match after the transforms, float weights take float sources and must be finite as stored (for example in bfloat16), and integer weights must stay within their range.
 
 ## Write a mapping
 
@@ -38,8 +38,7 @@ from helia_edge.importers import GateReorder, Reshape, SourcePin, SumParts, Tran
 
 mapping = WeightMapping(
     name="detector_onnx",
-    format="onnx",
-    source=SourcePin(uri="https://example.com/detector.onnx", sha256="<sha256>"),
+    source=SourcePin(uri="https://example.com/detector.onnx", sha256="<sha256>", format="onnx"),
     rows=(
         WeightRow(sources=("conv.weight",), transforms=(Transpose(perm=(2, 1, 0)),), layer="conv", weight="kernel"),
         WeightRow(sources=("conv.bias",), layer="conv", weight="bias"),
@@ -60,8 +59,8 @@ mapping = WeightMapping(
 )
 ```
 
-- **Rows:** a row names the Keras layer (`outer/inner` inside a nested model) and the weight within it, such as `kernel` or `bias`, or its path inside a composite layer, such as `query/kernel` in a `MultiHeadAttention`.
+- **Rows:** a row names the Keras layer (`outer/inner` inside a nested model) and the weight within it, such as `kernel` or `bias`, or its path inside a composite layer, such as `query/kernel` in a `MultiHeadAttention`. An optional `source_shape` checks each source tensor's shape before the transforms; give it whenever a row starts with a `Reshape`, which would otherwise accept a transposed source of the same size.
 - **Combining sources:** several sources are combined with `sum` or `concat` before the transforms.
 - **Transforms:** `Transpose`, `Reshape`, `GateReorder` (for example ONNX LSTM gates `iofc` to Keras `ifco`; PyTorch's `ifgo` is already the Keras order), `SumParts` (add equal parts, such as an ONNX LSTM's two biases) and `Split`, which may only come first.
-- **Formats:** `onnx` reads the initializers of a self-contained file (not `Constant` nodes; weights in separate data files are refused, since the pin covers one file), `safetensors` reads a `.safetensors` file with NumPy, and `torch` reads a flat state dict saved with `torch.save` (loaded with `weights_only=True`). Another package adds formats through `helia_edge.registry.importers`.
+- **Formats:** the source pin's `format` is one of `SourceFormat`. `onnx` reads the initializers of a self-contained file (not `Constant` nodes; weights in separate data files are refused, since the pin covers one file), `safetensors` reads a `.safetensors` file with NumPy, and `torch` reads a flat state dict saved with `torch.save` (loaded with `weights_only=True`).
 - **Serialization:** mappings are pydantic models, so they serialize to and from JSON.

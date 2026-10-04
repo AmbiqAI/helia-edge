@@ -7,7 +7,16 @@ import keras
 import numpy as np
 import pytest
 
-from helia_edge.importers import ImportReport, SourcePin, Split, Transpose, WeightMapping, WeightRow, import_weights
+from helia_edge.importers import (
+    ImportReport,
+    Reshape,
+    SourcePin,
+    Split,
+    Transpose,
+    WeightMapping,
+    WeightRow,
+    import_weights,
+)
 from helia_edge.importers.readers import read_onnx, read_torch
 
 
@@ -47,7 +56,7 @@ def source(tmp_path, write_safetensors):
 
 def mapping(sha256, rows=ROWS, unused=()):
     return WeightMapping(
-        name="toy", format="safetensors", source=SourcePin(uri="file://w", sha256=sha256), rows=rows, unused=unused
+        name="toy", source=SourcePin(uri="file://w", sha256=sha256, format="safetensors"), rows=rows, unused=unused
     )
 
 
@@ -250,18 +259,36 @@ def test_a_float_source_for_an_integer_weight_is_refused(source):
     np.testing.assert_array_equal(keras.ops.convert_to_numpy(counted.get_layer("counter").count), [1, 2])
 
 
+def test_a_same_size_source_in_another_layout_is_refused_by_its_source_shape(source):
+    # dense.weight is stored (out, in) = (4, 3); a row reaching the (3, 4) kernel through a Reshape accepts a
+    # (3, 4) source of the same size, transposed, unless it gives source_shape
+    reshaped = (Reshape(shape=(4, 3)), Transpose(perm=(1, 0)))
+    row = WeightRow(sources=("dense.weight",), transforms=reshaped, layer="dense", weight="kernel")
+    relaid = {**tensors(), "dense.weight": tensors()["dense.weight"].T.copy()}
+    path, sha256 = source(relaid)
+    import_weights(model(), mapping(sha256, (row, *ROWS[1:])), path)
+    m = model()
+    before = weights(m)
+    checked = row.model_copy(update={"source_shape": (4, 3)})
+    with pytest.raises(ValueError, match=r"source shapes \[\(3, 4\)\] for source_shape \(4, 3\)"):
+        import_weights(m, mapping(sha256, (checked, *ROWS[1:])), path)
+    assert all(np.array_equal(a, b) for a, b in zip(before, weights(m)))
+    path, sha256 = source()
+    import_weights(m, mapping(sha256, (checked, *ROWS[1:])), path)
+
+
 def test_a_file_changed_while_read_is_refused(source, monkeypatch):
-    from helia_edge.registry import importers
+    from helia_edge.importers import readers
 
     path, sha256 = source()
-    original = importers.get("safetensors")
+    original = readers.read_safetensors
 
     def read_then_change(p):
         result = original(p)
         p.write_bytes(p.read_bytes() + b" ")
         return result
 
-    monkeypatch.setitem(importers._values, "safetensors", read_then_change)
+    monkeypatch.setattr(readers, "read_safetensors", read_then_change)
     with pytest.raises(ValueError, match="changed while it was read"):
         import_weights(model(), mapping(sha256), path)
 

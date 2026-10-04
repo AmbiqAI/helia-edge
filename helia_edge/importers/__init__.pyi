@@ -5,6 +5,7 @@ from .api import ImportReport as ImportReport
 from .api import import_weights as import_weights
 from .mapping import GateReorder as GateReorder
 from .mapping import Reshape as Reshape
+from .mapping import SourceFormat as SourceFormat
 from .mapping import SourcePin as SourcePin
 from .mapping import Split as Split
 from .mapping import SumParts as SumParts

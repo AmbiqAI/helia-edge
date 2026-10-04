@@ -20,6 +20,7 @@ from helia_edge.export.recipe import ParamsImport  # noqa: E402
 from helia_edge.export.run import SourceError, build_model  # noqa: E402
 from helia_edge.importers import SourcePin, Transpose, WeightMapping, WeightRow  # noqa: E402
 from helia_edge.layers import StreamingLSTMCell, state_input, state_output  # noqa: E402
+from helia_edge.models import fastenhancer_params, silero_vad_params  # noqa: E402
 
 FEATURES, UNITS = 6, 8
 
@@ -190,7 +191,7 @@ def toy_mapping(sha256):
         WeightRow(sources=("prob.w",), transforms=(Transpose(perm=(1, 0)),), layer="prob", weight="kernel"),
         WeightRow(sources=("prob.b",), layer="prob", weight="bias"),
     )
-    return WeightMapping(name="toy", format="safetensors", source=SourcePin(uri="file://toy", sha256=sha256), rows=rows)
+    return WeightMapping(name="toy", source=SourcePin(uri="file://toy", sha256=sha256, format="safetensors"), rows=rows)
 
 
 def test_params_import_builds_and_imports_the_pinned_weights(workdir, write_safetensors, monkeypatch):
@@ -204,7 +205,7 @@ def test_params_import_builds_and_imports_the_pinned_weights(workdir, write_safe
     }
     write_safetensors(workdir / "toy.safetensors", tensors)
     pinned = sha(workdir / "toy.safetensors")
-    monkeypatch.setitem(registry.weight_mappings._values, "toy_mapping", toy_mapping(pinned))
+    monkeypatch.setitem(silero_vad_params.MAPPINGS, "toy_mapping", toy_mapping(pinned))
     model = {
         "kind": "params_import",
         "architecture": "toy_stream",
@@ -224,6 +225,12 @@ def test_params_import_builds_and_imports_the_pinned_weights(workdir, write_safe
     unknown = {**model, "mapping": "absent"}
     with pytest.raises(ValueError, match="absent"):
         run_recipe(write(workdir / "r3.json", stream_recipe(workdir, model=unknown)), workdir / "out3")
+    other_family = {**model, "mapping": "fastenhancer_t_onnx"}
+    with pytest.raises(SourceError, match="mapping 'fastenhancer_t_onnx' is pinned to"):
+        run_recipe(write(workdir / "r4.json", stream_recipe(workdir, model=other_family)), workdir / "out4")
+    monkeypatch.setitem(fastenhancer_params.MAPPINGS, "toy_mapping", toy_mapping(pinned))
+    with pytest.raises(ValueError, match="'toy_mapping' is defined by more than one family"):
+        run_recipe(write(workdir / "r5.json", stream_recipe(workdir, model=model)), workdir / "out5")
 
 
 def test_multi_input_models_must_stream_with_batch_size_one(workdir):
@@ -265,7 +272,7 @@ def test_silero_vad_is_a_registered_architecture():
         resolve_architecture("vad_silero_v6")({"context": 32}, None, None)
     with pytest.raises(ValueError, match="fixed input shape"):
         resolve_architecture("vad_silero_v6")({}, (576,), None)
-    assert "silero_vad_v6_onnx" in registry.weight_mappings
+    assert "silero_vad_v6_onnx" in silero_vad_params.MAPPINGS
 
 
 def test_calibration_resets_reach_stream_calibration(workdir, monkeypatch):

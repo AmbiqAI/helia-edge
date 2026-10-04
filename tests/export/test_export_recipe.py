@@ -171,3 +171,16 @@ def test_a_reference_is_either_arrays_or_a_golden():
     for invalid in ({}, {"inputs": file}, {"inputs": file, "outputs": file, "golden": golden}):
         with pytest.raises(pydantic.ValidationError, match="either inputs and outputs files or a golden"):
             ReferenceRecord(**invalid)
+
+
+def test_params_import_mappings_come_from_every_family(monkeypatch):
+    from helia_edge.export.run import _weight_mappings
+    from helia_edge.models import silero_vad_params, tcn_params
+
+    assert {"fastenhancer_t_onnx", "silero_vad_v6_onnx"} <= set(_weight_mappings())
+    toy = silero_vad_params.SILERO_VAD_V6_ONNX.model_copy(update={"name": "toy"})
+    monkeypatch.setattr(tcn_params, "MAPPINGS", {"toy": toy}, raising=False)
+    assert _weight_mappings()["toy"] is toy
+    monkeypatch.setitem(silero_vad_params.MAPPINGS, "toy", toy)
+    with pytest.raises(ValueError, match="'toy' is defined by more than one family"):
+        _weight_mappings()

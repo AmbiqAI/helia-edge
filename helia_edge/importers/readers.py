@@ -1,4 +1,4 @@
-"""Read named tensors from source files: ``path -> {name: array}``.
+"""Read named tensors from source files: ``path -> {name: array}``, one reader per ``SourceFormat``.
 
 The ``onnx`` reader needs the ``onnx`` extra and the ``torch`` reader the ``torch`` extra; both are
 imported only when called. The ``safetensors`` reader uses NumPy alone.
@@ -10,6 +10,8 @@ from pathlib import Path
 
 import numpy as np
 import numpy.typing as npt
+
+from .mapping import SourceFormat
 
 _SAFETENSORS_DTYPES = {
     "F64": np.float64,
@@ -82,3 +84,14 @@ def read_torch(path: Path) -> dict[str, npt.NDArray]:
         except TypeError as exc:
             raise ValueError(f"Tensor {name!r} has dtype {value.dtype}, which NumPy cannot hold") from exc
     return tensors
+
+
+def read(format: SourceFormat, path: Path) -> dict[str, npt.NDArray]:
+    """The tensors of the file at ``path``, read as ``format``."""
+    match SourceFormat(format):
+        case SourceFormat.ONNX:
+            return read_onnx(path)
+        case SourceFormat.SAFETENSORS:
+            return read_safetensors(path)
+        case SourceFormat.TORCH:
+            return read_torch(path)

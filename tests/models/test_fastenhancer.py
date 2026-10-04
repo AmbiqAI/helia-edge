@@ -1,5 +1,8 @@
 """FastEnhancer Keras graph against an independent NumPy reference of the ONNX semantics."""
 
+import hashlib
+import importlib.util
+import os
 import sys
 from pathlib import Path
 
@@ -7,15 +10,10 @@ import keras
 import numpy as np
 import pytest
 
+from helia_edge.importers import SourcePin, import_weights
 from helia_edge.models import FastEnhancerParams
-from helia_edge.models.fastenhancer import (
-    FASTENHANCER_T_ONNX_NAMES,
-    build,
-    fastenhancer_t_onnx_weights,
-    fastenhancer_weight_shapes,
-    linear_filterbanks,
-    load_fastenhancer_weights,
-)
+from helia_edge.models.fastenhancer import build, linear_filterbanks
+from helia_edge.models.fastenhancer_params import FASTENHANCER_T_ONNX, fastenhancer_mapping, fastenhancer_weight_shapes
 
 sys.path.insert(0, str(Path(__file__).parent))
 from fastenhancer_reference import reference_frame  # noqa: E402
@@ -97,15 +95,27 @@ def max_error(model, params, tensors, frames=4, batch=2, seed=1):
     return out_error, state_error
 
 
-def hydrated(params, seed=0):
-    tensors = random_tensors(params, seed)
-    model = build(params)
-    load_fastenhancer_weights(model, params, tensors)
-    return model, tensors
+def pinned(path, tensors, write_safetensors):
+    write_safetensors(path, tensors)
+    return SourcePin(uri=path.as_uri(), sha256=hashlib.sha256(path.read_bytes()).hexdigest(), format="safetensors")
+
+
+@pytest.fixture
+def hydrated(tmp_path, write_safetensors):
+    """Build ``params`` and import random module-path tensors through ``fastenhancer_mapping``."""
+
+    def hydrate(params, seed=0):
+        tensors = random_tensors(params, seed)
+        path = tmp_path / f"fastenhancer-{seed}.safetensors"
+        model = build(params)
+        import_weights(model, fastenhancer_mapping(params, "random", pinned(path, tensors, write_safetensors)), path)
+        return model, tensors
+
+    return hydrate
 
 
 @pytest.mark.parametrize("params", [FastEnhancerParams(), VARIANT], ids=["t", "variant"])
-def test_streaming_frames_match_reference(params):
+def test_streaming_frames_match_reference(params, hydrated):
     model, tensors = hydrated(params)
     out_error, state_error = max_error(model, params, tensors)
     assert out_error < TOLERANCE and state_error < TOLERANCE
@@ -120,7 +130,7 @@ def test_named_streaming_signature():
     assert [tuple(t.shape) for t in model.outputs] == [(None, 257, 1, 2), (None, 16, 20), (None, 16, 20)]
 
 
-def test_carried_state_changes_output():
+def test_carried_state_changes_output(hydrated):
     params = FastEnhancerParams()
     model, _ = hydrated(params)
     spec = np.random.default_rng(2).normal(size=(1, 257, 1, 2)).astype(np.float32)
@@ -132,39 +142,70 @@ def test_carried_state_changes_output():
     assert first[:, -1].max() == 0 and first[:, -1].min() == 0
 
 
-def test_hydration_rejects_mismatch_without_partial_load():
+def test_the_mapping_refuses_tensors_of_other_params(hydrated, tmp_path, write_safetensors):
+    model, tensors = hydrated(FastEnhancerParams())
+    before = [w.copy() for w in model.get_weights()]
+    path = tmp_path / "variant.safetensors"
+    variant = fastenhancer_mapping(VARIANT, "variant", pinned(path, random_tensors(VARIANT), write_safetensors))
+    with pytest.raises(ValueError, match="mapped shape"):
+        import_weights(model, variant, path)
+    assert all(np.array_equal(a, b) for a, b in zip(before, model.get_weights()))
+
+
+def test_the_mapping_refuses_same_size_tensors_in_another_layout(hydrated, tmp_path, write_safetensors):
     params = FastEnhancerParams()
     model, tensors = hydrated(params)
     before = [w.copy() for w in model.get_weights()]
-    changed = {name: value + 1 for name, value in tensors.items()}
-    for bad in (
-        {k: v for k, v in changed.items() if k != "rf_block.1.rnn.B"},
-        {**changed, "rf_block.2.rnn.B": changed["rf_block.1.rnn.B"]},
-        {**changed, "rf_block.0.rnn.W": changed["rf_block.0.rnn.W"][:, :, :-1]},
-        {**changed, "enc_pre.0.bias": changed["enc_pre.0.bias"].astype(np.int32)},
+    for name, value in (
+        ("rf_block.0.rnn.W", tensors["rf_block.0.rnn.W"].transpose(0, 2, 1)),  # (1, in, 3H)
+        ("rf_block.0.rnn.R", tensors["rf_block.0.rnn.R"][0]),  # PyTorch nn.GRU weight_hh_l0, (3H, H)
+        ("enc_pre.0.weight", tensors["enc_pre.0.weight"].reshape(24, 2, 8)),  # a standard strided kernel layout
     ):
-        with pytest.raises(ValueError):
-            load_fastenhancer_weights(model, params, bad)
-        assert all(np.array_equal(a, b) for a, b in zip(before, model.get_weights()))
-    other = build(VARIANT)
-    with pytest.raises(ValueError, match="does not match params"):
-        load_fastenhancer_weights(other, params, tensors)
+        path = tmp_path / "relaid.safetensors"
+        mapping = fastenhancer_mapping(params, "relaid", pinned(path, {**tensors, name: value}, write_safetensors))
+        with pytest.raises(ValueError, match="source_shape"):
+            import_weights(model, mapping, path)
+    assert all(np.array_equal(a, b) for a, b in zip(before, model.get_weights()))
 
 
-def test_release_names_map_to_module_paths():
-    expected = fastenhancer_weight_shapes(FastEnhancerParams())
-    release = {onnx: np.zeros(expected[key], np.float32) for onnx, key in FASTENHANCER_T_ONNX_NAMES.items()}
-    release.update(
-        {
-            key: np.zeros(shape, np.float32)
-            for key, shape in expected.items()
-            if key not in FASTENHANCER_T_ONNX_NAMES.values()
-        }
-    )
-    release["/Constant_6_output_0"] = np.float32(1e-5)
-    assert set(fastenhancer_t_onnx_weights(release)) == set(expected)
-    with pytest.raises(ValueError, match="unrecognized"):
-        fastenhancer_t_onnx_weights({**release, "onnx::MatMul_999": np.zeros((2, 2), np.float32)})
+def test_tensor_names_must_rename_tensors_of_the_params():
+    with pytest.raises(ValueError, match="not tensors of these params"):
+        fastenhancer_mapping(VARIANT, "m", FASTENHANCER_T_ONNX.source, tensor_names={"rf_block.1.rnn.W": "w"})
+
+
+def test_the_release_mapping_renames_only_the_anonymous_initializers():
+    by_path = fastenhancer_mapping(FastEnhancerParams(), "paths", FASTENHANCER_T_ONNX.source)
+    renamed = {a.sources: b.sources for a, b in zip(by_path.rows, FASTENHANCER_T_ONNX.rows, strict=True) if a != b}
+    assert len(renamed) == 14
+    assert all(source[0].startswith(("onnx::MatMul_", "onnx::GRU_")) for source in renamed.values())
+    assert all(name.startswith("/") for name in FASTENHANCER_T_ONNX.unused)
+
+
+RELEASE_FILE = os.environ.get("HELIA_EDGE_FASTENHANCER_ONNX")
+
+
+@pytest.mark.skipif(not RELEASE_FILE, reason="set HELIA_EDGE_FASTENHANCER_ONNX to the pinned fastenhancer_t.spec.onnx")
+def test_the_release_imports_and_matches_onnx_runtime():
+    """The imported release matches ONNX Runtime on the same file, with the state carried for 20 frames."""
+    if importlib.util.find_spec("onnxruntime") is None or importlib.util.find_spec("onnx") is None:
+        pytest.skip("needs onnx and onnxruntime")
+    import onnxruntime
+
+    model = build(FastEnhancerParams(), batch_size=1)
+    report = import_weights(model, FASTENHANCER_T_ONNX, RELEASE_FILE)
+    assert len(report.assignments) == len(model.weights) == len(fastenhancer_weight_shapes(FastEnhancerParams()))
+    session = onnxruntime.InferenceSession(RELEASE_FILE, providers=["CPUExecutionProvider"])
+    rng = np.random.default_rng(0)
+    ours = theirs = [np.zeros((1, 16, 20), np.float32)] * 2
+    error = peak = 0.0
+    for _ in range(20):
+        spec = (rng.normal(size=(1, 257, 1, 2)) * 0.3).astype(np.float32)
+        got = [keras.ops.convert_to_numpy(o) for o in model([spec, *ours])]
+        want = session.run(None, {"spec_in": spec, "cache_in_0": theirs[0], "cache_in_1": theirs[1]})
+        error = max(error, *(float(np.abs(g - w).max()) for g, w in zip(got, want, strict=True)))
+        peak = max(peak, *(float(np.abs(w).max()) for w in want))
+        ours, theirs = got[1:], want[1:]
+    assert error / max(peak, 1.0) < TOLERANCE
 
 
 def test_fixed_filterbanks_are_frozen_normalized_projections():
@@ -180,7 +221,7 @@ def test_fixed_filterbanks_are_frozen_normalized_projections():
     np.testing.assert_array_equal(keras.ops.convert_to_numpy(model.get_layer("rf_pre_proj").kernel), pre)
 
 
-def test_keras_file_roundtrip(tmp_path):
+def test_keras_file_roundtrip(tmp_path, hydrated):
     params = VARIANT
     model, _ = hydrated(params)
     path = tmp_path / "fastenhancer.keras"
@@ -198,6 +239,8 @@ def test_integer_export_ties_the_named_state_pairs():
     from helia_edge.export import ExportSpec, export_model, stream_calibration
     from helia_edge.export.result import state_scales_tied
 
+    # Untrained weights: some initializations calibrate the tiny state ranges just outside the tie tolerance
+    keras.utils.set_random_seed(0)
     model = build(FastEnhancerParams(), batch_size=1)
     frames = (np.random.default_rng(0).normal(size=(16, 257, 1, 2)) * 0.5).astype(np.float32)
     result = export_model(

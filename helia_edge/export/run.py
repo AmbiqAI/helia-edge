@@ -2,14 +2,16 @@
 
 import hashlib
 import os
+import sys
 import tempfile
 from collections.abc import Collection
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Literal, cast
+from typing import Any, Literal, cast, get_args
 
 import numpy as np
 
+from ..importers.mapping import WeightMapping
 from .manifest import (
     MANIFEST_SCHEMA,
     EnvironmentEntry,
@@ -161,9 +163,11 @@ def build_model(source: ParamsSeed | ParamsWeights | ParamsImport | KerasFile, b
         model.load_weights(fetch(source.weights, base_dir))
     elif isinstance(source, ParamsImport):
         from ..importers import import_weights
-        from ..registry import weight_mappings
 
-        mapping = weight_mappings.get(source.mapping)
+        mappings = _weight_mappings()
+        if source.mapping not in mappings:
+            raise ValueError(f"Unknown weight mapping {source.mapping!r}; available: {sorted(mappings)}")
+        mapping = mappings[source.mapping]
         if source.weights.sha256 != mapping.source.sha256:
             raise SourceError(
                 f"Weights sha256 {source.weights.sha256} is not the file mapping {source.mapping!r} is pinned to "
@@ -177,6 +181,19 @@ def build_model(source: ParamsSeed | ParamsWeights | ParamsImport | KerasFile, b
         register_keras_serializables()
         model = keras.models.load_model(fetch(source.file, base_dir), compile=False)
     return _batch1(model)
+
+
+def _weight_mappings() -> dict[str, WeightMapping]:
+    """Every family's ``MAPPINGS`` (``helia_edge.models.<family>_params``), by mapping name."""
+    from ..models.spec import ModelParams
+
+    mappings: dict[str, WeightMapping] = {}
+    for params in get_args(get_args(ModelParams)[0]):
+        for name, mapping in getattr(sys.modules[params.__module__], "MAPPINGS", {}).items():
+            if name in mappings:
+                raise ValueError(f"Weight mapping {name!r} is defined by more than one family")
+            mappings[name] = mapping
+    return mappings
 
 
 def _write(path: Path, data: bytes, root: Path) -> FileRecord:

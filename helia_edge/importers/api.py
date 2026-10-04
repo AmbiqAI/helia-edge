@@ -7,6 +7,7 @@ from pathlib import Path
 import numpy as np
 
 from .mapping import WeightMapping
+from .readers import read
 
 
 @dataclass(frozen=True)
@@ -70,6 +71,7 @@ def import_weights(model, mapping: WeightMapping, path: Path | str) -> ImportRep
 
     - the file's sha256 is the mapping's pinned ``source.sha256``;
     - every source tensor is used exactly once (each part once when split), or listed as ``unused``;
+    - a row's sources have its ``source_shape``, when the row gives one;
     - every weight of ``model`` is assigned exactly once, with its shape, from a source of a matching
       kind (float to float), finite as stored in the weight's dtype (integers within its range).
 
@@ -85,15 +87,13 @@ def import_weights(model, mapping: WeightMapping, path: Path | str) -> ImportRep
         ValueError: If the file does not match its pin or changes while it is read; otherwise if any
             other check fails, with every problem found listed in the message.
     """
-    from ..registry import importers
-
     path = Path(path)
     sha256 = _file_sha256(path)
     if sha256 != mapping.source.sha256:
         raise ValueError(
             f"{path} has sha256 {sha256}; mapping {mapping.name!r} is for {mapping.source.sha256} ({mapping.source.uri})"
         )
-    tensors = importers.get(mapping.format)(path)
+    tensors = read(mapping.source.format, path)
     if _file_sha256(path) != sha256:
         raise ValueError(f"{path} changed while it was read")
 
@@ -139,6 +139,10 @@ def import_weights(model, mapping: WeightMapping, path: Path | str) -> ImportRep
             dtype = _numpy_dtype(weight.dtype)
         except ValueError as exc:
             problems.append(f"{row.layer}/{row.weight}: {exc}")
+            continue
+        shapes = [tuple(np.shape(tensors[name])) for name in row.sources]
+        if row.source_shape is not None and any(shape != row.source_shape for shape in shapes):
+            problems.append(f"{row.layer}/{row.weight}: source shapes {shapes} for source_shape {row.source_shape}")
             continue
         kinds = {np.asarray(tensors[name]).dtype.kind for name in row.sources}
         if (kinds != {"f"}) if dtype.kind == "f" else ("f" in kinds):

@@ -104,7 +104,7 @@ helia-edge export verify exports/manifest.json
 - **Model kinds:**
   - `params_seed`: an architecture from `BUILTIN_ARCHITECTURES` (`tcn`, `mlperf_tiny`, `miniresnet_v1`, `timeppg`, `cornet`, `vad_silero_v6`), built from params with a seeded initialization;
   - `params_weights`: the same architectures, with trained weights loaded;
-  - `params_import`: the same architectures, with weights imported from a file trained elsewhere through a named mapping in `helia_edge.registry.weight_mappings` (see [Import weights](/helia-edge/guide/import-weights/)); the file's sha256 must be the one the mapping is pinned to;
+  - `params_import`: the same architectures, with weights imported from a file trained elsewhere through a mapping named from a family's `MAPPINGS` (see [Import weights](/helia-edge/guide/import-weights/)); the file's sha256 must be the one the mapping is pinned to;
   - `keras_file`: a saved `.keras` model;
   - `tflite_import`: an existing `.tflite` file, taken as is.
 - **TCN params:** for `tcn`, `params` are `TcnParams`, which reject unknown fields, so remove the `name` field from older recipes. The recipe's `num_classes` must match any `num_classes` in `params`.
