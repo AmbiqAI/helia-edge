@@ -68,7 +68,9 @@ def test_the_export_is_the_export_model_artifact_with_its_record():
     calibration = samples(SPEC.input_shape)
     result = export(model, precision="a8w8", io_dtype="int8", calibration=calibration, spec=SPEC)
     spec = ExportSpec(precision="a8w8", io_dtype="int8", mode="keras")
-    assert result.content == export_model(model, spec, calibration).content
+    assert result.content == export_model(result.model, spec, calibration).content
+    bare = export(model, precision="a8w8", io_dtype="int8", calibration=calibration)  # no spec: the model as is
+    assert bare.content == export_model(model, spec, calibration).content and bare.model is model
     record = result.record
     assert record.model == SPEC and record.weights.digest == weights_digest(model)
     assert record.export.calibration.samples == len(calibration) and record.export.options == ExportOptions()
@@ -83,7 +85,11 @@ def test_a_dynamic_batch_needs_a_spec_and_a_fixed_batch_must_match():
     with pytest.raises(ValueError, match="batch"):
         export(seeded(SPEC), precision="fp32", io_dtype="float32")
     with pytest.raises(ValueError, match="batch"):
-        export(seeded(SPEC, batch_size=2), precision="fp32", io_dtype="float32", spec=SPEC)
+        export(seeded(SPEC, batch_size=2), precision="fp32", io_dtype="float32")
+    assert (
+        export(seeded(SPEC, batch_size=2), precision="fp32", io_dtype="float32", spec=SPEC).record.export.batch_size
+        == 1
+    )
     rebuilt = export(seeded(SPEC), precision="fp32", io_dtype="float32", spec=SPEC, batch_size=2)
     assert rebuilt.model.inputs[0].shape[0] == 2 and rebuilt.record.export.batch_size == 2
     other = ModelSpec(params=compact_tcn_params(filters=16, num_classes=3), input_shape=(64, 4))
@@ -106,6 +112,20 @@ def test_a_dynamic_batch_needs_a_spec_and_a_fixed_batch_must_match():
             export(seeded(SPEC, batch_size=1), precision="fp32", io_dtype="float32", batch_size=batch_size)
 
 
+def test_with_a_spec_the_export_is_the_spec_with_the_model_weights():
+    params = SPEC.params.model_dump()
+    for block in params["blocks"]:
+        block["dilation"], block["activation"] = [1, 1], "relu"  # same weight shapes, another graph
+    other = seeded(ModelSpec(params=TcnParams.model_validate(params), input_shape=SPEC.input_shape), batch_size=1)
+    result = export(other, precision="fp32", io_dtype="float32", spec=SPEC)
+    expected = seeded(SPEC, batch_size=1)
+    expected.set_weights(other.get_weights())
+    x = samples(SPEC.input_shape, count=1)
+    got = keras.ops.convert_to_numpy(result.model(x))
+    np.testing.assert_array_equal(got, keras.ops.convert_to_numpy(expected(x)))
+    assert not np.array_equal(got, keras.ops.convert_to_numpy(other(x)))
+
+
 def test_the_record_refuses_what_it_does_not_describe():
     model = seeded(SPEC, batch_size=1)
     with pytest.raises(pydantic.ValidationError, match="precision"):
@@ -114,6 +134,8 @@ def test_the_record_refuses_what_it_does_not_describe():
         ExportOptions(mode="saved_model")
     with pytest.raises(pydantic.ValidationError, match="strict"):
         ExportOptions(strict="no")
+    with pytest.raises(pydantic.ValidationError, match="state_tie_tolerance"):
+        ExportOptions(state_tie_tolerance="0.1")
     record = export(model, precision="fp32", io_dtype="float32").record
     assert record.model is None and record.export.calibration is None
     data = json.loads(record.model_dump_json(by_alias=True))
@@ -177,8 +199,9 @@ def test_a_written_export_loads_back_and_refuses_other_weights(tmp_path):
         load_export_record(unspecified)
 
 
-def test_layer_numbering_does_not_change_the_digest(tmp_path):
-    """TsMixer leaves layers unnamed, so Keras numbers them by how many it built in the process."""
+def test_a_record_reproduces_its_artifact_in_a_new_process(tmp_path):
+    """TsMixer leaves layers unnamed, so Keras numbers them by how many it built in the process; neither the
+    digest nor the artifact may depend on that."""
     import subprocess
     import sys
 
@@ -186,7 +209,12 @@ def test_layer_numbering_does_not_change_the_digest(tmp_path):
     build(spec)  # numbering moves on
     path = export(seeded(spec), precision="fp32", io_dtype="float32", spec=spec).write(tmp_path)
     load_export_record(path)
-    source = f"from helia_edge.export import load_export_record; load_export_record({str(path)!r})"
+    source = f"""
+from helia_edge.export import ExportRecord, export, load_export_record
+record = ExportRecord.read({str(path)!r})
+again = export(load_export_record({str(path)!r}), precision="fp32", io_dtype="float32", spec=record.model)
+assert again.record.artifact == record.artifact and again.record.weights == record.weights
+"""
     result = subprocess.run([sys.executable, "-c", source], text=True, capture_output=True, timeout=300)
     assert result.returncode == 0, result.stderr[-2000:]
 
@@ -210,6 +238,10 @@ def test_a_streaming_export_records_its_calibration_import_and_golden(tmp_path):
     assert not {"SQRT", "MIRROR_PAD", "TRANSPOSE"} & set(operator_names(result.content))
     record = result.record
     assert record.export.calibration.resets == (32,) and record.weights.import_ == imported
+    with pytest.raises(pydantic.ValidationError, match="resets"):
+        record.golden.model_validate({**record.golden.model_dump(by_alias=True), "resets": (16,)})
+    from_array = export(model, precision="a16w8", io_dtype="int16", calibration=calls, resets=np.array([32]), spec=spec)
+    assert from_array.record.export.calibration.resets == (32,)
     assert record.io.state_scales_tied is True
     assert (
         record.golden.steps == 16

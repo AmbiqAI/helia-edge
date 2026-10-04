@@ -9,7 +9,7 @@ from .recipe import NAME, SHA256
 from .record import GOLDEN_SCHEMA as GOLDEN_SCHEMA
 from .record import TensorEntry as TensorEntry
 from .result import EnvironmentRecord, HeliaEdgeSource
-from .spec import ExportSpec
+from .spec import ExportSpec, check_resets
 
 MANIFEST_SCHEMA = "helia-edge/manifest@1"
 
@@ -49,6 +49,11 @@ class GoldenRecord(BaseModel):
     resets: tuple[int, ...] = ()
     source: GoldenSource
     resolver: Literal["builtin_ref"] = "builtin_ref"
+
+    @model_validator(mode="after")
+    def _resets_within_steps(self) -> "GoldenRecord":
+        check_resets(self.resets, self.steps, stateful=True, what="Golden")
+        return self
 
 
 class ReferenceRecord(BaseModel):

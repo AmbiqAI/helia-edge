@@ -283,7 +283,8 @@ class Export:
         return replace(self, record=self.record.model_copy(update={"golden": golden}), golden=data)
 
     def write(self, directory: Path | str) -> Path:
-        """Write ``model.tflite``, ``model.weights.h5``, ``golden.npz`` (if any) and ``record.json``.
+        """Write ``model.tflite``, ``model.weights.h5``, ``golden.npz`` (if any) and ``record.json``, replacing
+        those files, and removing a ``golden.npz`` the record does not name.
 
         Returns:
             Path: The record's path.
@@ -314,10 +315,12 @@ def export(
 ) -> Export:
     """Export a Keras model to LiteRT with its export record (``helia-edge/export-record@1``).
 
-    The exported model has a static batch: every input's batch is ``batch_size``. A model built with a
-    dynamic batch is rebuilt from ``spec`` with ``batch_size`` and the same weights; without ``spec`` it is
-    refused. A streaming model (``state_in_k``/``state_out_k``) is calibrated with ``stream_calibration``
-    from its signal, the states reset at ``resets``.
+    The exported model has a static batch: every input's batch is ``batch_size``. With ``spec``, the export
+    is ``build(spec, batch_size=batch_size)`` with the model's weights, built after clearing the Keras
+    session so the artifact's bytes depend on the spec and the weights alone, and the record can rebuild
+    and re-export it. Without ``spec``, the model is exported as it is, its batch must be ``batch_size``,
+    and the record cannot rebuild it. A streaming model (``state_in_k``/``state_out_k``) is calibrated with
+    ``stream_calibration`` from its signal, the states reset at ``resets``.
 
     Args:
         model: The Keras model.
@@ -337,13 +340,15 @@ def export(
         Export: The artifact, its record and the exported Keras model.
 
     Raises:
-        ValueError: If the batch is dynamic without ``spec`` or differs from ``batch_size``, the weights do
-            not match ``spec``, or the calibration is invalid.
+        ValueError: If the batch differs from ``batch_size`` without ``spec``, the model's weight or input
+            shapes differ from ``build(spec)``'s, a calibrated precision has ``batch_size`` other than 1, or
+            the calibration or resets are invalid.
     """
     calibration = None if calibration is None else np.asarray(calibration)
+    resets = tuple(int(step) for step in resets)
     if resets and calibration is None:
         raise ValueError("resets apply to the calibration of a streaming model; no calibration was given")
-    if batch_size != 1 and calibration is not None:
+    if batch_size != 1 and Precision(precision) in CALIBRATED:
         raise ValueError("Calibrated precisions export with batch_size 1: calibration runs one sample at a time")
     settings = ExportSettings(
         precision=Precision(precision),
@@ -353,29 +358,35 @@ def export(
         calibration=None
         if calibration is None
         else CalibrationRecord(
-            sha256=_array_sha256(calibration), uri=calibration_uri, samples=len(calibration), resets=tuple(resets)
+            sha256=_array_sha256(calibration), uri=calibration_uri, samples=len(calibration), resets=resets
         ),
     )
-    rebuilt = None
     if spec is not None:
+        import keras
+
         from ..models.spec import build
 
+        weights = model.get_weights()
+        weight_shapes = [tuple(w.shape) for w in model.weights]
+        input_shapes = [tuple(t.shape[1:]) for t in model.inputs]
+        # Unnamed layers are numbered per session and their names become the artifact's tensor names, so
+        # build in a fresh session: the bytes then depend on the spec and the weights alone
+        keras.backend.clear_session()
         rebuilt = build(spec, batch_size=batch_size)
-        want, got = [tuple(w.shape) for w in rebuilt.weights], [tuple(w.shape) for w in model.weights]
-        if want != got:
-            raise ValueError(f"The model's weights do not have the shapes of build(spec): {got} vs {want}")
-        want, got = [tuple(t.shape[1:]) for t in rebuilt.inputs], [tuple(t.shape[1:]) for t in model.inputs]
-        if want != got:
-            raise ValueError(f"The model's inputs do not have the shapes of build(spec): {got} vs {want}")
-    batches = {tensor.shape[0] for tensor in model.inputs}
-    if batches != {batch_size}:
-        if batches != {None} or rebuilt is None:
-            raise ValueError(
-                f"The model's input batch is {sorted(batches, key=str)}, not {batch_size}. Build it with "
-                f"build(spec, batch_size={batch_size}), or pass spec to rebuild it with that batch."
-            )
-        rebuilt.set_weights(model.get_weights())
+        want = [tuple(w.shape) for w in rebuilt.weights]
+        if want != weight_shapes:
+            raise ValueError(f"The model's weights do not have the shapes of build(spec): {weight_shapes} vs {want}")
+        want = [tuple(t.shape[1:]) for t in rebuilt.inputs]
+        if want != input_shapes:
+            raise ValueError(f"The model's inputs do not have the shapes of build(spec): {input_shapes} vs {want}")
+        rebuilt.set_weights(weights)
         model = rebuilt
+    elif {tensor.shape[0] for tensor in model.inputs} != {batch_size}:
+        batches = sorted({tensor.shape[0] for tensor in model.inputs}, key=str)
+        raise ValueError(
+            f"The model's input batch is {batches}, not {batch_size}. Pass spec to export build(spec, "
+            f"batch_size={batch_size}) with the model's weights, or build the model with that batch."
+        )
 
     names = [tensor.name for tensor in model.inputs]
     signals = [name for name in names if state_pair(name) is None]
@@ -414,7 +425,8 @@ def export(
 
 
 def load_export_record(path: Path | str, weights: Path | str | None = None):
-    """Rebuild the Keras model an export record describes, with its weights.
+    """Rebuild the Keras model an export record describes, with its weights. Clears the Keras session first,
+    as ``export`` does.
 
     Args:
         path: The ``record.json``.
@@ -426,11 +438,14 @@ def load_export_record(path: Path | str, weights: Path | str | None = None):
     Raises:
         ValueError: If the record has no model spec, or the weights do not have the record's digest.
     """
+    import keras
+
     from ..models.spec import build
 
     record = ExportRecord.read(path)
     if record.model is None:
         raise ValueError(f"{path} has no model spec, so the model cannot be rebuilt")
+    keras.backend.clear_session()  # as export() builds: layer names as in the exported model
     model = build(record.model, batch_size=record.export.batch_size)
     model.load_weights(Path(weights) if weights is not None else Path(path).with_name("model.weights.h5"))
     digest = weights_digest(model)
