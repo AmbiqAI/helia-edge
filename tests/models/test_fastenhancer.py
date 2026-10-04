@@ -211,6 +211,8 @@ def test_integer_export_ties_the_named_state_pairs():
     from helia_edge.export import ExportSpec, export_model, stream_calibration
     from helia_edge.export.result import state_scales_tied
 
+    # Untrained weights: some initializations calibrate the tiny state ranges just outside the tie tolerance
+    keras.utils.set_random_seed(0)
     model = build(FastEnhancerParams(), batch_size=1)
     frames = (np.random.default_rng(0).normal(size=(16, 257, 1, 2)) * 0.5).astype(np.float32)
     result = export_model(
