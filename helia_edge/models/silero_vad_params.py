@@ -28,3 +28,8 @@ class SileroVadParams(BaseModel):
     def samples(self) -> int:
         """Samples per call: ``context + hop``."""
         return self.context + self.hop
+
+    @property
+    def input_shape(self) -> tuple[int, ...]:
+        """The fixed audio shape ``(samples,)``, without the batch axis."""
+        return (self.samples,)

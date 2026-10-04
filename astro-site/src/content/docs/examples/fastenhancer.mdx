@@ -38,10 +38,11 @@ for spec_frame in frames:  # each (1, 257, 1, 2): real/imag of one 512-point STF
 State is explicit input and output, named like every heliaEDGE streaming model
 so export and `LiteRTStreamRunner` treat them as state pairs. For integer I/O,
 build with `batch_size=1` and export in `keras` mode, so each state pair shares
-one scale; `saved_model` mode exports a dynamic batch and cannot tie the state. Zero every state
-at the start of each independent sequence, then feed `state_out_k` back as
-`state_in_k` for every following frame. Resetting the states every frame is a
-different, much worse model. STFT framing, iSTFT/overlap-add, startup delay and flushing are the
+one scale; `saved_model` mode exports a dynamic batch and cannot tie the state.
+
+Zero every state at the start of each independent sequence, then feed
+`state_out_k` back as `state_in_k` for every following frame. Resetting the
+states every frame is a different, much worse model. STFT framing, iSTFT/overlap-add, startup delay and flushing are the
 caller's responsibility; the upstream reference uses a periodic Hann window
 of 512, hop 256, an unnormalized one-sided STFT and centered reflection padding.
 

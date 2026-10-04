@@ -344,6 +344,8 @@ def unext_layer(inputs: keras.KerasTensor, params: UNextParams) -> keras.KerasTe
     y = unext_core(y, params)
 
     if params.include_top:
+        if params.num_classes is None:
+            raise ValueError("UNext needs num_classes with include_top")
         # Add a per-point classification layer
         y = keras.layers.Conv2D(
             params.num_classes,
@@ -380,7 +382,5 @@ def build(
     Returns:
         keras.Model: The model, named ``unext`` unless ``name`` is given.
     """
-    if params.include_top and params.num_classes is None:
-        raise ValueError("UNext needs num_classes with include_top")
     inputs = keras.Input(shape=input_shape, batch_size=batch_size, name="inputs")
     return keras.Model(inputs=inputs, outputs=unext_layer(inputs, params), name=name or params.family)

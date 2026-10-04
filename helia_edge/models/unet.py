@@ -53,7 +53,7 @@ def unet_layer(x: keras.KerasTensor, params: UNetParams) -> keras.KerasTensor:
 
     Args:
         x (keras.KerasTensor): Input tensor
-        params (ResNetParams): Model parameters.
+        params (UNetParams): Model parameters.
 
     Returns:
         keras.KerasTensor: Output tensor
@@ -237,6 +237,8 @@ def unet_layer(x: keras.KerasTensor, params: UNetParams) -> keras.KerasTensor:
     # END FOR
 
     if params.include_top:
+        if params.num_classes is None:
+            raise ValueError("UNet needs num_classes with include_top")
         # Add a per-point classification layer
         y = keras.layers.Conv2D(
             params.num_classes,
@@ -273,7 +275,5 @@ def build(
     Returns:
         keras.Model: The model, named ``unet`` unless ``name`` is given.
     """
-    if params.include_top and params.num_classes is None:
-        raise ValueError("UNet needs num_classes with include_top")
     inputs = keras.Input(shape=input_shape, batch_size=batch_size, name="inputs")
     return keras.Model(inputs=inputs, outputs=unet_layer(inputs, params), name=name or params.family)

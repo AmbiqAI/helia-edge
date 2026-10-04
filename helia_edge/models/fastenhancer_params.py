@@ -73,6 +73,11 @@ class FastEnhancerParams(BaseModel):
         return self.n_fft // 2 + 1
 
     @property
+    def input_shape(self) -> tuple[int, ...]:
+        """The fixed ``spec_in`` shape ``(spectral_bins, 1, 2)``, without the batch axis."""
+        return (self.spectral_bins, 1, 2)
+
+    @property
     def encoder_bins(self) -> int:
         """Frequency positions after the strided input convolution."""
         return self.n_fft // 2 // self.stride

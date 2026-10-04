@@ -18,3 +18,8 @@ class MlperfTinyParams(BaseModel):
 
     family: Literal["mlperf_tiny"] = "mlperf_tiny"
     architecture: Literal["kws", "vww", "resnet", "ad"]
+
+    @property
+    def input_shape(self) -> tuple[int, ...]:
+        """The architecture's fixed input shape, without the batch axis."""
+        return {"kws": (49, 10, 1), "vww": (96, 96, 3), "resnet": (32, 32, 3), "ad": (640,)}[self.architecture]

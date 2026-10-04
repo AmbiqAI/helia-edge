@@ -122,4 +122,5 @@ SILERO_VAD_V6_ONNX = WeightMapping(
         WeightRow(sources=("model.decoder.decoder.2.bias",), layer="prob", weight="bias"),
     ),
 )
-"""Mapping of every weight of the Silero VAD v6 model (``build(SileroVadParams())``) from the pinned v6.2.2 ONNX file."""
+"""Mapping of every weight of the Silero VAD v6 model (``build(SileroVadParams())``) from the pinned v6.2.2
+ONNX file."""

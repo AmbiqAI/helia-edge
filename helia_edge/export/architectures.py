@@ -1,7 +1,7 @@
 """Architectures an export recipe can build, with one builder signature.
 
 Every builder takes ``(params, input_shape, num_classes)`` and returns an untrained Keras model
-with batch size 1. ``BUILTIN_ARCHITECTURES`` holds the built-in entries of
+with batch size 1, except ``mlperf_tiny``, which keeps a dynamic batch. ``BUILTIN_ARCHITECTURES`` holds the built-in entries of
 ``helia_edge.registry.architectures`` as ``"module:attr"`` strings, so nothing is imported until a
 recipe uses one; other packages add architectures through the registry.
 """

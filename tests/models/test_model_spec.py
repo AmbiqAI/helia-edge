@@ -37,7 +37,8 @@ def default_params(cls):
 
 @pytest.mark.parametrize("params_cls", FAMILIES, ids=lambda cls: cls.__name__)
 def test_every_family_round_trips_through_json(params_cls):
-    spec = ModelSpec(params=default_params(params_cls), input_shape=(1, 32, 4))
+    params = default_params(params_cls)
+    spec = ModelSpec(params=params, input_shape=getattr(params, "input_shape", (1, 32, 4)))
     data = json.loads(spec.model_dump_json())
     assert data["params"]["family"] == params_cls.model_fields["family"].default
     restored = ModelSpec.model_validate(data)
@@ -71,7 +72,7 @@ def test_families_are_unique():
         {"params": {"family": "tcn", "num_classes": 0}, "input_shape": [4]},
     ],
 )
-def test_specs_are_strict(data):
+def test_specs_reject_unknown_fields_and_bad_values(data):
     with pytest.raises(pydantic.ValidationError):
         ModelSpec.model_validate(data)
 
@@ -124,7 +125,7 @@ def _params_classes():
 
 
 @pytest.mark.parametrize("cls", list(_params_classes()), ids=lambda cls: cls.__name__)
-def test_every_params_class_is_frozen_and_strict(cls):
+def test_every_params_class_is_frozen_and_rejects_unknown_fields(cls):
     assert cls.model_config.get("frozen") is True and cls.model_config.get("extra") == "forbid"
 
 
@@ -214,3 +215,31 @@ def test_a_spec_without_an_input_shape_is_refused_when_validated():
     with pytest.raises(pydantic.ValidationError, match="needs an input_shape"):
         ModelSpec.model_validate({"params": {"family": "tcn", "num_classes": 2}})
     assert ModelSpec.model_validate({"params": {"family": "silero_vad"}}).input_shape is None
+
+
+@pytest.mark.parametrize(
+    "params,shape",
+    [
+        (FastEnhancerParams(), (129, 1, 2)),
+        (SileroVadParams(), (512,)),
+        (MlperfTinyParams(architecture="kws"), (49, 10)),
+    ],
+    ids=lambda v: getattr(v, "family", None),
+)
+def test_fixed_input_shapes_are_checked_without_keras(params, shape):
+    with pytest.raises(pydantic.ValidationError, match="takes input shape"):
+        ModelSpec(params=params, input_shape=shape)
+    assert ModelSpec(params=params, input_shape=params.input_shape).input_shape == params.input_shape
+
+
+def test_values_from_json_or_yaml_coerce_like_other_pydantic_models():
+    assert MiniResNetV1Params.model_validate({"stacks": "2", "num_classes": 3}).stacks == 2
+    assert FastEnhancerParams.model_validate({"kernel_size": [8, 3, 3]}).kernel_size == (8, 3, 3)
+
+
+def test_unet_layer_needs_num_classes_with_include_top():
+    keras = pytest.importorskip("keras")
+    from helia_edge.models import unet_layer
+
+    with pytest.raises(ValueError, match="needs num_classes"):
+        unet_layer(keras.Input((1, 32, 4)), UNetParams(blocks=[{"filters": 8, "depth": 1}]))

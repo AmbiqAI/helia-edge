@@ -177,10 +177,10 @@ def _ad(inputs: keras.KerasTensor) -> keras.KerasTensor:
 
 
 _ARCHITECTURES = {
-    "kws": (_kws, (49, 10, 1), "features"),
-    "vww": (_vww, (96, 96, 3), "image"),
-    "resnet": (_resnet, (32, 32, 3), "image"),
-    "ad": (_ad, (640,), "features"),
+    "kws": (_kws, "features"),
+    "vww": (_vww, "image"),
+    "resnet": (_resnet, "image"),
+    "ad": (_ad, "features"),
 }
 
 
@@ -202,7 +202,8 @@ def build(
     Returns:
         keras.Model: The model, named ``mlperf_tiny`` unless ``name`` is given.
     """
-    layers, shape, input_name = _ARCHITECTURES[params.architecture]
+    layers, input_name = _ARCHITECTURES[params.architecture]
+    shape = params.input_shape
     if input_shape is not None and tuple(input_shape) != shape:
         raise ValueError(f"MLPerf Tiny {params.architecture} takes input shape {shape}, not {tuple(input_shape)}")
     inputs = keras.Input(shape=shape, batch_size=batch_size, name=input_name)

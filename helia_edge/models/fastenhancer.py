@@ -208,7 +208,7 @@ def build(
     Returns:
         keras.Model: The model, named ``fastenhancer`` unless ``name`` is given.
     """
-    shape = (params.spectral_bins, 1, 2)
+    shape = params.input_shape
     if input_shape is not None and tuple(input_shape) != shape:
         raise ValueError(f"FastEnhancer takes spec_in shape {shape}, not {tuple(input_shape)}")
     rf = params.rnnformer

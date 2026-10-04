@@ -57,7 +57,7 @@ ModelParams = Annotated[
 """The Params of any family, discriminated by ``family``."""
 
 FIXED_INPUT = (FastEnhancerParams, MlperfTinyParams, SileroVadParams)
-"""Families whose input shape follows from their Params; their ``input_shape`` may be None."""
+"""Families whose input shape follows from their Params (``params.input_shape``); their ``input_shape`` may be None."""
 
 
 class ModelSpec(BaseModel):
@@ -76,7 +76,12 @@ class ModelSpec(BaseModel):
 
     @model_validator(mode="after")
     def _shape_unless_fixed(self) -> "ModelSpec":
-        if self.input_shape is None and not isinstance(self.params, FIXED_INPUT):
+        if isinstance(self.params, FIXED_INPUT):
+            if self.input_shape is not None and self.input_shape != self.params.input_shape:
+                raise ValueError(
+                    f"{self.params.family} takes input shape {self.params.input_shape}, not {self.input_shape}"
+                )
+        elif self.input_shape is None:
             raise ValueError(f"{self.params.family} needs an input_shape")
         return self
 
