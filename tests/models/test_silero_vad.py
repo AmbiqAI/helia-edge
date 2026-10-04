@@ -258,9 +258,11 @@ def test_the_default_keeps_the_layer_classes_of_earlier_versions():
 
 
 def test_the_layers_refuse_other_geometries():
-    with pytest.raises(ValueError, match="576 samples"):
+    with pytest.raises(ValueError, match="576"):
         SileroBlockStft().build((1, 2 * SAMPLES))
-    for taps in ((), (1, 1), (-1,), (3,), (True,)):
+    with pytest.raises(ValueError, match="576"):
+        SileroBlockStft().build((1, 9, SAMPLES))
+    for taps in ((), (1, 1), (-1,), (3,), (True,), (1.0,)):
         with pytest.raises(ValueError, match="distinct kernel taps"):
             SileroLiveTaps(8, taps)
     with pytest.raises(ValueError, match="split over the taps"):
@@ -332,7 +334,7 @@ def test_the_npu_options_export_to_int16(importer):
     _, outputs = runner.run({"audio": runner.encode("audio", calls[:, None])})
     got = runner.decode("prob", outputs["prob"]).ravel()
     want = np.array([p for p, _, _ in stream(keras_step(model), audio(48))])
-    assert np.abs(got - want).max() < 0.01  # measured 7.5e-4
+    assert np.abs(got - want).max() < 0.01  # measured 7.5e-4 on this synthetic signal; speech is not this close
 
 
 def test_the_model_saves_and_reloads(imported, tmp_path):

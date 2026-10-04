@@ -22,8 +22,8 @@ The model is a streaming model (see [Streaming models](/helia-edge/guide/export/
 
 `SileroVadParams` options compute the same model in other ways. Every option has the same weights (paths and shapes), so `SILERO_VAD_V6_ONNX` imports into each; Keras `.weights.h5` files are keyed by layer class, so save one per option set.
 
-- **`magnitude="max_projection"`:** each bin's magnitude is the largest of 9 projections of (|re|, |im|), within 0.25%. It needs no square root, so the model exports to `a16w8` with `int16` I/O.
-- **`stft="conv_blocks"`:** the STFT runs as convolutions over 64-sample blocks, with the right reflect padding folded into the last frame. It is exact in float, and on an Ethos-U NPU the model takes fewer than half the cycles of strided frames, for a larger model.
+- **`magnitude="max_projection"`:** each bin's magnitude is the largest of 9 projections of (|re|, |im|), within 0.25% in float32. It needs no square root, so the model exports to `a16w8` with `int16` I/O. With `magnitude="sqrt"`, the other options still refuse `int16`.
+- **`stft="conv_blocks"`:** the STFT runs as convolutions over 64-sample blocks, with the right reflect padding folded into the last frame. It is exact in float; for an Ethos-U NPU, the Vela compiler estimates about a third of the cycles of strided frames, for a larger model.
 - **`encoder_tail="live_taps"`:** the last two encoder layers run as dense layers over the kernel taps that see real frames. It is exact in float, and an export drops the weights of taps that only see padding.
 
 The derived kernels are computed from the weights in the graph, and the export folds them into constants. For an NPU, use all three: `SileroVadParams(stft="conv_blocks", magnitude="max_projection", encoder_tail="live_taps")`. Calibrate the audio input with full-scale speech so its int16 range covers [-1, 1].

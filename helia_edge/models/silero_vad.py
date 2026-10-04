@@ -52,8 +52,8 @@ class SileroBlockStft(keras.layers.Layer):
         self.magnitude = magnitude
 
     def build(self, input_shape):
-        if input_shape[-1] != SAMPLES:
-            raise ValueError(f"SileroBlockStft takes {SAMPLES} samples per call, not {input_shape[-1]}")
+        if len(input_shape) != 2 or input_shape[-1] != SAMPLES:
+            raise ValueError(f"SileroBlockStft takes (batch, {SAMPLES}) samples per call, not {tuple(input_shape)}")
         self.basis = self.add_weight(name="basis", shape=(FRAME, 1, 2 * BINS), initializer="zeros", trainable=False)
 
     def call(self, audio):
@@ -127,7 +127,7 @@ class SileroLiveTaps(keras.layers.Layer):
 
     def __init__(self, filters: int, taps: tuple[int, ...], **kwargs):
         super().__init__(**kwargs)
-        if not taps or len(set(taps)) != len(taps) or any(isinstance(t, bool) or t not in (0, 1, 2) for t in taps):
+        if not taps or len(set(taps)) != len(taps) or any(type(t) is not int or t not in (0, 1, 2) for t in taps):
             raise ValueError(f"taps are distinct kernel taps from 0 to 2, not {taps}")
         self.filters = filters
         self.taps = tuple(taps)

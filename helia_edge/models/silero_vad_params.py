@@ -22,7 +22,7 @@ class SileroVadParams(BaseModel):
             convolves 64-sample blocks instead, with the right reflect padding folded into the last
             frame's kernel; it is exact in float.
         magnitude: ``sqrt`` is the exact magnitude of each bin. ``max_projection`` is the largest of 9
-            projections of (|re|, |im|) onto directions from 0 to 90 degrees, within 0.25%; it needs no
+            projections of (|re|, |im|) onto directions from 0 to 90 degrees, within 0.25% in float32; it needs no
             square root, so the model exports to int16 activations.
         encoder_tail: ``conv`` runs the last two encoder layers as convolutions. ``live_taps`` runs them as
             dense layers over the kernel taps that see real frames rather than padding; it is exact in float.

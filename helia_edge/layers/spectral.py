@@ -17,7 +17,7 @@ DIRECTIONS = 9
 
 
 def max_projection(pairs):
-    """Magnitude of complex values as the largest of 9 projections of (|re|, |im|), within 0.25%.
+    """Magnitude of complex values as the largest of 9 projections of (|re|, |im|), within 0.25% in float32.
 
     The directions are spread from 0 to 90 degrees and scaled so the error is centred: the result is
     within -0.25% and +0.25% of ``sqrt(re**2 + im**2)``. It needs no square root, so integer kernels
