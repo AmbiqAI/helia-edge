@@ -97,6 +97,15 @@ def test_the_export_is_the_export_model_artifact_with_its_record():
         model, precision="a8w8", io_dtype="int8", calibration=calibration.astype(np.float64), spec=SPEC
     )
     assert from_float64.content == result.content and from_float64.record == record  # cast to float32, then hashed
+    for wrong in (
+        calibration.astype(np.complex64),
+        calibration.astype(str),
+        calibration > 0,
+        np.float32(1.0),
+        {"x": 1},
+    ):
+        with pytest.raises(ValueError, match="float or integer array"):
+            export(model, precision="a8w8", io_dtype="int8", calibration=wrong, spec=SPEC)
     assert record.artifact.file == "model.tflite" and record.artifact.bytes == len(result.content)
     assert len(record.io.inputs) == len(model.inputs) and record.io.inputs[0].shape == (1, *SPEC.input_shape)
     assert record.environment.helia_edge.source in ("release", "vcs", "local", "unknown")
@@ -384,7 +393,7 @@ def test_a_streaming_export_records_its_calibration_import_and_golden(tmp_path, 
             export(model, precision="a16w8", io_dtype="int16", calibration=calls, resets=resets, spec=spec)
     with pytest.raises(ValueError, match="resets"):
         result.with_golden(calls[:4], resets=(4,))
-    for resets in ([2.0], ["3"], 3, "3", b"\x08", [True], {1, 2}):
+    for resets in ([2.0], ["3"], 3, "3", b"\x08", [True]):
         with pytest.raises(ValueError, match="integer steps"):
             result.with_golden(calls[:4], resets=resets)
     with pytest.raises(ValueError, match="integer steps"):
@@ -393,6 +402,11 @@ def test_a_streaming_export_records_its_calibration_import_and_golden(tmp_path, 
         result.with_golden(calls[:0])
     with pytest.raises(ValueError, match="finite"):
         result.with_golden(np.full_like(calls[:2], np.nan))
+    with pytest.raises(ValueError, match="float or integer array"):
+        result.with_golden(calls[:2].astype(np.complex64))
+    for unordered in ({1, 2}, {1: 0}):
+        with pytest.raises(ValueError, match="ordered collection"):
+            result.with_golden(calls[:4], resets=unordered)
     bare = export(model, precision="a16w8", io_dtype="int16", calibration=calls, resets=(32,), spec=spec)
     bare.write(tmp_path)
     assert not (tmp_path / "golden.npz").exists()  # a golden of an earlier write is removed

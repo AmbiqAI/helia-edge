@@ -244,8 +244,9 @@ def _reference_build():
 
     Unnamed layers' names become the artifact's tensor names, so a model built here exports the same bytes
     whatever the caller built before or set as its policy. These three settings are restored even when the
-    build fails; the build itself, like any Keras build, may draw from the random generators. Layer numbering and the dtype policy are per thread, but
-    ``floatx`` is shared by the process: another thread building layers meanwhile sees float32.
+    build fails; the build itself, like any Keras build, may draw from the random generators. Layer numbering
+    and the dtype policy are per thread, but ``floatx`` is shared by the process: another thread building
+    layers meanwhile sees float32.
     """
     import keras
     from keras.src.backend.common import global_state
@@ -266,8 +267,14 @@ def _reference_build():
 
 
 def _steps(resets: Collection[int]) -> tuple[int, ...]:
-    """``resets`` as integer steps; a bool, float, string, bytes or non-collection is refused, not converted."""
-    if isinstance(resets, str | bytes | set | frozenset):
+    """``resets`` as integer steps from an ordered collection.
+
+    Bools, floats, strings and bytes are refused rather than converted, and so are sets and mappings,
+    whose order is not the caller's.
+    """
+    if isinstance(resets, set | frozenset | Mapping):
+        raise ValueError(f"resets are an ordered collection of steps, not {type(resets).__name__}")
+    if isinstance(resets, str | bytes):
         raise ValueError(f"resets are integer steps, not {resets!r:.80}")
     try:
         steps = [step for step in resets]
@@ -276,6 +283,16 @@ def _steps(resets: Collection[int]) -> tuple[int, ...]:
         return tuple(operator.index(step) for step in steps)
     except TypeError as exc:
         raise ValueError(f"resets are integer steps, not {resets!r:.80}") from exc
+
+
+def _float32_samples(samples: npt.ArrayLike, what: str) -> npt.NDArray:
+    """``samples`` along axis 0 as float32; anything but a float or integer array of samples is refused."""
+    array = np.asarray(samples)
+    if array.dtype.kind not in "fiu" or array.ndim < 1:
+        raise ValueError(
+            f"{what} must be a float or integer array of samples, not {array.dtype} with shape {array.shape}"
+        )
+    return array.astype(np.float32)
 
 
 def _array_sha256(array: npt.ArrayLike) -> str:
@@ -306,14 +323,15 @@ class Export:
         signal input, run with LiteRT's reference kernels, the state carried and reset at ``resets``.
 
         Args:
-            inputs: The signal, one call per row.
+            inputs: The signal, one call per row (a float or integer array), cast to float32; the record
+                holds the sha256 of the float32 array.
             resets: Calls at which the states are zero.
             uri: Where the inputs can be fetched, if anywhere; recorded with their sha256.
         """
         from .golden import golden_npz
 
-        inputs = np.asarray(inputs, dtype=np.float32)
-        if inputs.ndim < 1 or len(inputs) == 0 or not np.isfinite(inputs).all():
+        inputs = _float32_samples(inputs, "Golden inputs")
+        if len(inputs) == 0 or not np.isfinite(inputs).all():
             raise ValueError("A golden needs at least one call of finite inputs")
         stateful = any(entry.role is TensorRole.STATE for entry in self.record.io.inputs)
         resets = _steps(resets)
@@ -390,7 +408,7 @@ def export(
             shapes differ from ``build(spec)``'s, a calibrated precision has ``batch_size`` other than 1, or
             the calibration or resets are invalid.
     """
-    calibration = None if calibration is None else np.asarray(calibration, dtype=np.float32)
+    calibration = None if calibration is None else _float32_samples(calibration, "Calibration")
     resets = _steps(resets)
     if resets and calibration is None:
         raise ValueError("resets apply to the calibration of a streaming model; no calibration was given")
@@ -437,7 +455,7 @@ def export(
     if calibration is not None and streaming:
         if len(signals) != 1:
             raise ValueError(f"A streaming model needs exactly one input that is not a state; got {signals}")
-        data = stream_calibration(model, {signals[0]: calibration.astype(np.float32)}, resets)
+        data = stream_calibration(model, {signals[0]: calibration}, resets)
     result = export_model(
         model,
         ExportSpec(
