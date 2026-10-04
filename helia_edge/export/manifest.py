@@ -24,8 +24,6 @@ class FileRecord(BaseModel):
     bytes: int
 
 
-
-
 class GoldenSource(BaseModel):
     """Where a golden's inputs came from: the recipe's reference array file."""
 
