@@ -6,10 +6,10 @@ from pydantic import BaseModel, ConfigDict
 
 
 class SileroVadParams(BaseModel):
-    """Silero VAD v6 (16 kHz). Every value is fixed by the v6.2.2 weights, so only ``name`` varies.
+    """Silero VAD v6 (16 kHz). Every value is fixed by the v6.2.2 weights.
 
     Attributes:
-        name: Keras model name.
+        family: Model family.
         sample_rate: Audio sample rate in Hz.
         context: Samples of the previous call repeated at the start of each call.
         hop: New samples per call (32 ms).
@@ -18,7 +18,7 @@ class SileroVadParams(BaseModel):
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
-    name: str = "silero_vad_v6"
+    family: Literal["silero_vad"] = "silero_vad"
     sample_rate: Literal[16000] = 16000
     context: Literal[64] = 64
     hop: Literal[512] = 512
@@ -28,3 +28,8 @@ class SileroVadParams(BaseModel):
     def samples(self) -> int:
         """Samples per call: ``context + hop``."""
         return self.context + self.hop
+
+    @property
+    def input_shape(self) -> tuple[int, ...]:
+        """The fixed audio shape ``(samples,)``, without the batch axis."""
+        return (self.samples,)

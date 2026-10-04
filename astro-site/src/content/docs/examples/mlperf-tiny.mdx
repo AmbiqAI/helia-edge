@@ -3,7 +3,7 @@ title: "MLPerf Tiny reference architectures"
 description: Construct the four MLPerf Tiny model families and understand their source, weight and validation boundaries.
 ---
 
-These four constructors reproduce the **scale-1 architecture** of the pinned
+These four architectures reproduce the **scale-1 architecture** of the pinned
 benchmark captures. They initialize new weights. They do not download official
 trained weights, reproduce reported accuracy, perform task preprocessing, or
 constitute a compliant MLPerf submission. Scaling is intentionally omitted in this
@@ -12,20 +12,18 @@ parameters.
 
 ```python
 import keras
-from helia_edge.models import (
-    mlperf_tiny_kws, mlperf_tiny_vww, mlperf_tiny_resnet, mlperf_tiny_ad,
-)
+from helia_edge.models import MlperfTinyParams, ModelSpec, build
 
 keras.utils.set_random_seed(20260926)
-model = mlperf_tiny_kws()
+model = build(ModelSpec(params=MlperfTinyParams(architecture="kws")))  # the input shape is fixed
 ```
 
-| Constructor | Input excluding batch | Output | Exact architecture |
+| `architecture` | Input excluding batch | Output | Exact architecture |
 | --- | --- | --- | --- |
-| `mlperf_tiny_kws` | 49×10×1 features | 12 probabilities | DS-CNN64, 10×4 stride2 stem, four 3×3 depthwise/1×1 pointwise pairs; 25×5 pool |
-| `mlperf_tiny_vww` | 96×96×3 RGB | 2 probabilities | MobileNetV1 alpha0.25: width8 stem, 13 depthwise/pointwise pairs, final width256; 3×3 pool |
-| `mlperf_tiny_resnet` | 32×32×3 RGB | 10 probabilities | Reduced three-stack ResNet28/56/112; nine convolutions, three residual additions; 8×8 pool |
-| `mlperf_tiny_ad` | 640 features | 640 linear reconstructions | Dense128×4 → 8 → 128×4 → 640; BN/ReLU on every hidden layer |
+| `kws` | 49×10×1 features | 12 probabilities | DS-CNN64, 10×4 stride2 stem, four 3×3 depthwise/1×1 pointwise pairs; 25×5 pool |
+| `vww` | 96×96×3 RGB | 2 probabilities | MobileNetV1 alpha0.25: width8 stem, 13 depthwise/pointwise pairs, final width256; 3×3 pool |
+| `resnet` | 32×32×3 RGB | 10 probabilities | Reduced three-stack ResNet28/56/112; nine convolutions, three residual additions; 8×8 pool |
+| `ad` | 640 features | 640 linear reconstructions | Dense128×4 → 8 → 128×4 → 640; BN/ReLU on every hidden layer |
 
 Spatial constructors explicitly use channels-last, independent of the global Keras
 image layout setting. All convolutions use the reference's SAME padding and biases. Activations are

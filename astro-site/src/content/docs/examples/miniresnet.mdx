@@ -10,15 +10,10 @@ classification head. The first block downsamples both paths with a projection;
 convolutions retain biases and batch normalization uses epsilon `1.001e-5`.
 
 ```python
-import keras
-from helia_edge.models import MiniResNetV1Model, MiniResNetV1Params
+from helia_edge.models import MiniResNetV1Params, ModelSpec, build
 
-params = MiniResNetV1Params.from_config({"stacks": 1, "base_filters": 64})
-model = MiniResNetV1Model.model_from_params(
-    inputs=keras.Input((64, 50, 1), dtype="float32"),
-    params=params,
-    num_classes=10,
-)
+params = MiniResNetV1Params.model_validate({"stacks": 1, "base_filters": 64, "num_classes": 10})
+model = build(ModelSpec(params=params, input_shape=(64, 50, 1)))
 # The model is initialized, not pretrained. Hydrate explicitly from a local,
 # verified checkpoint matching the architecture, input shape and class count:
 # model.load_weights(checkpoint_path)
@@ -26,9 +21,9 @@ model = MiniResNetV1Model.model_from_params(
 ```
 
 Public config import/validation does not import Keras or an execution backend.
-Config serialization uses `params.get_config()` / `from_config()` or Pydantic
-JSON methods. Unknown fields, invalid dimensions and coercions such as string
-channel counts are rejected. The config is immutable. One to three stacks,
+A `ModelSpec` (parameters plus input shape) serializes with Pydantic's JSON
+methods. Unknown fields and invalid dimensions are rejected, and the config is
+immutable. `num_classes` is required. One to three stacks,
 base channel count, pooling, head dropout and output activation are configurable;
 changed values are new architectures, not claims of pretrained variants.
 Inputs are NHWC regardless of the global image layout. Flatten needs fixed

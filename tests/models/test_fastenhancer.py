@@ -7,9 +7,10 @@ import keras
 import numpy as np
 import pytest
 
-from helia_edge.models import FastEnhancerModel, FastEnhancerParams
+from helia_edge.models import FastEnhancerParams
 from helia_edge.models.fastenhancer import (
     FASTENHANCER_T_ONNX_NAMES,
+    build,
     fastenhancer_t_onnx_weights,
     fastenhancer_weight_shapes,
     linear_filterbanks,
@@ -98,7 +99,7 @@ def max_error(model, params, tensors, frames=4, batch=2, seed=1):
 
 def hydrated(params, seed=0):
     tensors = random_tensors(params, seed)
-    model = FastEnhancerModel.model_from_params(params)
+    model = build(params)
     load_fastenhancer_weights(model, params, tensors)
     return model, tensors
 
@@ -111,10 +112,11 @@ def test_streaming_frames_match_reference(params):
 
 
 def test_named_streaming_signature():
-    model = FastEnhancerModel.model_from_params(FastEnhancerParams())
-    assert [t.name for t in model.inputs] == ["spec_in", "cache_in_0", "cache_in_1"]
+    model = build(FastEnhancerParams())
+    assert model.name == "fastenhancer"
+    assert [t.name for t in model.inputs] == ["spec_in", "state_in_0", "state_in_1"]
     assert [tuple(t.shape) for t in model.inputs] == [(None, 257, 1, 2), (None, 16, 20), (None, 16, 20)]
-    assert model.output_names == ["spec_out", "cache_out_0", "cache_out_1"]
+    assert model.output_names == ["spec_out", "state_out_0", "state_out_1"]
     assert [tuple(t.shape) for t in model.outputs] == [(None, 257, 1, 2), (None, 16, 20), (None, 16, 20)]
 
 
@@ -144,7 +146,7 @@ def test_hydration_rejects_mismatch_without_partial_load():
         with pytest.raises(ValueError):
             load_fastenhancer_weights(model, params, bad)
         assert all(np.array_equal(a, b) for a, b in zip(before, model.get_weights()))
-    other = FastEnhancerModel.model_from_params(VARIANT)
+    other = build(VARIANT)
     with pytest.raises(ValueError, match="does not match params"):
         load_fastenhancer_weights(other, params, tensors)
 
@@ -173,7 +175,7 @@ def test_fixed_filterbanks_are_frozen_normalized_projections():
     # Values of the onnx-vd-v1.0.0 fixed projections; the later upstream formula differs.
     np.testing.assert_allclose(pre[:5, 0], [0.36670548, 0.29802096, 0.2048894, 0.11175784, 0.01862631], atol=1e-6)
     np.testing.assert_allclose(post[0, :3], [1.0, 0.7619048, 0.52380955], atol=1e-6)
-    model = FastEnhancerModel.model_from_params(FastEnhancerParams())
+    model = build(FastEnhancerParams())
     assert not model.get_layer("rf_pre_proj").trainable
     np.testing.assert_array_equal(keras.ops.convert_to_numpy(model.get_layer("rf_pre_proj").kernel), pre)
 
@@ -188,3 +190,20 @@ def test_keras_file_roundtrip(tmp_path):
     inputs = [rng.normal(size=(1, *t.shape[1:])).astype(np.float32) for t in model.inputs]
     for a, b in zip(model(inputs), loaded(inputs)):
         np.testing.assert_array_equal(keras.ops.convert_to_numpy(a), keras.ops.convert_to_numpy(b))
+
+
+@pytest.mark.skipif(keras.backend.backend() != "tensorflow", reason="LiteRT export needs the TensorFlow backend")
+def test_integer_export_ties_the_named_state_pairs():
+    pytest.importorskip("ai_edge_litert")
+    from helia_edge.export import ExportSpec, export_model, stream_calibration
+    from helia_edge.export.result import state_scales_tied
+
+    model = build(FastEnhancerParams(), batch_size=1)
+    frames = (np.random.default_rng(0).normal(size=(16, 257, 1, 2)) * 0.5).astype(np.float32)
+    result = export_model(
+        model,
+        ExportSpec(precision="a8w8", io_dtype="int8", mode="keras"),
+        stream_calibration(model, {"spec_in": frames}),
+    )
+    assert sorted(r.pair for r in result.inputs if r.pair is not None) == [0, 1]
+    assert state_scales_tied(result.inputs, result.outputs) is True

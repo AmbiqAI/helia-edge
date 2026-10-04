@@ -1,5 +1,6 @@
 """FastEnhancer config validation and preset resolution without optional backends."""
 
+import json
 import os
 import subprocess
 import sys
@@ -56,18 +57,19 @@ def test_resolve_records_preset_overrides_and_identity():
         {"input_compression": 0.0},
         {"form": "trainable"},
         {"width": 2},
-        {"channels": "24"},
+        {"name": "fastenhancer_t"},
         {"n_fft": 64},
     ],
 )
 def test_invalid_configs_fail(config):
     with pytest.raises(ValidationError):
-        FastEnhancerParams.from_config(config)
+        FastEnhancerParams.model_validate(config)
 
 
 def test_json_roundtrip():
     params = FASTENHANCER_PRESETS["fastenhancer_t"]
-    assert FastEnhancerParams.from_config(params.get_config()) == params
+    assert FastEnhancerParams.model_validate_json(params.model_dump_json()) == params
+    assert FastEnhancerParams.model_validate(json.loads(params.model_dump_json())) == params  # lists become tuples
 
 
 def test_params_import_without_backends():

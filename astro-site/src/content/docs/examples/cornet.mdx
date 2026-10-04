@@ -3,16 +3,15 @@ title: "CorNET (PPG heart rate, convolution + LSTM)"
 description: Build a CorNET heart-rate regressor and inspect its recurrent architecture and export constraints.
 ---
 
-`CorNetModel` rebuilds the CorNET heart-rate regressor from
+`helia_edge.models.cornet.build` rebuilds the CorNET heart-rate regressor from
 [Biswas et al., IEEE TBioCAS 2019](https://doi.org/10.1109/TBCAS.2019.2892297):
 two convolution stages followed by stacked LSTMs. `CorNetParams` holds the
 backend-free config.
 
 ```python
-import keras
-from helia_edge.models import CorNetModel, CorNetParams
+from helia_edge.models import CorNetParams, ModelSpec, build
 
-model = CorNetModel.model_from_params(keras.Input((1000, 1)), CorNetParams(), unroll=True)
+model = build(ModelSpec(params=CorNetParams(unroll=True), input_shape=(1000, 1)))
 ```
 
 **Input:** 8 s of wrist PPG at 125 Hz (1000 samples, one channel). The paper
@@ -46,7 +45,7 @@ LSTM state starts at zero for every window.
 
 ## LSTM lowering
 
-`unroll` changes only how the LSTMs are built, not their weights:
+`CorNetParams.unroll` changes only how the LSTMs are built, not their weights:
 
 | Form | How to build it | LiteRT lowering | Notes |
 |---|---|---|---|

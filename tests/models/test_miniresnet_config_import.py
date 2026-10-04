@@ -17,7 +17,7 @@ class NoBackend(importlib.abc.MetaPathFinder):
             raise AssertionError('config imported optional backend: ' + fullname)
 sys.meta_path.insert(0, NoBackend())
 from helia_edge.models import MiniResNetV1Params
-params = MiniResNetV1Params.from_config({'stacks': 1, 'base_filters': 64})
+params = MiniResNetV1Params.model_validate({'stacks': 1, 'base_filters': 64})
 assert MiniResNetV1Params.model_validate_json(params.model_dump_json()) == params
 assert not any(name in sys.modules for name in ('keras', 'tensorflow', 'torch', 'jax'))
 """

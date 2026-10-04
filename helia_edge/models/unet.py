@@ -7,11 +7,10 @@ U-Net is a type of convolutional neural network (CNN) that is commonly used for 
 
 For more info, refer to the original paper [U-Net: Convolutional Networks for Biomedical Image Segmentation](https://doi.org/10.1007/978-3-319-24574-4_28).
 
-Classes:
-    UNetParams: U-Net parameters
-    UNetModel: Helper class to generate model from parameters
+Parameters are in ``helia_edge.models.unet_params``.
 
 Functions:
+    build: U-Net model from ``UNetParams``
     unet_layer: Generate functional U-Net model
 
 
@@ -27,131 +26,34 @@ The U-Net architecture has been modified to allow the following:
 
 ## Usage
 
-Instantiate from UNetParams:
-
 ```python
-import keras
-from helia_edge.models import UNet, UNetParams, UNetBlockParams
+from helia_edge.models import ModelSpec, UNetBlockParams, UNetParams, build
 
-inputs = keras.Input(shape=(800, 1))
-num_classes = 5
-
-model = UNet(
-    x=inputs,
-    params=UNetParams(
-        blocks=[
-            UNetBlockParams(filters=12, depth=2, ddepth=1, kernel=(1, 5), pool=(1, 3), strides=(1, 2), skip=True, seperable=True),
-            UNetBlockParams(filters=24, depth=2, ddepth=1, kernel=(1, 5), pool=(1, 3), strides=(1, 2), skip=True, seperable=True),
-            UNetBlockParams(filters=32, depth=2, ddepth=1, kernel=(1, 5), pool=(1, 3), strides=(1, 2), skip=True, seperable=True),
-            UNetBlockParams(filters=48, depth=2, ddepth=1, kernel=(1, 5), pool=(1, 3), strides=(1, 2), skip=True, seperable=True)
-        ],
-        output_kernel_size=(1, 5),
-        include_top=True,
-        use_logits=True,
-        model_name="unet"
-    ),
-    num_classes=num_classes,
+block = dict(depth=2, ddepth=1, kernel=(1, 5), pool=(1, 3), strides=(1, 2), skip=True, seperable=True)
+params = UNetParams(
+    blocks=[UNetBlockParams(filters=f, **block) for f in (12, 24, 32, 48)],
+    output_kernel_size=(1, 5),
+    include_top=True,
+    use_logits=True,
+    num_classes=5,
 )
+model = build(ModelSpec(params=params, input_shape=(1, 800, 1)))
 ```
-
-Instantiate from object:
-
-```python
-
-
-params = {
-    "name": "unet",
-    "params": {
-        "blocks": [
-            {"filters": 12, "depth": 2, "ddepth": 1, "kernel": [1, 5], "pool": [1, 3], "strides": [1, 2], "skip": true, "seperable": true},
-            {"filters": 24, "depth": 2, "ddepth": 1, "kernel": [1, 5], "pool": [1, 3], "strides": [1, 2], "skip": true, "seperable": true},
-            {"filters": 32, "depth": 2, "ddepth": 1, "kernel": [1, 5], "pool": [1, 3], "strides": [1, 2], "skip": true, "seperable": true},
-            {"filters": 48, "depth": 2, "ddepth": 1, "kernel": [1, 5], "pool": [1, 3], "strides": [1, 2], "skip": true, "seperable": true}
-        ],
-        "output_kernel_size": [1, 5],
-        "include_top": true,
-        "use_logits": true,
-        "model_name": "efficientnetv2"
-    }
-}
-
-model = unet_from_object(inputs, params, num_classes)
-```
-
 
 """
 
-from typing import Literal
-
 import keras
-from pydantic import BaseModel, Field
 
 from ..layers.normalization import batch_normalization, layer_normalization
+from .unet_params import UNetParams
 
 
-class UNetBlockParams(BaseModel):
-    """UNet block parameters
-
-    Attributes:
-        filters (int): Number of filters
-        depth (int): Layer depth
-        ddepth (int | None): Decoder depth
-        kernel (int | tuple[int, int]): Kernel size
-        pool (int | tuple[int, int]): Pool size
-        strides (int | tuple[int, int]): Stride size
-        skip (bool): Add skip connection
-        seperable (bool): Use seperable convs
-        dropout (float | None): Dropout rate
-        norm (Literal["batch", "layer"] | None): Normalization type
-        activation (Literal["relu", "relu6", "leaky_relu", "elu", "selu"]): Activation
-        dilation (int | tuple[int, int] | None): Dilation factor
-    """
-
-    filters: int = Field(..., description="# filters")
-    depth: int = Field(default=1, description="Layer depth")
-    ddepth: int | None = Field(default=None, description="Decoder depth")
-    kernel: int | tuple[int, int] = Field(default=3, description="Kernel size")
-    pool: int | tuple[int, int] = Field(default=3, description="Pool size")
-    strides: int | tuple[int, int] = Field(default=1, description="Stride size")
-    skip: bool = Field(default=True, description="Add skip connection")
-    seperable: bool = Field(default=False, description="Use seperable convs")
-    dropout: float | None = Field(default=None, description="Dropout rate")
-    norm: Literal["batch", "layer"] | None = Field(default="batch", description="Normalization type")
-    activation: Literal["relu", "relu6", "leaky_relu", "elu", "selu"] = Field(default="relu6", description="Activation")
-    dilation: int | tuple[int, int] | None = Field(default=None, description="Dilation factor")
-
-
-class UNetParams(BaseModel):
-    """UNet parameters
-
-    Attributes:
-        blocks (list[UNetBlockParams]): UNet blocks
-        include_top (bool): Include top
-        use_logits (bool): Use logits
-        name (str): Model name
-        output_kernel_size (int | tuple[int, int]): Output kernel size
-        output_kernel_stride (int | tuple[int, int]): Output kernel stride
-    """
-
-    blocks: list[UNetBlockParams] = Field(default_factory=list, description="UNet blocks")
-    include_top: bool = Field(default=True, description="Include top")
-    use_logits: bool = Field(default=True, description="Use logits")
-    name: str = Field(default="UNet", description="Model name")
-    output_kernel_size: int | tuple[int, int] = Field(default=3, description="Output kernel size")
-    output_kernel_stride: int | tuple[int, int] = Field(default=1, description="Output kernel stride")
-
-
-def unet_layer(
-    x: keras.KerasTensor,
-    params: UNetParams,
-    num_classes: int,
-) -> keras.KerasTensor:
+def unet_layer(x: keras.KerasTensor, params: UNetParams) -> keras.KerasTensor:
     """Create UNet TF functional model
 
     Args:
         x (keras.KerasTensor): Input tensor
-        params (ResNetParams): Model parameters.
-        num_classes (int, optional): Number of classes.
+        params (UNetParams): Model parameters.
 
     Returns:
         keras.KerasTensor: Output tensor
@@ -335,9 +237,11 @@ def unet_layer(
     # END FOR
 
     if params.include_top:
+        if params.num_classes is None:
+            raise ValueError("UNet needs num_classes with include_top")
         # Add a per-point classification layer
         y = keras.layers.Conv2D(
-            num_classes,
+            params.num_classes,
             kernel_size=params.output_kernel_size,
             padding="same",
             kernel_initializer="he_normal",
@@ -357,18 +261,19 @@ def unet_layer(
     return y
 
 
-class UNetModel:
-    """Helper class to generate model from parameters"""
+def build(
+    params: UNetParams, input_shape: tuple[int | None, ...], *, batch_size: int | None = None, name: str | None = None
+) -> keras.Model:
+    """Build a UNet model.
 
-    @staticmethod
-    def layer_from_params(inputs: keras.Input, params: UNetParams | dict, num_classes: int | None = None):
-        """Create layer from parameters"""
-        if isinstance(params, dict):
-            params = UNetParams(**params)
-        return unet_layer(x=inputs, params=params, num_classes=num_classes)
+    Args:
+        params (UNetParams): Model parameters.
+        input_shape (tuple[int | None, ...]): Input shape without the batch axis; None for a variable axis.
+        batch_size (int | None): Static batch size; None for a dynamic batch.
+        name (str | None): Model name; the family when None.
 
-    @staticmethod
-    def model_from_params(inputs: keras.Input, params: UNetParams | dict, num_classes: int | None = None):
-        """Create model from parameters"""
-        outputs = UNetModel.layer_from_params(inputs=inputs, params=params, num_classes=num_classes)
-        return keras.Model(inputs=inputs, outputs=outputs)
+    Returns:
+        keras.Model: The model, named ``unet`` unless ``name`` is given.
+    """
+    inputs = keras.Input(shape=input_shape, batch_size=batch_size, name="inputs")
+    return keras.Model(inputs=inputs, outputs=unet_layer(inputs, params), name=name or params.family)

@@ -255,12 +255,12 @@ def test_a_reference_of_one_step_takes_no_resets(workdir):
 def test_silero_vad_is_a_registered_architecture():
     from helia_edge.models import SileroVadParams
 
-    model = resolve_architecture("vad_silero_v6")({"name": "vad"}, None, None)
-    assert model.name == "vad" and [t.name for t in model.inputs] == ["audio", "state_in_0", "state_in_1"]
+    model = resolve_architecture("vad_silero_v6")({}, None, None)
+    assert model.name == "silero_vad" and [t.name for t in model.inputs] == ["audio", "state_in_0", "state_in_1"]
+    assert model.input_shape[0] == (1, 576)
     assert SileroVadParams().samples == 576
-    from helia_edge.models import silero_vad_v6
-
-    assert silero_vad_v6("named").name == "named"
+    with pytest.raises(ValueError, match="name"):
+        resolve_architecture("vad_silero_v6")({"name": "vad"}, None, None)
     with pytest.raises(ValueError, match="context"):
         resolve_architecture("vad_silero_v6")({"context": 32}, None, None)
     with pytest.raises(ValueError, match="fixed input shape"):

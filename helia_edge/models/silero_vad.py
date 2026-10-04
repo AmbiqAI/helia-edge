@@ -22,19 +22,32 @@ SAMPLES = 576
 UNITS = 128
 
 
-def silero_vad_v6(params: SileroVadParams | str | None = None) -> keras.Model:
-    """Build the Silero VAD v6 16 kHz streaming model, untrained, with batch size 1.
+def build(
+    params: SileroVadParams,
+    input_shape: tuple[int | None, ...] | None = None,
+    *,
+    batch_size: int | None = None,
+    name: str | None = None,
+) -> keras.Model:
+    """Build the Silero VAD v6 16 kHz streaming model, untrained.
 
-    Inputs are ``audio`` (1, 576) float32 in [-1, 1] and the state ``state_in_0`` and ``state_in_1``
-    (1, 128). Outputs are ``prob`` (1, 1) and ``state_out_0`` and ``state_out_1``.
+    Inputs are ``audio`` (576,) float32 in [-1, 1] and the state ``state_in_0`` and ``state_in_1``
+    (128,). Outputs are ``prob`` (1,) and ``state_out_0`` and ``state_out_1``. Streaming and export use
+    ``batch_size=1``.
 
     Args:
-        params: The model's parameters, or just its name; the defaults when None.
+        params (SileroVadParams): Model parameters (all fixed by the v6.2.2 weights).
+        input_shape (tuple[int | None, ...] | None): None, or the audio shape ``(576,)``.
+        batch_size (int | None): Static batch size; None for a dynamic batch.
+        name (str | None): Model name; the family when None.
+
+    Returns:
+        keras.Model: The model, named ``silero_vad`` unless ``name`` is given.
     """
-    params = SileroVadParams(name=params) if isinstance(params, str) else params or SileroVadParams()
-    name = params.name
-    audio = keras.Input((SAMPLES,), batch_size=1, name="audio")
-    h, c = state_input(0, (UNITS,), batch_size=1), state_input(1, (UNITS,), batch_size=1)
+    if input_shape is not None and tuple(input_shape) != (params.samples,):
+        raise ValueError(f"Silero VAD takes audio shape ({params.samples},), not {tuple(input_shape)}")
+    audio = keras.Input((params.samples,), batch_size=batch_size, name="audio")
+    h, c = state_input(0, (UNITS,), batch_size=batch_size), state_input(1, (UNITS,), batch_size=batch_size)
     x = StftMagnitude(frame_length=256, frame_step=128, bins=129, padding=(0, 64), name="stft")(audio)
     for index, (filters, strides) in enumerate(((128, 1), (64, 2), (64, 2), (128, 1))):
         x = keras.layers.ZeroPadding1D(1, name=f"encoder{index}_pad")(x)
@@ -44,7 +57,8 @@ def silero_vad_v6(params: SileroVadParams | str | None = None) -> keras.Model:
     h_next, c_next = StreamingLSTMCell(UNITS, name="lstm")([x, h, c])
     y = keras.layers.ReLU(name="decoder_relu")(h_next)
     prob = keras.layers.Dense(1, activation="sigmoid", name="prob")(y)
-    return keras.Model([audio, h, c], [prob, state_output(0, h_next), state_output(1, c_next)], name=name)
+    outputs = [prob, state_output(0, h_next), state_output(1, c_next)]
+    return keras.Model([audio, h, c], outputs, name=name or params.family)
 
 
 def _conv(index: int) -> tuple[WeightRow, WeightRow]:
@@ -108,4 +122,5 @@ SILERO_VAD_V6_ONNX = WeightMapping(
         WeightRow(sources=("model.decoder.decoder.2.bias",), layer="prob", weight="bias"),
     ),
 )
-"""Mapping of every weight of ``silero_vad_v6`` from the pinned v6.2.2 ONNX file."""
+"""Mapping of every weight of the Silero VAD v6 model (``build(SileroVadParams())``) from the pinned v6.2.2
+ONNX file."""

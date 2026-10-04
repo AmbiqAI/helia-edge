@@ -3,7 +3,7 @@ title: "FastEnhancer (streaming speech enhancement)"
 description: Construct a streaming FastEnhancer model with explicit STFT inputs and recurrent state.
 ---
 
-`FastEnhancerModel` builds the inference form of
+`helia_edge.models.fastenhancer.build` builds the inference form of
 [FastEnhancer](https://github.com/aask1357/fastenhancer) as a Keras Functional
 model that processes one STFT frame per call. `FastEnhancerParams` holds the
 backend-free architecture config; `rnnformer.freq` may not exceed
@@ -13,17 +13,17 @@ backend-free architecture config; `rnnformer.freq` may not exceed
 
 ```python
 import numpy as np
-from helia_edge.models import FastEnhancerModel, resolve_fastenhancer
+from helia_edge.models import ModelSpec, build, resolve_fastenhancer
 from helia_edge.models.fastenhancer import fastenhancer_t_onnx_weights, load_fastenhancer_weights
 
 record = resolve_fastenhancer("fastenhancer_t")  # serialize record.model_dump_json() with results
-model = FastEnhancerModel.model_from_params(record.params)
+model = build(ModelSpec(params=record.params), batch_size=1)  # the input shape follows from the params
 # Hydrate from locally extracted FP32 initializers of the released ONNX file:
 # load_fastenhancer_weights(model, record.params, fastenhancer_t_onnx_weights(initializers))
 
-caches = [np.zeros((1, 16, 20), np.float32) for _ in range(2)]  # zero once per sequence
+states = [np.zeros((1, 16, 20), np.float32) for _ in range(2)]  # zero once per sequence
 for spec_frame in frames:  # each (1, 257, 1, 2): real/imag of one 512-point STFT frame
-    spec_out, *caches = model([spec_frame, *caches])
+    spec_out, *states = model([spec_frame, *states])
 ```
 
 ## Streaming contract
@@ -31,14 +31,18 @@ for spec_frame in frames:  # each (1, 257, 1, 2): real/imag of one 512-point STF
 | Name | Shape per example | Role |
 |---|---|---|
 | `spec_in` | `(n_fft/2+1, 1, 2)` | Current spectral frame, real/imag last |
-| `cache_in_i` | `(freq, channels)` | GRU state of RNNFormer block `i` |
+| `state_in_k` | `(freq, channels)` | GRU state of RNNFormer block `k` |
 | `spec_out` | `(n_fft/2+1, 1, 2)` | Enhanced frame; the Nyquist bin is always zero |
-| `cache_out_i` | `(freq, channels)` | Next state for block `i` |
+| `state_out_k` | `(freq, channels)` | Next state for block `k` |
 
-State is explicit input and output. Zero every cache at the start of each
-independent sequence, then feed `cache_out_i` back as `cache_in_i` for every
-following frame. Resetting the caches every frame is a different, much worse
-model. STFT framing, iSTFT/overlap-add, startup delay and flushing are the
+State is explicit input and output, named like every heliaEDGE streaming model
+so export and `LiteRTStreamRunner` treat them as state pairs. For integer I/O,
+build with `batch_size=1` and export in `keras` mode, so each state pair shares
+one scale; `saved_model` mode exports a dynamic batch and cannot tie the state.
+
+Zero every state at the start of each independent sequence, then feed
+`state_out_k` back as `state_in_k` for every following frame. Resetting the
+states every frame is a different, much worse model. STFT framing, iSTFT/overlap-add, startup delay and flushing are the
 caller's responsibility; the upstream reference uses a periodic Hann window
 of 512, hop 256, an unnormalized one-sided STFT and centered reflection padding.
 

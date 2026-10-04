@@ -32,7 +32,7 @@ Factories do not select your backend, reset global seeds or export models. Typed
 
 ## Describe an architecture with a ModelSpec
 
-TCN, TsMixer, ResNet, MobileNetV1, MobileOne, EfficientNetV2, RegNet, ConvMixer, Composer, MetaFormer and Conformer are built from a `ModelSpec`. A spec holds the family's typed parameters and the input shape without the batch axis:
+Every family is built from a `ModelSpec`. A spec holds the family's typed parameters and the input shape without the batch axis:
 
 ```python
 from helia_edge.models import ModelSpec, ResNetParams, build
@@ -44,10 +44,9 @@ spec_json = spec.model_dump_json()  # ModelSpec.model_validate_json(spec_json) r
 ```
 
 - **Selecting a family:** each parameter class has a `family` field (`"resnet"` here), so a spec read from JSON builds the right family. The model is named after its family; pass `name=` to `build` to combine two models of one family in a Keras graph.
-- **Strict parameters:** parameters are immutable and reject unknown fields. `num_classes` is a parameter: the classes of the output layer, at least 1. With None, most families build without a dense layer; TCN and MobileNetV1 (with `include_top`) and TsMixer refuse to build.
-- **Input shapes:** positive sizes, or None for a variable axis.
+- **Validated parameters:** parameters are immutable and reject unknown fields; values from JSON or YAML (lists for tuples) parse as usual. `num_classes` is a parameter: the classes of the output layer, at least 1. With None, most families build without a dense layer; TCN, MobileNetV1, UNet and UNext (with `include_top`), TsMixer and MiniResNet refuse to build. Regressors and fixed-output families have no `num_classes`.
+- **Input shapes:** positive sizes, or None for a variable axis. For MLPerf Tiny, FastEnhancer and Silero VAD the shape follows from the parameters, so `input_shape` may be omitted.
 - **Each family's builder:** `helia_edge.models.<family>.build(params, input_shape, *, batch_size=None, name=None)`.
-- **Other families:** UNet, UNext, MiniResNet, FastEnhancer, CorNET, TimePPG, MLPerf Tiny and Silero VAD keep their own constructors; the [typed architecture guide](../typed-architectures/) covers them.
 
 ## Build something custom
 

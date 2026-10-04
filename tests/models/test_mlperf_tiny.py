@@ -7,9 +7,10 @@ import keras
 import numpy as np
 import pytest
 
-from helia_edge.models import mlperf_tiny_ad, mlperf_tiny_kws, mlperf_tiny_resnet, mlperf_tiny_vww
+from helia_edge.models import MlperfTinyParams
+from helia_edge.models.mlperf_tiny import build
 
-BUILDERS = {"kws": mlperf_tiny_kws, "vww": mlperf_tiny_vww, "resnet": mlperf_tiny_resnet, "ad": mlperf_tiny_ad}
+BUILDERS = {a: (lambda a=a: build(MlperfTinyParams(architecture=a))) for a in ("kws", "vww", "resnet", "ad")}
 REFERENCE = json.loads((Path(__file__).parents[1] / "fixtures/mlperf-tiny-reference.json").read_text())
 
 
