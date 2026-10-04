@@ -2,7 +2,7 @@
 
 A ``ModelSpec`` is the typed Params of one family (selected by its ``family`` field) and the input shape
 without the batch axis. ``build(spec)`` builds it. Families are a closed set: each has a Keras-free
-``<family>_params.py`` and a ``build(params, input_shape, *, batch_size=None)`` in its model module.
+``<family>_params.py`` and a ``build(params, input_shape, *, batch_size=None, name=None)`` in its model module.
 """
 
 from typing import TYPE_CHECKING, Annotated

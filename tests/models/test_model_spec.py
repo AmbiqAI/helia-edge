@@ -8,7 +8,7 @@ import typing
 import pydantic
 import pytest
 
-from helia_edge.models import ModelParams, ModelSpec, TcnParams
+from helia_edge.models import MobileNetV1Params, ModelParams, ModelSpec, TcnParams, TsMixerParams
 from helia_edge.models.spec import build
 
 FAMILIES = typing.get_args(typing.get_args(ModelParams)[0])
@@ -25,7 +25,7 @@ def test_every_family_round_trips_through_json(params_cls):
 
 @pytest.mark.parametrize("params_cls", FAMILIES, ids=lambda cls: cls.__name__)
 def test_each_family_has_its_params_module_and_builder(params_cls):
-    import importlib
+    import importlib.util
 
     family = params_cls.model_fields["family"].default
     assert params_cls.__module__ == f"helia_edge.models.{family}_params"
@@ -122,12 +122,9 @@ def test_a_variable_axis_is_none():
     assert ModelSpec(params=TcnParams(), input_shape=(1, None, 4)).input_shape == (1, None, 4)
 
 
-@pytest.mark.parametrize("params_cls", FAMILIES, ids=lambda cls: cls.__name__)
+@pytest.mark.parametrize("params_cls", [TcnParams, MobileNetV1Params, TsMixerParams], ids=lambda cls: cls.__name__)
 def test_families_without_an_optional_head_say_they_need_num_classes(params_cls):
     pytest.importorskip("keras")
-    family = params_cls.model_fields["family"].default
-    if family not in ("tcn", "mobilenet", "tsmixer"):
-        pytest.skip("num_classes None builds without a dense layer")
     with pytest.raises(ValueError, match="needs num_classes"):
         build(ModelSpec(params=params_cls(), input_shape=(1, 32, 4)))
 

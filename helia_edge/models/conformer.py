@@ -387,13 +387,17 @@ def conformer_layer(x: keras.KerasTensor, params: ConformerParams) -> keras.Kera
 
 
 def build(
-    params: ConformerParams, input_shape: tuple[int, ...], *, batch_size: int | None = None, name: str | None = None
+    params: ConformerParams,
+    input_shape: tuple[int | None, ...],
+    *,
+    batch_size: int | None = None,
+    name: str | None = None,
 ) -> keras.Model:
     """Build a Conformer model.
 
     Args:
         params (ConformerParams): Model parameters.
-        input_shape (tuple[int, ...]): Input shape without the batch axis.
+        input_shape (tuple[int | None, ...]): Input shape without the batch axis; None for a variable axis.
         batch_size (int | None): Static batch size; None for a dynamic batch.
         name (str | None): Model name; the family when None.
 

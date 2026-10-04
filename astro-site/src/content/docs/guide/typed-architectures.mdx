@@ -50,6 +50,9 @@ They keep normal Pydantic coercion and do not validate every historical TCN comb
 
 ## Specs and explicit trained weights
 
+`TcnParams` is no longer a Keras-serializable object, and has no `get_config`/`from_config`. To read JSON written by `keras.saving.serialize_keras_object(params)` in earlier versions, validate its `config` entry: `TcnParams.model_validate({k: v for k, v in encoded["config"].items() if k != "name"})`.
+
+
 A `ModelSpec` serializes as JSON: the family parameters (with their `family` field) and the input shape. It describes the architecture only. Weights, the batch size, seeds and execution policy are kept separately:
 
 ```python

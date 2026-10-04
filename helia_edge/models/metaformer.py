@@ -410,13 +410,17 @@ def metaformer_layer(x: keras.KerasTensor, params: MetaFormerParams) -> keras.Ke
 
 
 def build(
-    params: MetaFormerParams, input_shape: tuple[int, ...], *, batch_size: int | None = None, name: str | None = None
+    params: MetaFormerParams,
+    input_shape: tuple[int | None, ...],
+    *,
+    batch_size: int | None = None,
+    name: str | None = None,
 ) -> keras.Model:
     """Build a MetaFormer model.
 
     Args:
         params (MetaFormerParams): Model parameters.
-        input_shape (tuple[int, ...]): Input shape without the batch axis.
+        input_shape (tuple[int | None, ...]): Input shape without the batch axis; None for a variable axis.
         batch_size (int | None): Static batch size; None for a dynamic batch.
         name (str | None): Model name; the family when None.
 

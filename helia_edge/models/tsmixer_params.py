@@ -29,7 +29,7 @@ class TsMixerParams(BaseModel):
     Attributes:
         family (Literal["tsmixer"]): Model family
         blocks (list[TsBlockParams]): TsMixer blocks
-        num_classes (int | None): Classes of the output layer
+        num_classes (int | None): Output steps; required
 
     """
 
@@ -37,4 +37,4 @@ class TsMixerParams(BaseModel):
 
     family: Literal["tsmixer"] = "tsmixer"
     blocks: list[TsMixerBlockParams] = Field(default_factory=list, description="UNext blocks")
-    num_classes: int | None = Field(default=None, gt=0, description="Classes of the output layer")
+    num_classes: int | None = Field(default=None, gt=0, description="Output steps; required")

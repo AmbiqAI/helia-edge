@@ -28,7 +28,7 @@ from helia_edge.models import (
 )
 from helia_edge.models import build as build_spec
 
-SPEC = None  # families built from a ModelSpec
+SPEC = object()  # marks families built from a ModelSpec
 
 SERIES = (64, 4)  # (time, channels)
 ROW = (1, 64, 4)  # (1, time, channels) for families built from 2D layers

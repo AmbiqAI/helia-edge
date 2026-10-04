@@ -426,13 +426,13 @@ def tcn_layer(x: keras.KerasTensor, params: TcnParams) -> keras.KerasTensor:
 
 
 def build(
-    params: TcnParams, input_shape: tuple[int, ...], *, batch_size: int | None = None, name: str | None = None
+    params: TcnParams, input_shape: tuple[int | None, ...], *, batch_size: int | None = None, name: str | None = None
 ) -> keras.Model:
     """Build a TCN model.
 
     Args:
         params (TcnParams): Model parameters.
-        input_shape (tuple[int, ...]): Input shape without the batch axis.
+        input_shape (tuple[int | None, ...]): Input shape without the batch axis; None for a variable axis.
         batch_size (int | None): Static batch size; None for a dynamic batch.
         name (str | None): Model name; the family when None.
 
