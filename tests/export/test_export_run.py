@@ -567,6 +567,7 @@ def test_recipe_tcn_is_built_with_batch_one_and_one_class_count():
     [
         ("tcn", TCN, [32, 4], 2),
         ("miniresnet_v1", {"base_filters": 8, "pooling": "avg"}, [33, 25, 1], 3),
+        ("miniresnet_v1", {"base_filters": 8, "pooling": "avg", "num_classes": 3}, [33, 25, 1], None),
         ("timeppg", {}, [256, 4], None),
         ("cornet", {"filters": 8, "lstm_units": 16}, [1000, 1], None),
         ("vad_silero_v6", {}, None, None),
@@ -577,3 +578,10 @@ def test_recipe_architectures_build_with_batch_one(architecture, params, input_s
 
     model = resolve_architecture(architecture)(params, input_shape, num_classes)
     assert all(t.shape[0] == 1 for t in model.inputs)
+
+
+def test_recipe_mlperf_tiny_keeps_its_dynamic_batch():
+    from helia_edge.export.architectures import resolve_architecture
+
+    model = resolve_architecture("mlperf_tiny")({"architecture": "kws"}, None, None)
+    assert model.inputs[0].shape[0] is None

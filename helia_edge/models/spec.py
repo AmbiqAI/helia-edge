@@ -7,7 +7,7 @@ without the batch axis. ``build(spec)`` builds it. Families are a closed set: ea
 
 from typing import TYPE_CHECKING, Annotated
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from .composer_params import ComposerParams
 from .conformer_params import ConformerParams
@@ -73,6 +73,12 @@ class ModelSpec(BaseModel):
 
     params: ModelParams
     input_shape: Annotated[tuple[Annotated[int, Field(gt=0)] | None, ...], Field(min_length=1)] | None = None
+
+    @model_validator(mode="after")
+    def _shape_unless_fixed(self) -> "ModelSpec":
+        if self.input_shape is None and not isinstance(self.params, FIXED_INPUT):
+            raise ValueError(f"{self.params.family} needs an input_shape")
+        return self
 
 
 def build(spec: ModelSpec, *, batch_size: int | None = None, name: str | None = None) -> "keras.Model":

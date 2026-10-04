@@ -17,7 +17,7 @@ model = build(spec)
 restored = ModelSpec.model_validate_json(spec.model_dump_json())
 ```
 
-The strict, immutable config selects `kws`, `vww`, `resnet` or `ad`. It rejects
+The immutable config selects `kws`, `vww`, `resnet` or `ad`. It rejects
 unknown fields and unsupported architectures; there are no scaling, seed,
 calibration or precision controls. These are the same fixed architectures as the
 [MLPerf Tiny page](/helia-edge/examples/mlperf-tiny/). An optional `name=` on

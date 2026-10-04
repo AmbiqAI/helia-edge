@@ -190,3 +190,20 @@ def test_keras_file_roundtrip(tmp_path):
     inputs = [rng.normal(size=(1, *t.shape[1:])).astype(np.float32) for t in model.inputs]
     for a, b in zip(model(inputs), loaded(inputs)):
         np.testing.assert_array_equal(keras.ops.convert_to_numpy(a), keras.ops.convert_to_numpy(b))
+
+
+@pytest.mark.skipif(keras.backend.backend() != "tensorflow", reason="LiteRT export needs the TensorFlow backend")
+def test_integer_export_ties_the_named_state_pairs():
+    pytest.importorskip("ai_edge_litert")
+    from helia_edge.export import ExportSpec, export_model, stream_calibration
+    from helia_edge.export.result import state_scales_tied
+
+    model = build(FastEnhancerParams(), batch_size=1)
+    frames = (np.random.default_rng(0).normal(size=(16, 257, 1, 2)) * 0.5).astype(np.float32)
+    result = export_model(
+        model,
+        ExportSpec(precision="a8w8", io_dtype="int8", mode="keras"),
+        stream_calibration(model, {"spec_in": frames}),
+    )
+    assert sorted(r.pair for r in result.inputs if r.pair is not None) == [0, 1]
+    assert state_scales_tied(result.inputs, result.outputs) is True

@@ -176,6 +176,41 @@ def test_fixed_input_families_need_no_input_shape(params):
     assert model.name == params.family
 
 
-def test_other_families_need_an_input_shape():
-    with pytest.raises(ValueError, match="needs an input_shape"):
-        build(ModelSpec(params=TcnParams(num_classes=2)))
+@pytest.mark.parametrize("params_cls", FAMILIES, ids=lambda cls: cls.__name__)
+def test_only_fixed_input_families_build_without_an_input_shape(params_cls):
+    from helia_edge.models.spec import FIXED_INPUT
+
+    params = default_params(params_cls)
+    if isinstance(params, FIXED_INPUT):
+        assert family_of(params_cls) in {"fastenhancer", "mlperf_tiny", "silero_vad"}
+    else:
+        with pytest.raises(ValueError, match="needs an input_shape"):
+            build(ModelSpec(params=params))
+
+
+@pytest.mark.parametrize(
+    "params,shape",
+    [
+        (FastEnhancerParams(), (129, 1, 2)),
+        (SileroVadParams(), (512,)),
+        (MlperfTinyParams(architecture="kws"), (49, 10)),
+    ],
+    ids=lambda v: getattr(v, "family", None),
+)
+def test_fixed_input_families_refuse_another_shape(params, shape):
+    pytest.importorskip("keras")
+    with pytest.raises(ValueError, match="takes"):
+        build(ModelSpec(params=params, input_shape=shape))
+
+
+def test_fastenhancer_states_take_the_batch():
+    pytest.importorskip("keras")
+    model = build(ModelSpec(params=FastEnhancerParams()), batch_size=1)
+    assert [t.shape[0] for t in model.inputs] == [1, 1, 1]
+    assert [t.name for t in model.inputs][1:] == ["state_in_0", "state_in_1"]
+
+
+def test_a_spec_without_an_input_shape_is_refused_when_validated():
+    with pytest.raises(pydantic.ValidationError, match="needs an input_shape"):
+        ModelSpec.model_validate({"params": {"family": "tcn", "num_classes": 2}})
+    assert ModelSpec.model_validate({"params": {"family": "silero_vad"}}).input_shape is None

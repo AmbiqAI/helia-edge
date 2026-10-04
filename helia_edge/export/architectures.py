@@ -73,11 +73,11 @@ def build_mlperf_tiny(params, input_shape, num_classes):
 
 
 def build_miniresnet_v1(params, input_shape, num_classes):
-    """Build MiniResNet-v1 from ``MiniResNetV1Params``; needs ``input_shape`` and ``num_classes``."""
+    """Build MiniResNet-v1 from ``MiniResNetV1Params``; needs ``input_shape``, and ``num_classes`` here or in params."""
     from ..models import MiniResNetV1Params
     from ..models.miniresnet import build
 
-    _require("miniresnet_v1", input_shape, num_classes, shape=True, classes=True)
+    _require("miniresnet_v1", input_shape, num_classes, shape=True, classes=None)
     params = _with_classes("miniresnet_v1", params, num_classes)
     return build(MiniResNetV1Params.model_validate(params), tuple(input_shape), batch_size=1)
 
