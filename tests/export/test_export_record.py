@@ -130,11 +130,12 @@ def test_export_leaves_the_callers_keras_state_alone():
     model = seeded(SPEC, batch_size=1)
     previous = keras.config.dtype_policy()
     keras.config.set_dtype_policy("mixed_float16")
-    default = export(model, precision="fp32", io_dtype="float32", spec=SPEC).content
     floatx = keras.config.floatx()
-    keras.config.set_dtype_policy("mixed_float16")
-    keras.config.set_floatx("float16")
     try:
+        keras.config.set_dtype_policy("float32")
+        default = export(model, precision="fp32", io_dtype="float32", spec=SPEC).content
+        keras.config.set_dtype_policy("mixed_float16")
+        keras.config.set_floatx("float16")
         before = keras.layers.Dense(2, dtype="float32").name
         assert export(model, precision="fp32", io_dtype="float32", spec=SPEC).content == default
         with pytest.raises(ValueError, match="shapes of build"):
@@ -325,9 +326,11 @@ def test_a_streaming_export_records_its_calibration_import_and_golden(tmp_path):
             export(model, precision="a16w8", io_dtype="int16", calibration=calls, resets=resets, spec=spec)
     with pytest.raises(ValueError, match="resets"):
         result.with_golden(calls[:4], resets=(4,))
-    for resets in ([2.0], ["3"], 3):
+    for resets in ([2.0], ["3"], 3, "3", b"\x08", [True]):
         with pytest.raises(ValueError, match="integer steps"):
             result.with_golden(calls[:4], resets=resets)
+    with pytest.raises(ValueError, match="integer steps"):
+        export(model, precision="a16w8", io_dtype="int16", calibration=calls, resets=3, spec=spec)
     with pytest.raises(ValueError, match="at least one call"):
         result.with_golden(calls[:0])
     bare = export(model, precision="a16w8", io_dtype="int16", calibration=calls, resets=(32,), spec=spec)

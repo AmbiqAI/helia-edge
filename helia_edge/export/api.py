@@ -244,7 +244,8 @@ def _reference_build():
 
     Unnamed layers' names become the artifact's tensor names, so a model built here exports the same bytes
     whatever the caller built before or set as its policy. Only these three settings are changed, and they
-    are restored even when the build fails; they are process-wide, so do not export from two threads at once.
+    are restored even when the build fails. Layer numbering and the dtype policy are per thread, but
+    ``floatx`` is shared by the process: another thread building layers meanwhile sees float32.
     """
     import keras
     from keras.src.backend.common import global_state
@@ -265,11 +266,16 @@ def _reference_build():
 
 
 def _steps(resets: Collection[int]) -> tuple[int, ...]:
-    """``resets`` as integer steps; a float, a string or a non-collection is refused, not converted."""
+    """``resets`` as integer steps; a bool, float, string, bytes or non-collection is refused, not converted."""
+    if isinstance(resets, str | bytes):
+        raise ValueError(f"resets are integer steps, not {resets!r:.80}")
     try:
-        return tuple(operator.index(step) for step in resets)
+        steps = [step for step in resets]
+        if any(isinstance(step, bool | np.bool_) for step in steps):
+            raise TypeError("bool")
+        return tuple(operator.index(step) for step in steps)
     except TypeError as exc:
-        raise ValueError(f"resets are integer steps, not {resets!r}") from exc
+        raise ValueError(f"resets are integer steps, not {resets!r:.80}") from exc
 
 
 def _array_sha256(array: npt.ArrayLike) -> str:
@@ -461,6 +467,9 @@ def export(
 
 def load_export_record(path: Path | str, weights: Path | str | None = None):
     """Rebuild the Keras model an export record describes, with its weights.
+
+    The model is built as ``export`` built it: unnamed layers numbered from zero and float32 layers,
+    whatever the caller's dtype policy.
 
     Args:
         path: The ``record.json``.
