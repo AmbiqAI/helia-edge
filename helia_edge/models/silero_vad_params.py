@@ -20,7 +20,7 @@ class SileroVadParams(BaseModel):
         units: LSTM state size of ``state_in_0``/``state_in_1`` (h, c).
         stft: ``conv1d`` frames the reflect-padded audio with a strided convolution. ``conv_blocks``
             convolves 64-sample blocks instead, with the right reflect padding folded into the last
-            frame's kernel; it is exact in float.
+            frame's kernel, so the export is mirror-pad-free; it is exact in float.
         magnitude: ``sqrt`` is the exact magnitude of each bin. ``max_projection`` is the largest of 9
             projections of (|re|, |im|) onto directions from 0 to 90 degrees, within 0.25% in float32; it needs no
             square root, so the model exports to int16 activations.
