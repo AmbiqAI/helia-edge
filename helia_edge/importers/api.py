@@ -7,6 +7,7 @@ from pathlib import Path
 import numpy as np
 
 from .mapping import WeightMapping
+from .readers import read
 
 
 @dataclass(frozen=True)
@@ -85,15 +86,13 @@ def import_weights(model, mapping: WeightMapping, path: Path | str) -> ImportRep
         ValueError: If the file does not match its pin or changes while it is read; otherwise if any
             other check fails, with every problem found listed in the message.
     """
-    from ..registry import importers
-
     path = Path(path)
     sha256 = _file_sha256(path)
     if sha256 != mapping.source.sha256:
         raise ValueError(
             f"{path} has sha256 {sha256}; mapping {mapping.name!r} is for {mapping.source.sha256} ({mapping.source.uri})"
         )
-    tensors = importers.get(mapping.format)(path)
+    tensors = read(mapping.source.format, path)
     if _file_sha256(path) != sha256:
         raise ValueError(f"{path} changed while it was read")
 

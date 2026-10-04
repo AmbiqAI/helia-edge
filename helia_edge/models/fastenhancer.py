@@ -11,8 +11,6 @@ released ONNX inference form, with BatchNorm and weight normalization folded.
 STFT/iSTFT framing, weight files and weight terms are the caller's concern.
 """
 
-from collections.abc import Mapping
-
 import keras
 import numpy as np
 
@@ -197,7 +195,8 @@ def build(
 
     Inputs: ``spec_in`` (bins, 1, 2) and ``state_in_k`` (freq, channels) per block. Outputs: ``spec_out``
     and ``state_out_k``. Fixed linear filterbanks are initialized and frozen; other weights are untrained
-    until :func:`load_fastenhancer_weights` hydrates matching tensors.
+    until imported with a mapping from ``fastenhancer_params`` (``FASTENHANCER_T_ONNX`` or
+    ``fastenhancer_mapping``).
 
     Args:
         params (FastEnhancerParams): Model parameters.
@@ -322,101 +321,3 @@ def fastenhancer_weight_shapes(params: FastEnhancerParams) -> dict[str, tuple[in
     if rf.positional_embedding:
         shapes["rf_block.0.pe"] = (rf.freq, rc)
     return shapes
-
-
-# Anonymous initializer names in the onnx-vd-v1.0.0 fastenhancer_t.spec.onnx release.
-FASTENHANCER_T_ONNX_NAMES: Mapping[str, str] = {
-    "onnx::MatMul_638": "rf_pre.0.kernel",
-    "onnx::GRU_662": "rf_block.0.rnn.W",
-    "onnx::GRU_663": "rf_block.0.rnn.R",
-    "onnx::GRU_664": "rf_block.0.rnn.B",
-    "onnx::MatMul_675": "rf_block.0.rnn_fc.kernel",
-    "onnx::MatMul_680": "rf_block.0.attn.qkv.kernel",
-    "onnx::MatMul_702": "rf_block.0.attn_fc.kernel",
-    "onnx::GRU_724": "rf_block.1.rnn.W",
-    "onnx::GRU_725": "rf_block.1.rnn.R",
-    "onnx::GRU_726": "rf_block.1.rnn.B",
-    "onnx::MatMul_737": "rf_block.1.rnn_fc.kernel",
-    "onnx::MatMul_742": "rf_block.1.attn.qkv.kernel",
-    "onnx::MatMul_764": "rf_block.1.attn_fc.kernel",
-    "onnx::MatMul_766": "rf_post.0.kernel",
-}
-
-
-def fastenhancer_t_onnx_weights(initializers: Mapping[str, np.ndarray]) -> dict[str, np.ndarray]:
-    """Rename released FastEnhancer-T FP32 initializers to module-path keys.
-
-    Graph constants (names starting with "/") are dropped; every other name
-    must be known, so a different export is rejected instead of guessed.
-    """
-    known = set(fastenhancer_weight_shapes(FastEnhancerParams()))
-    renamed = {}
-    for name, value in initializers.items():
-        if name.startswith("/"):
-            continue
-        key = FASTENHANCER_T_ONNX_NAMES.get(name, name)
-        if key not in known:
-            raise ValueError(f"unrecognized FastEnhancer-T initializer {name!r}")
-        renamed[key] = np.asarray(value)
-    return renamed
-
-
-def load_fastenhancer_weights(
-    model: keras.Model, params: FastEnhancerParams, tensors: Mapping[str, np.ndarray]
-) -> None:
-    """Hydrate a model from folded tensors keyed as in :func:`fastenhancer_weight_shapes`.
-
-    All names and shapes must match exactly; nothing is loaded otherwise.
-    """
-    expected = fastenhancer_weight_shapes(params)
-    missing, extra = sorted(set(expected) - set(tensors)), sorted(set(tensors) - set(expected))
-    if missing or extra:
-        raise ValueError(f"FastEnhancer tensors mismatch: missing {missing}, unexpected {extra}")
-    arrays = {}
-    for name, shape in expected.items():
-        array = np.asarray(tensors[name])
-        if array.shape != shape or not np.issubdtype(array.dtype, np.floating):
-            raise ValueError(f"{name}: expected float {shape}, received {array.dtype} {array.shape}")
-        arrays[name] = array.astype(np.float32)
-
-    def conv(w):
-        return w.transpose(2, 1, 0)
-
-    s, rf = params.stride, params.rnnformer
-    enc = arrays["enc_pre.0.weight"]  # [out, phase * 2 + ri, j] -> [out, ri, j * stride + phase]
-    enc = enc.reshape(enc.shape[0], s, 2, -1).transpose(0, 2, 3, 1).reshape(enc.shape[0], 2, -1)
-    assignments = {
-        "enc_pre_conv": [conv(enc), arrays["enc_pre.0.bias"]],
-        "rf_pre_proj": [arrays["rf_pre.0.kernel"]],
-        "rf_pre_conv": [conv(arrays["rf_pre.1.weight"]), arrays["rf_pre.1.bias"]],
-        "rf_post_proj": [arrays["rf_post.0.kernel"]],
-        "rf_post_conv": [conv(arrays["rf_post.1.weight"]), arrays["rf_post.1.bias"]],
-        "dec_post_conv": [conv(arrays["dec_post.0.weight"]), arrays["dec_post.0.bias"]],
-        "dec_post_upsample": [conv(arrays["dec_post.2.weight"]), arrays["dec_post.2.bias"]],
-    }
-    for i in range(len(params.kernel_size) - 1):
-        assignments[f"encoder_{i}_conv"] = [conv(arrays[f"encoder.{i}.0.weight"]), arrays[f"encoder.{i}.0.bias"]]
-        assignments[f"decoder_{i}_conv0"] = [conv(arrays[f"decoder.{i}.0.weight"]), arrays[f"decoder.{i}.0.bias"]]
-        assignments[f"decoder_{i}_conv1"] = [conv(arrays[f"decoder.{i}.2.weight"]), arrays[f"decoder.{i}.2.bias"]]
-    for i in range(rf.num_blocks):
-        b, layer = f"rf_block.{i}", f"rf_block_{i}"
-        assignments[f"{layer}_gru"] = [
-            arrays[f"{b}.rnn.W"][0].T,
-            arrays[f"{b}.rnn.R"][0].T,
-            arrays[f"{b}.rnn.B"].reshape(2, -1),
-        ]
-        assignments[f"{layer}_rnn_fc"] = [arrays[f"{b}.rnn_fc.kernel"], arrays[f"{b}.rnn_fc.bias"]]
-        qkv = [arrays[f"{b}.attn.qkv.kernel"]]
-        if rf.attn_bias:
-            qkv.append(arrays[f"{b}.attn.qkv.bias"])
-        assignments[f"{layer}_attn"] = qkv
-        assignments[f"{layer}_attn_fc"] = [arrays[f"{b}.attn_fc.kernel"], arrays[f"{b}.attn_fc.bias"]]
-    if rf.positional_embedding:
-        assignments["rf_block_0_pe"] = [arrays["rf_block.0.pe"]]
-
-    layers = {layer.name: layer for layer in model.layers}
-    for name, values in assignments.items():
-        if name not in layers or [w.shape for w in layers[name].get_weights()] != [v.shape for v in values]:
-            raise ValueError(f"model layer {name} does not match params; build the model from the same params")
-    for name, values in assignments.items():
-        layers[name].set_weights(values)

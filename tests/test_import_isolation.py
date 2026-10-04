@@ -34,9 +34,10 @@ assert not {'keras', 'tensorflow', 'torch'} & sys.modules.keys()
 def test_importers_do_not_import_frameworks_or_onnx():
     run_python("""
 import sys
-from helia_edge.importers import Transpose, WeightMapping, WeightRow, import_weights
-from helia_edge.registry import importers
-assert callable(import_weights) and callable(importers.get('safetensors'))
+from helia_edge.importers import Transpose, WeightMapping, WeightRow, import_weights, readers
+from helia_edge.models import fastenhancer_params, silero_vad_params
+assert callable(import_weights) and callable(readers.read)
+assert 'fastenhancer_t_onnx' in fastenhancer_params.MAPPINGS and 'silero_vad_v6_onnx' in silero_vad_params.MAPPINGS
 assert WeightRow(sources=('w',), transforms=(Transpose(perm=(1, 0)),), layer='l', weight='kernel').layer == 'l'
 assert not {'keras', 'tensorflow', 'torch', 'onnx', 'onnxruntime'} & sys.modules.keys()
 """)

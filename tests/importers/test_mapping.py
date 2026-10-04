@@ -4,11 +4,20 @@ import numpy as np
 import pydantic
 import pytest
 
-from helia_edge.importers import GateReorder, Reshape, SourcePin, Split, SumParts, Transpose, WeightMapping, WeightRow
-from helia_edge.importers.readers import read_safetensors
-from helia_edge.registry import importers
+from helia_edge.importers import (
+    GateReorder,
+    Reshape,
+    SourceFormat,
+    SourcePin,
+    Split,
+    SumParts,
+    Transpose,
+    WeightMapping,
+    WeightRow,
+)
+from helia_edge.importers.readers import read, read_safetensors
 
-PIN = SourcePin(uri="file://model.bin", sha256="0" * 64)
+PIN = SourcePin(uri="file://model.bin", sha256="0" * 64, format="onnx")
 
 
 def test_transforms_match_numpy():
@@ -65,7 +74,7 @@ def test_inconsistent_rows_are_refused(row, message):
 def test_a_weight_mapped_twice_is_refused():
     rows = (WeightRow(sources=("a",), layer="l", weight="w"), WeightRow(sources=("b",), layer="l", weight="w"))
     with pytest.raises(pydantic.ValidationError, match="mapped more than once"):
-        WeightMapping(name="m", format="safetensors", source=PIN, rows=rows)
+        WeightMapping(name="m", source=PIN, rows=rows)
 
 
 def test_mappings_round_trip_through_json():
@@ -79,7 +88,7 @@ def test_mappings_round_trip_through_json():
         WeightRow(sources=("p",), transforms=(Split(axis=0, parts=2, index=1),), layer="dense", weight="bias"),
         WeightRow(sources=("b",), transforms=(SumParts(axis=0, parts=2),), layer="lstm", weight="bias"),
     )
-    mapping = WeightMapping(name="m", format="onnx", source=PIN, rows=rows, unused=("extra",))
+    mapping = WeightMapping(name="m", source=PIN, rows=rows, unused=("extra",))
     assert WeightMapping.model_validate_json(mapping.model_dump_json()) == mapping
 
 
@@ -97,6 +106,11 @@ def test_safetensors_files_read_back(tmp_path, write_safetensors):
         assert read[name].dtype == value.dtype
 
 
-def test_the_importer_registry_has_the_built_in_formats():
-    assert {"onnx", "safetensors", "torch"} <= set(importers)
-    assert importers.get("safetensors") is read_safetensors
+def test_the_source_formats_are_a_closed_set(tmp_path, write_safetensors):
+    assert set(SourceFormat) == {"onnx", "safetensors", "torch"}
+    with pytest.raises(pydantic.ValidationError, match="format"):
+        SourcePin(uri="file://model.npz", sha256="0" * 64, format="npz")
+    write_safetensors(tmp_path / "w.safetensors", {"a": np.ones(2, np.float32)})
+    np.testing.assert_array_equal(read("safetensors", tmp_path / "w.safetensors")["a"], np.ones(2, np.float32))
+    with pytest.raises(ValueError, match="npz"):
+        read("npz", tmp_path / "w.safetensors")

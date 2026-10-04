@@ -71,7 +71,7 @@ from .regnet_params import RegNetParams as RegNetParams
 from .resnet import resnet_layer as resnet_layer
 from .resnet_params import ResNetBlockParams as ResNetBlockParams
 from .resnet_params import ResNetParams as ResNetParams
-from .silero_vad import SILERO_VAD_V6_ONNX as SILERO_VAD_V6_ONNX
+from .silero_vad_params import SILERO_VAD_V6_ONNX as SILERO_VAD_V6_ONNX
 from .silero_vad_params import SileroVadParams as SileroVadParams
 from .spec import ModelParams as ModelParams
 from .spec import ModelSpec as ModelSpec

@@ -11,7 +11,8 @@ import pytest
 
 from helia_edge.importers import SourcePin, import_weights
 from helia_edge.models import SileroVadParams
-from helia_edge.models.silero_vad import SAMPLES, SILERO_VAD_V6_ONNX, UNITS, build
+from helia_edge.models.silero_vad import SAMPLES, UNITS, build
+from helia_edge.models.silero_vad_params import SILERO_VAD_V6_ONNX
 
 SHAPES = {
     "model.stft.forward_basis_buffer": (258, 1, 256),
@@ -99,7 +100,7 @@ def imported(tmp_path, write_safetensors):
     write_safetensors(path, tensors)
     sha256 = hashlib.sha256(path.read_bytes()).hexdigest()
     mapping = SILERO_VAD_V6_ONNX.model_copy(
-        update={"format": "safetensors", "source": SourcePin(uri="file://s", sha256=sha256)}
+        update={"source": SourcePin(uri="file://s", sha256=sha256, format="safetensors")}
     )
     model = build(SileroVadParams(), batch_size=1)
     report = import_weights(model, mapping, path)

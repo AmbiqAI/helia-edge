@@ -89,8 +89,9 @@ def test_specs_and_params_import_without_keras():
     source = """
 import sys
 import helia_edge.models.spec
-from helia_edge.models import ModelSpec, TcnParams, compact_tcn_params
+from helia_edge.models import ModelSpec, TcnParams, compact_tcn_params, fastenhancer_params, silero_vad_params
 ModelSpec(params=compact_tcn_params(num_classes=2), input_shape=(240, 14))
+assert fastenhancer_params.MAPPINGS and silero_vad_params.MAPPINGS
 assert not {"keras", "tensorflow", "torch"} & sys.modules.keys(), sorted({"keras", "tensorflow", "torch"} & sys.modules.keys())
 """
     result = subprocess.run([sys.executable, "-c", source], text=True, capture_output=True, timeout=120)

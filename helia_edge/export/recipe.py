@@ -5,10 +5,10 @@ from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from ..importers.mapping import SHA256
 from .spec import CALIBRATED, ExportSpec
 
 RECIPE_SCHEMA = "helia-edge/export@1"
-SHA256 = Annotated[str, Field(pattern=r"^[0-9a-f]{64}$")]
 NAME = Annotated[str, Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9_.-]*$", max_length=64)]
 
 
@@ -74,8 +74,8 @@ class ParamsWeights(BaseModel):
 class ParamsImport(BaseModel):
     """Build an architecture from params, then import weights from a file trained elsewhere.
 
-    ``mapping`` names a ``WeightMapping`` in ``helia_edge.registry.weight_mappings``; ``weights`` must be
-    the file that mapping is pinned to (same sha256).
+    ``mapping`` names a ``WeightMapping`` in a family's ``MAPPINGS`` (``helia_edge.models.<family>_params``);
+    ``weights`` must be the file that mapping is pinned to (same sha256).
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")

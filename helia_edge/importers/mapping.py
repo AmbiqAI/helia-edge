@@ -1,12 +1,13 @@
 """Declarative weight mappings from a source file to a Keras model; importable without Keras."""
 
+from enum import StrEnum
 from typing import Annotated, Literal
 
 import numpy as np
 import numpy.typing as npt
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from ..export.recipe import SHA256
+SHA256 = Annotated[str, Field(pattern=r"^[0-9a-f]{64}$")]
 
 
 class Transpose(BaseModel):
@@ -157,6 +158,14 @@ class WeightRow(BaseModel):
         return x
 
 
+class SourceFormat(StrEnum):
+    """File formats ``import_weights`` reads (see ``helia_edge.importers.readers``)."""
+
+    ONNX = "onnx"
+    SAFETENSORS = "safetensors"
+    TORCH = "torch"
+
+
 class SourcePin(BaseModel):
     """The one source file a mapping was written for."""
 
@@ -164,6 +173,7 @@ class SourcePin(BaseModel):
 
     uri: str
     sha256: SHA256
+    format: SourceFormat
     note: str = ""
 
 
@@ -172,8 +182,7 @@ class WeightMapping(BaseModel):
 
     Attributes:
         name: Mapping name.
-        format: Source format, a key of ``helia_edge.registry.importers``.
-        source: The pinned source file.
+        source: The pinned source file and its format.
         rows: One row per model weight.
         unused: Source tensors deliberately not imported (every other one must be used).
     """
@@ -181,7 +190,6 @@ class WeightMapping(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     name: str
-    format: str
     source: SourcePin
     rows: tuple[WeightRow, ...] = Field(min_length=1)
     unused: tuple[str, ...] = ()

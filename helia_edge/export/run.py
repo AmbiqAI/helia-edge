@@ -161,9 +161,12 @@ def build_model(source: ParamsSeed | ParamsWeights | ParamsImport | KerasFile, b
         model.load_weights(fetch(source.weights, base_dir))
     elif isinstance(source, ParamsImport):
         from ..importers import import_weights
-        from ..registry import weight_mappings
+        from ..models import fastenhancer_params, silero_vad_params
 
-        mapping = weight_mappings.get(source.mapping)
+        mappings = {**fastenhancer_params.MAPPINGS, **silero_vad_params.MAPPINGS}
+        if source.mapping not in mappings:
+            raise ValueError(f"Unknown weight mapping {source.mapping!r}; available: {sorted(mappings)}")
+        mapping = mappings[source.mapping]
         if source.weights.sha256 != mapping.source.sha256:
             raise SourceError(
                 f"Weights sha256 {source.weights.sha256} is not the file mapping {source.mapping!r} is pinned to "

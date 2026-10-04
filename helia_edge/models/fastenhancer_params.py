@@ -1,10 +1,12 @@
-"""Validated FastEnhancer architecture config and official presets; no backend imports."""
+"""Validated FastEnhancer architecture config, official presets and weight mappings; no backend imports."""
 
 import json
 from collections.abc import Mapping
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
+
+from ..importers.mapping import Reshape, SourcePin, Transpose, WeightMapping, WeightRow
 
 
 class FastEnhancerRNNFormerParams(BaseModel):
@@ -134,3 +136,137 @@ def resolve_fastenhancer(preset: str, overrides: Mapping[str, Any] | None = None
         official=official,
         params=params,
     )
+
+
+def fastenhancer_mapping(
+    params: FastEnhancerParams,
+    name: str,
+    source: SourcePin,
+    *,
+    tensor_names: Mapping[str, str] | None = None,
+    unused: tuple[str, ...] = (),
+) -> WeightMapping:
+    """Mapping of every weight of ``build(params)`` from folded tensors in ONNX export layout.
+
+    Source tensors are keyed by module path, as ``fastenhancer.fastenhancer_weight_shapes(params)`` lists
+    them. GRU tensors must use ONNX gate order z, r, h; PyTorch ``nn.GRU`` stores r, z, n, which shapes
+    alone cannot detect.
+
+    Args:
+        params: The params the tensors were trained with.
+        name: Mapping name.
+        source: The pinned source file.
+        tensor_names: Source tensor names for module paths stored under another name.
+        unused: Source tensors deliberately not imported.
+
+    Returns:
+        WeightMapping: The mapping, for ``helia_edge.importers.import_weights``.
+    """
+    names = tensor_names or {}
+    rf, c, rc, k0, s = (
+        params.rnnformer,
+        params.channels,
+        params.rnnformer.channels,
+        params.kernel_size[0],
+        params.stride,
+    )
+    conv = Transpose(perm=(2, 1, 0))  # [out, in, k] (transposed: [in, out, k]) to Keras [k, in, out] ([k, out, in])
+    rows = []
+
+    def row(path: str, layer: str, weight: str, *transforms) -> None:
+        rows.append(WeightRow(sources=(names.get(path, path),), transforms=transforms, layer=layer, weight=weight))
+
+    def conv_rows(module: str, layer: str) -> None:
+        row(f"{module}.weight", layer, "kernel", conv)
+        row(f"{module}.bias", layer, "bias")
+
+    # The source's strided input convolution stores [out, phase * 2 + ri, j]; Keras needs [out, ri, j * stride + phase]
+    enc = (Reshape(shape=(c, s, 2, k0 // s)), Transpose(perm=(0, 2, 3, 1)), Reshape(shape=(c, 2, k0)), conv)
+    row("enc_pre.0.weight", "enc_pre_conv", "kernel", *enc)
+    row("enc_pre.0.bias", "enc_pre_conv", "bias")
+    for i in range(len(params.kernel_size) - 1):
+        conv_rows(f"encoder.{i}.0", f"encoder_{i}_conv")
+        conv_rows(f"decoder.{i}.0", f"decoder_{i}_conv0")
+        conv_rows(f"decoder.{i}.2", f"decoder_{i}_conv1")
+    row("rf_pre.0.kernel", "rf_pre_proj", "kernel")
+    conv_rows("rf_pre.1", "rf_pre_conv")
+    for i in range(rf.num_blocks):
+        b, layer = f"rf_block.{i}", f"rf_block_{i}"
+        gate = (Reshape(shape=(3 * rc, rc)), Transpose(perm=(1, 0)))  # [1, 3H, in] to [in, 3H]
+        row(f"{b}.rnn.W", f"{layer}_gru", "kernel", *gate)
+        row(f"{b}.rnn.R", f"{layer}_gru", "recurrent_kernel", *gate)
+        row(f"{b}.rnn.B", f"{layer}_gru", "bias", Reshape(shape=(2, 3 * rc)))
+        row(f"{b}.rnn_fc.kernel", f"{layer}_rnn_fc", "kernel")
+        row(f"{b}.rnn_fc.bias", f"{layer}_rnn_fc", "bias")
+        row(f"{b}.attn.qkv.kernel", f"{layer}_attn", "kernel")
+        if rf.attn_bias:
+            row(f"{b}.attn.qkv.bias", f"{layer}_attn", "bias")
+        row(f"{b}.attn_fc.kernel", f"{layer}_attn_fc", "kernel")
+        row(f"{b}.attn_fc.bias", f"{layer}_attn_fc", "bias")
+    if rf.positional_embedding:
+        row("rf_block.0.pe", "rf_block_0_pe", "embedding")
+    row("rf_post.0.kernel", "rf_post_proj", "kernel")
+    conv_rows("rf_post.1", "rf_post_conv")
+    conv_rows("dec_post.0", "dec_post_conv")
+    conv_rows("dec_post.2", "dec_post_upsample")
+    return WeightMapping(name=name, source=source, rows=tuple(rows), unused=unused)
+
+
+FASTENHANCER_T_ONNX = fastenhancer_mapping(
+    FASTENHANCER_PRESETS["fastenhancer_t"],
+    "fastenhancer_t_onnx",
+    SourcePin(
+        uri="https://github.com/aask1357/fastenhancer/releases/download/onnx-vd-v1.0.0/fastenhancer_t.spec.onnx",
+        sha256="915a451f3b1ea8e98c20517c63b50943aa1d540624189f3106cc2e03d09634eb",
+        format="onnx",
+        note="onnx-vd-v1.0.0 FP32 spectral graph (VoiceBank-DEMAND, 16 kHz); code MIT.",
+    ),
+    # The release stores these tensors under anonymous initializer names
+    tensor_names={
+        "rf_pre.0.kernel": "onnx::MatMul_638",
+        "rf_block.0.rnn.W": "onnx::GRU_662",
+        "rf_block.0.rnn.R": "onnx::GRU_663",
+        "rf_block.0.rnn.B": "onnx::GRU_664",
+        "rf_block.0.rnn_fc.kernel": "onnx::MatMul_675",
+        "rf_block.0.attn.qkv.kernel": "onnx::MatMul_680",
+        "rf_block.0.attn_fc.kernel": "onnx::MatMul_702",
+        "rf_block.1.rnn.W": "onnx::GRU_724",
+        "rf_block.1.rnn.R": "onnx::GRU_725",
+        "rf_block.1.rnn.B": "onnx::GRU_726",
+        "rf_block.1.rnn_fc.kernel": "onnx::MatMul_737",
+        "rf_block.1.attn.qkv.kernel": "onnx::MatMul_742",
+        "rf_block.1.attn_fc.kernel": "onnx::MatMul_764",
+        "rf_post.0.kernel": "onnx::MatMul_766",
+    },
+    # Graph constants (shapes, axes and scalars), not weights
+    unused=(
+        "/Constant_output_0",
+        "/Constant_1_output_0",
+        "/Constant_2_output_0",
+        "/Constant_3_output_0",
+        "/Constant_4_output_0",
+        "/Constant_6_output_0",
+        "/Constant_7_output_0",
+        "/Constant_8_output_0",
+        "/rf_block.0/Constant_output_0",
+        "/rf_block.0/Constant_1_output_0",
+        "/rf_block.0/attn/Constant_output_0",
+        "/rf_block.0/attn/Constant_1_output_0",
+        "/rf_block.0/attn/Constant_3_output_0",
+        "/rf_block.0/attn/Constant_7_output_0",
+        "/rf_block.0/attn/Constant_11_output_0",
+        "/Constant_14_output_0",
+        "/Constant_17_output_0",
+        "/enc_pre/enc_pre.0/Reshape_1_output_0",
+        "/Concat_output_0",
+        "/rf_block.0/attn/Sqrt_1_output_0",
+        "/Concat_1_output_0",
+        "/Reshape_5_output_0",
+        "/enc_pre/enc_pre.0/Concat_1_output_0",
+        "/enc_pre/enc_pre.0/Concat_2_output_0",
+    ),
+)
+"""Mapping of every weight of ``build(FastEnhancerParams())`` from the pinned FastEnhancer-T ONNX release."""
+
+MAPPINGS: dict[str, WeightMapping] = {FASTENHANCER_T_ONNX.name: FASTENHANCER_T_ONNX}
+"""Weight mappings for this family, by name."""

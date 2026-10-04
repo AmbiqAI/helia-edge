@@ -13,13 +13,13 @@ backend-free architecture config; `rnnformer.freq` may not exceed
 
 ```python
 import numpy as np
+from helia_edge.importers import import_weights
 from helia_edge.models import ModelSpec, build, resolve_fastenhancer
-from helia_edge.models.fastenhancer import fastenhancer_t_onnx_weights, load_fastenhancer_weights
+from helia_edge.models.fastenhancer_params import FASTENHANCER_T_ONNX
 
 record = resolve_fastenhancer("fastenhancer_t")  # serialize record.model_dump_json() with results
 model = build(ModelSpec(params=record.params), batch_size=1)  # the input shape follows from the params
-# Hydrate from locally extracted FP32 initializers of the released ONNX file:
-# load_fastenhancer_weights(model, record.params, fastenhancer_t_onnx_weights(initializers))
+import_weights(model, FASTENHANCER_T_ONNX, "fastenhancer_t.spec.onnx")  # the downloaded release file
 
 states = [np.zeros((1, 16, 20), np.float32) for _ in range(2)]  # zero once per sequence
 for spec_frame in frames:  # each (1, 257, 1, 2): real/imag of one 512-point STFT frame
@@ -59,17 +59,19 @@ It is not the trainable architecture. Every RNNFormer block runs:
 
 The first block also adds a learned positional embedding.
 
-`load_fastenhancer_weights` takes folded tensors in ONNX export layout keyed by
-module path, as listed by `fastenhancer_weight_shapes(params)`. GRU tensors
-must use ONNX gate order z, r, h; PyTorch `nn.GRU` stores r, z, n and must be
-reordered first, because shapes alone cannot detect the difference. Only names
-and shapes are checked, so build the model from the params the tensors came
-from. It rejects
-any missing, unexpected or misshapen tensor before loading anything.
-`fastenhancer_t_onnx_weights` renames the anonymous initializers of the
-`fastenhancer_t.spec.onnx` release. It does not guess names for other exports.
+Weights load through [`import_weights`](/helia-edge/guide/import-weights/).
+`FASTENHANCER_T_ONNX` is pinned to the `fastenhancer_t.spec.onnx` release
+(sha256 `915a451f…`), whose anonymous initializers it names; it does not
+guess names for other exports. For other folded weights, build a mapping with
+`fastenhancer_mapping(params, name, source)`: it reads tensors in ONNX export
+layout keyed by module path, as listed by `fastenhancer_weight_shapes(params)`,
+from a pinned `.safetensors`, `.onnx` or PyTorch file. GRU tensors must use
+ONNX gate order z, r, h; PyTorch `nn.GRU` stores r, z, n and must be reordered
+first, because shapes alone cannot detect the difference. Only names and
+shapes are checked, so build the model from the params the tensors came from.
+Any missing, unexpected or misshapen tensor is refused before anything loads.
 
-Hydration applies the following layout conversions:
+The mapping applies the following layout conversions:
 
 - **Strided input convolution:** the source's reshape-based channel order is
   converted to a standard strided kernel.

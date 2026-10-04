@@ -47,7 +47,7 @@ def source(tmp_path, write_safetensors):
 
 def mapping(sha256, rows=ROWS, unused=()):
     return WeightMapping(
-        name="toy", format="safetensors", source=SourcePin(uri="file://w", sha256=sha256), rows=rows, unused=unused
+        name="toy", source=SourcePin(uri="file://w", sha256=sha256, format="safetensors"), rows=rows, unused=unused
     )
 
 
@@ -251,17 +251,17 @@ def test_a_float_source_for_an_integer_weight_is_refused(source):
 
 
 def test_a_file_changed_while_read_is_refused(source, monkeypatch):
-    from helia_edge.registry import importers
+    from helia_edge.importers import readers
 
     path, sha256 = source()
-    original = importers.get("safetensors")
+    original = readers.read_safetensors
 
     def read_then_change(p):
         result = original(p)
         p.write_bytes(p.read_bytes() + b" ")
         return result
 
-    monkeypatch.setitem(importers._values, "safetensors", read_then_change)
+    monkeypatch.setattr(readers, "read_safetensors", read_then_change)
     with pytest.raises(ValueError, match="changed while it was read"):
         import_weights(model(), mapping(sha256), path)
 
