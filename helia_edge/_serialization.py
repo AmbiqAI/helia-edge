@@ -11,6 +11,7 @@ def register_keras_serializables() -> None:
 
     modules = [
         "helia_edge.models.fastenhancer",
+        "helia_edge.models.silero_vad",
         "helia_edge.callbacks.tqdm_progress_bar",
         "helia_edge.layers.ema_residual_vector_quantizer",
         "helia_edge.layers.gumbel_softmax_bottleneck",

@@ -34,4 +34,21 @@ def test_the_basis_is_a_stored_non_trainable_weight():
     assert [w.name for w in layer.weights] == ["basis"] and not layer.trainable_weights
     config = layer.get_config()
     assert config["padding"] == (0, 8)
+    assert "magnitude" not in config  # the exact magnitude's config loads in earlier versions
     assert StftMagnitude.from_config(config).get_config() == config
+
+
+def test_the_projected_magnitude_is_within_its_bound_without_a_square_root():
+    x = np.random.default_rng(2).standard_normal((2, 64)).astype(np.float32)
+    basis = np.random.default_rng(3).standard_normal((16, 1, 18)).astype(np.float32)
+    exact, projected = (StftMagnitude(16, 8, 9, (0, 8), magnitude=m) for m in ("sqrt", "max_projection"))
+    for layer in (exact, projected):
+        layer.build(x.shape)
+        layer.basis.assign(basis)
+    want, got = keras.ops.convert_to_numpy(exact(x)), keras.ops.convert_to_numpy(projected(x))
+    assert got.shape == want.shape == projected.compute_output_shape(x.shape)
+    relative = np.abs(got - want)[want > 1e-3] / want[want > 1e-3]
+    assert relative.max() <= 0.0025
+    assert StftMagnitude.from_config(projected.get_config()).magnitude == "max_projection"
+    with pytest.raises(ValueError, match="magnitude"):
+        StftMagnitude(16, 8, 9, magnitude="power")
