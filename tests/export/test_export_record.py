@@ -150,6 +150,9 @@ def test_the_weights_digest_follows_the_weights_not_the_file(tmp_path):
     dense = [keras.Sequential([keras.Input((2,)), keras.layers.Dense(2, name=name)]) for name in ("a", "b")]
     dense[1].set_weights(dense[0].get_weights())  # weight paths are not hashed: Keras numbers unnamed layers
     assert weights_digest(dense[0]) == weights_digest(dense[1])
+    wide, tall = (keras.Sequential([keras.Input((n,)), keras.layers.Dense(6 // n, use_bias=False)]) for n in (2, 3))
+    tall.set_weights([wide.get_weights()[0].reshape(3, 2)])  # the same bytes in another shape
+    assert weights_digest(wide) != weights_digest(tall)
     changed = model.weights[-1]
     changed.assign(changed + 1e-6)
     assert weights_digest(model) != digest
@@ -167,6 +170,8 @@ def test_a_written_export_loads_back_and_refuses_other_weights(tmp_path):
     seeded(SPEC, seed=9, batch_size=1).save_weights(tmp_path / "other.weights.h5")
     with pytest.raises(ValueError, match="digest"):
         load_export_record(path, tmp_path / "other.weights.h5")
+    with pytest.raises(ValueError, match="streaming models only"):
+        result.with_golden(samples(SPEC.input_shape, count=4), resets=(1,))
     unspecified = export(model, precision="fp32", io_dtype="float32").write(tmp_path / "bare")
     with pytest.raises(ValueError, match="no model spec"):
         load_export_record(unspecified)
