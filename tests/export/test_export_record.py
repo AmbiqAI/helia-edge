@@ -82,8 +82,9 @@ def test_a_dynamic_batch_needs_a_spec_and_a_fixed_batch_must_match():
     other = ModelSpec(params=compact_tcn_params(filters=16, num_classes=3), input_shape=(64, 4))
     with pytest.raises(ValueError, match="shapes of build"):
         export(seeded(SPEC, batch_size=1), precision="fp32", io_dtype="float32", spec=other)
-    with pytest.raises(ValueError, match="batch_size"):
-        export(seeded(SPEC, batch_size=1), precision="fp32", io_dtype="float32", batch_size=0)
+    for batch_size in (0, True, 1.0):
+        with pytest.raises(pydantic.ValidationError, match="batch_size"):
+            export(seeded(SPEC, batch_size=1), precision="fp32", io_dtype="float32", batch_size=batch_size)
 
 
 def test_the_record_refuses_what_it_does_not_describe():

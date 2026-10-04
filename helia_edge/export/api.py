@@ -324,8 +324,6 @@ def export(
         ValueError: If the batch is dynamic without ``spec`` or differs from ``batch_size``, the weights do
             not match ``spec``, or the calibration is invalid.
     """
-    if not isinstance(batch_size, int) or isinstance(batch_size, bool) or batch_size < 1:
-        raise ValueError(f"batch_size is a positive integer, not {batch_size!r}")
     calibration = None if calibration is None else np.asarray(calibration)
     settings = ExportSettings(
         precision=precision,

@@ -10,7 +10,7 @@ import hashlib
 from pathlib import Path
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, StrictInt
 
 from ..importers.mapping import SHA256
 from ..models.spec import ModelSpec
@@ -77,7 +77,7 @@ class ExportSettings(_Record):
     format: Literal["litert"] = "litert"
     precision: Literal[Precision.FP32, Precision.FP16, Precision.A8W8, Precision.A16W8]
     io_dtype: IODType
-    batch_size: int = Field(ge=1)
+    batch_size: StrictInt = Field(ge=1)
     options: ExportOptions = ExportOptions()
     calibration: CalibrationRecord | None = None
 
