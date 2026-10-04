@@ -128,7 +128,7 @@ class WeightRow(BaseModel):
     transforms: tuple[Transform, ...] = ()
     layer: str
     weight: str
-    source_shape: tuple[int, ...] | None = None
+    source_shape: tuple[Annotated[int, Field(ge=0)], ...] | None = None
 
     @model_validator(mode="after")
     def _consistent(self) -> "WeightRow":

@@ -71,6 +71,11 @@ def test_inconsistent_rows_are_refused(row, message):
         WeightRow(layer="l", weight="w", **row)
 
 
+def test_a_source_shape_no_tensor_can_have_is_refused():
+    with pytest.raises(pydantic.ValidationError, match="greater than or equal to 0"):
+        WeightRow(sources=("w",), layer="l", weight="w", source_shape=(-1, 3))
+
+
 def test_a_weight_mapped_twice_is_refused():
     rows = (WeightRow(sources=("a",), layer="l", weight="w"), WeightRow(sources=("b",), layer="l", weight="w"))
     with pytest.raises(pydantic.ValidationError, match="mapped more than once"):

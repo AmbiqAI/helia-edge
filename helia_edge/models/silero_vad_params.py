@@ -91,6 +91,7 @@ SILERO_VAD_V6_ONNX = WeightMapping(
         ),
         WeightRow(
             sources=("model.decoder.decoder.2.weight",),
+            source_shape=(1, SileroVadParams().units, 1),
             transforms=(Reshape(shape=(SileroVadParams().units, 1)),),
             layer="prob",
             weight="kernel",

@@ -70,8 +70,8 @@ def import_weights(model, mapping: WeightMapping, path: Path | str) -> ImportRep
     Nothing is assigned unless every check passes:
 
     - the file's sha256 is the mapping's pinned ``source.sha256``;
-    - every source tensor is used exactly once (each part once when split), or listed as ``unused``,
-      with its row's ``source_shape`` when the row gives one;
+    - every source tensor is used exactly once (each part once when split), or listed as ``unused``;
+    - a row's sources have its ``source_shape``, when the row gives one;
     - every weight of ``model`` is assigned exactly once, with its shape, from a source of a matching
       kind (float to float), finite as stored in the weight's dtype (integers within its range).
 

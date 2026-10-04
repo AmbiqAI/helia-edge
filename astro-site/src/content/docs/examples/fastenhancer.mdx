@@ -14,8 +14,7 @@ backend-free architecture config; `rnnformer.freq` may not exceed
 ```python
 import numpy as np
 from helia_edge.importers import import_weights
-from helia_edge.models import ModelSpec, build, resolve_fastenhancer
-from helia_edge.models import FASTENHANCER_T_ONNX
+from helia_edge.models import FASTENHANCER_T_ONNX, ModelSpec, build, resolve_fastenhancer
 
 record = resolve_fastenhancer("fastenhancer_t")  # serialize record.model_dump_json() with results
 model = build(ModelSpec(params=record.params), batch_size=1)  # the input shape follows from the params

@@ -259,19 +259,22 @@ def test_a_float_source_for_an_integer_weight_is_refused(source):
     np.testing.assert_array_equal(keras.ops.convert_to_numpy(counted.get_layer("counter").count), [1, 2])
 
 
-def test_a_source_of_another_shape_is_refused_before_its_transforms(source):
-    path, sha256 = source()
+def test_a_same_size_source_in_another_layout_is_refused_by_its_source_shape(source):
+    # dense.weight is stored (out, in) = (4, 3); a row reaching the (3, 4) kernel through a Reshape accepts a
+    # (3, 4) source of the same size, transposed, unless it gives source_shape
+    reshaped = (Reshape(shape=(4, 3)), Transpose(perm=(1, 0)))
+    row = WeightRow(sources=("dense.weight",), transforms=reshaped, layer="dense", weight="kernel")
+    relaid = {**tensors(), "dense.weight": tensors()["dense.weight"].T.copy()}
+    path, sha256 = source(relaid)
+    import_weights(model(), mapping(sha256, (row, *ROWS[1:])), path)
     m = model()
     before = weights(m)
-    reshaped = (Reshape(shape=(3, 4)), Transpose(perm=(1, 0)))  # (4, 3) is the right source, (3, 4) the same size
-    rows = (
-        WeightRow(sources=("dense.weight",), transforms=reshaped, layer="dense", weight="kernel", source_shape=(3, 4)),
-        *ROWS[1:],
-    )
-    with pytest.raises(ValueError, match=r"source shapes \[\(4, 3\)\] for source_shape \(3, 4\)"):
-        import_weights(m, mapping(sha256, rows), path)
+    checked = row.model_copy(update={"source_shape": (4, 3)})
+    with pytest.raises(ValueError, match=r"source shapes \[\(3, 4\)\] for source_shape \(4, 3\)"):
+        import_weights(m, mapping(sha256, (checked, *ROWS[1:])), path)
     assert all(np.array_equal(a, b) for a, b in zip(before, weights(m)))
-    import_weights(m, mapping(sha256, (ROWS[0].model_copy(update={"source_shape": (4, 3)}), *ROWS[1:])), path)
+    path, sha256 = source()
+    import_weights(m, mapping(sha256, (checked, *ROWS[1:])), path)
 
 
 def test_a_file_changed_while_read_is_refused(source, monkeypatch):
