@@ -10,12 +10,12 @@ import hashlib
 from pathlib import Path
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, StrictInt, field_validator
+from pydantic import BaseModel, ConfigDict, Field, StrictBool, StrictFloat, StrictInt, field_validator, model_validator
 
 from ..importers.mapping import SHA256
 from ..models.spec import ModelSpec
 from .result import EnvironmentRecord, HeliaEdgeSource, TensorRecord
-from .spec import ConversionMode, IODType, Precision, TensorRole
+from .spec import CALIBRATED, VALID_IO, ConversionMode, IODType, Precision, TensorRole, check_resets
 
 RECORD_SCHEMA = "helia-edge/export-record@1"
 GOLDEN_SCHEMA = "helia-model-zoo/golden@2"
@@ -64,8 +64,8 @@ class ExportOptions(BaseModel):
 
     model_config = _CONFIG
 
-    strict: bool = True
-    state_tie_tolerance: float = Field(default=0.01, ge=0.0, le=0.5)
+    strict: StrictBool = True
+    state_tie_tolerance: StrictFloat = Field(default=0.01, ge=0.0, le=0.5)
     mode: Literal[ConversionMode.KERAS, ConversionMode.CONCRETE] = ConversionMode.KERAS
 
 
@@ -98,6 +98,19 @@ class ExportSettings(BaseModel):
         if precision is Precision.FP32_FP16W:
             raise ValueError("precision is fp32, fp16, a8w8 or a16w8; fp32-w16 is not recorded")
         return precision
+
+    @model_validator(mode="after")
+    def _consistent(self) -> "ExportSettings":
+        if self.io_dtype not in VALID_IO[self.precision]:
+            raise ValueError(f"io_dtype {self.io_dtype} is not valid for precision {self.precision}")
+        if (self.calibration is not None) != (self.precision in CALIBRATED):
+            raise ValueError(
+                f"precision {self.precision} {'needs' if self.precision in CALIBRATED else 'takes no'} calibration"
+            )
+        if self.calibration is not None:
+            resets = self.calibration.resets
+            check_resets(resets, self.calibration.samples, stateful=True, what="Calibration")
+        return self
 
 
 class FileRecord(BaseModel):
@@ -155,6 +168,11 @@ class GoldenRecord(BaseModel):
     steps: int = Field(gt=0)
     resets: tuple[int, ...] = ()
     inputs: Source
+
+    @model_validator(mode="after")
+    def _resets_within_steps(self) -> "GoldenRecord":
+        check_resets(self.resets, self.steps, stateful=True, what="Golden")
+        return self
 
 
 class HeliaEdgeRecord(BaseModel):
@@ -226,8 +244,10 @@ def file_record(name: str, data: bytes) -> FileRecord:
 def weights_digest(model) -> str:
     """``sha256:`` over the model's weights in ``model.weights`` order, independent of the file they came from.
 
-    For each weight it hashes the UTF-8 path, the NumPy dtype name and the shape, each followed by a NUL
-    byte, then the C-order bytes of the value.
+    For each weight it hashes the NumPy dtype name and the shape, each followed by a NUL byte, then the
+    C-order bytes of the value. Weight paths are not hashed: Keras numbers unnamed layers by how many it
+    has built in the process, so paths can differ between two builds of one spec. The record's ``model``
+    names the architecture.
     """
     import keras
     import numpy as np
@@ -235,7 +255,7 @@ def weights_digest(model) -> str:
     digest = hashlib.sha256()
     for weight in model.weights:
         value = np.ascontiguousarray(keras.ops.convert_to_numpy(weight))
-        for field in (weight.path, value.dtype.name, ",".join(map(str, value.shape))):
+        for field in (value.dtype.name, ",".join(map(str, value.shape))):
             digest.update(field.encode() + b"\0")
         digest.update(value.tobytes())
     return f"sha256:{digest.hexdigest()}"

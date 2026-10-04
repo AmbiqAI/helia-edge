@@ -63,7 +63,8 @@ model_again = load_export_record(record_path)
 ```
 
 - **Static batch:** the exported model has batch `batch_size` (default 1). A model with a dynamic batch is rebuilt from `spec` with that batch and the same weights, so the export has no `SPACE_TO_BATCH_ND`/`BATCH_TO_SPACE_ND` pairs or dynamic tensors; without `spec` it is refused.
-- **Weights digest:** sha256 over each weight's path, dtype, shape and value, in `model.weights` order. It is the same whether the weights come from `.weights.h5`, `.keras` or an import (`weights_import` records the mapping and the source file's sha256).
+- **Weights digest:** sha256 over each weight's dtype, shape and value, in `model.weights` order (not the weight names, which Keras numbers per process for unnamed layers). It is the same whether the weights come from `.weights.h5`, `.keras` or an import (`weights_import` records the mapping and the source file's sha256).
+- **Calibrated precisions** (`a8w8`, `a16w8`) export with `batch_size` 1. Streaming `resets` are increasing steps within the calibration.
 - **Streaming models:** pass the signal as `calibration` with the state `resets`; `export` builds the state calibration with `stream_calibration`. `with_golden(inputs, resets)` adds a `helia-model-zoo/golden@2` sequence run with LiteRT's reference kernels.
 - **Options:** `ExportOptions(strict=True, state_tie_tolerance=0.01, mode="keras")`; `mode` is `keras` or `concrete`, both of which keep the model's batch.
 

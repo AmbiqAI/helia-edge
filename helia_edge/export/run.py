@@ -35,7 +35,7 @@ from .recipe import (
     load_recipe,
 )
 from .result import EnvironmentRecord, environment_record, state_scales_tied
-from .spec import CALIBRATED, ExportSpec, state_pair
+from .spec import CALIBRATED, ExportSpec, check_resets, state_pair
 
 
 class SourceError(ValueError):
@@ -132,14 +132,6 @@ def _signal_input(model) -> str | None:
     if len(signals) != 1:
         raise ValueError(f"A recipe streaming model needs exactly one input that is not a state; got {signals}")
     return signals[0]
-
-
-def _check_resets(resets, steps: int, stateful: bool, what: str) -> None:
-    if resets and not stateful:
-        raise ValueError(f"{what} resets apply to streaming models only")
-    if list(resets) != sorted(set(resets)) or (resets and resets[-1] >= steps):
-        bound = f"increasing steps between 1 and {steps - 1}" if steps > 1 else "absent for a single step"
-        raise ValueError(f"{what} resets {list(resets)} must be {bound}")
 
 
 def build_model(source: ParamsSeed | ParamsWeights | ParamsImport | KerasFile, base_dir: Path):
@@ -321,17 +313,17 @@ def run_recipe(
         content = fetch(recipe.model.file, base).read_bytes()
         if reference is not None:
             stateful = any(record.pair is not None for record in tensor_records(content)[0])
-            _check_resets(resets, len(reference), stateful, "Reference")
+            check_resets(resets, len(reference), stateful, "Reference")
         entries = [_entry("import", None, content, reference, out_dir, resets, source)]
     else:
         model = build_model(recipe.model, base)
         signal = _signal_input(model)
         if reference is not None:
-            _check_resets(resets, len(reference), signal is not None, "Reference")
+            check_resets(resets, len(reference), signal is not None, "Reference")
         calibration = None
         if recipe.calibration is not None:
             calibration = load_array(recipe.calibration.source, base, recipe.calibration.samples)
-            _check_resets(recipe.calibration.resets, len(calibration), signal is not None, "Calibration")
+            check_resets(recipe.calibration.resets, len(calibration), signal is not None, "Calibration")
             if signal is not None:
                 from .api import stream_calibration
 

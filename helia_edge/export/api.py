@@ -33,6 +33,8 @@ from .spec import (
     ExportSpec,
     IODType,
     Precision,
+    TensorRole,
+    check_resets,
     state_input_name,
     state_output_name,
     state_pair,
@@ -267,6 +269,10 @@ class Export:
         """
         from .golden import golden_npz
 
+        if len(inputs) == 0:
+            raise ValueError("A golden needs at least one call")
+        stateful = any(entry.role is TensorRole.STATE for entry in self.record.io.inputs)
+        check_resets(resets, len(inputs), stateful, "Golden")
         data = golden_npz(self.content, inputs, resets)
         golden = GoldenRecord(
             file=file_record("golden.npz", data),
@@ -286,6 +292,7 @@ class Export:
         directory.mkdir(parents=True, exist_ok=True)
         (directory / self.record.artifact.file).write_bytes(self.content)
         self.model.save_weights(directory / "model.weights.h5")
+        (directory / "golden.npz").unlink(missing_ok=True)  # never leave a golden the record does not name
         if self.golden is not None and self.record.golden is not None:
             (directory / self.record.golden.file.file).write_bytes(self.golden)
         self.record.write(directory / "record.json")
@@ -334,6 +341,10 @@ def export(
             not match ``spec``, or the calibration is invalid.
     """
     calibration = None if calibration is None else np.asarray(calibration)
+    if resets and calibration is None:
+        raise ValueError("resets apply to the calibration of a streaming model; no calibration was given")
+    if batch_size != 1 and calibration is not None:
+        raise ValueError("Calibrated precisions export with batch_size 1: calibration runs one sample at a time")
     settings = ExportSettings(
         precision=Precision(precision),
         io_dtype=IODType(io_dtype),
@@ -353,6 +364,9 @@ def export(
         want, got = [tuple(w.shape) for w in rebuilt.weights], [tuple(w.shape) for w in model.weights]
         if want != got:
             raise ValueError(f"The model's weights do not have the shapes of build(spec): {got} vs {want}")
+        want, got = [tuple(t.shape[1:]) for t in rebuilt.inputs], [tuple(t.shape[1:]) for t in model.inputs]
+        if want != got:
+            raise ValueError(f"The model's inputs do not have the shapes of build(spec): {got} vs {want}")
     batches = {tensor.shape[0] for tensor in model.inputs}
     if batches != {batch_size}:
         if batches != {None} or rebuilt is None:
@@ -366,8 +380,8 @@ def export(
     names = [tensor.name for tensor in model.inputs]
     signals = [name for name in names if state_pair(name) is None]
     streaming = len(signals) < len(names)
-    if resets and not streaming:
-        raise ValueError("resets apply to streaming models (state_in_k inputs) only")
+    if calibration is not None:
+        check_resets(resets, len(calibration), streaming, "Calibration")
     data: npt.NDArray | Mapping[str, npt.NDArray] | None = calibration
     if calibration is not None and streaming:
         if len(signals) != 1:

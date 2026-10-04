@@ -6,6 +6,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from .recipe import NAME, SHA256
+from .record import GOLDEN_SCHEMA as GOLDEN_SCHEMA
 from .record import TensorEntry as TensorEntry
 from .result import EnvironmentRecord, HeliaEdgeSource
 from .spec import ExportSpec
@@ -23,7 +24,6 @@ class FileRecord(BaseModel):
     bytes: int
 
 
-GOLDEN_SCHEMA = "helia-model-zoo/golden@2"
 
 
 class GoldenSource(BaseModel):
