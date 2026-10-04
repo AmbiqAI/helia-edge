@@ -22,6 +22,7 @@ from helia_edge.export import (  # noqa: E402
     load_export_record,
     weights_digest,
 )
+from helia_edge.export.golden import golden_npz  # noqa: E402
 from helia_edge.export.litert import operator_names  # noqa: E402
 from helia_edge.export.record import Source, WeightImport  # noqa: E402
 from helia_edge.models import ModelSpec, SileroVadParams, TcnParams, build, compact_tcn_params  # noqa: E402
@@ -110,6 +111,10 @@ def test_the_weights_digest_follows_the_weights_not_the_file(tmp_path):
     assert weights_digest(reloaded) != digest
     reloaded.load_weights(tmp_path / "w.weights.h5")
     assert weights_digest(reloaded) == digest == weights_digest(keras.saving.load_model(tmp_path / "m.keras"))
+    assert weights_digest(build(SPEC, batch_size=1, name="renamed")) != digest  # other values
+    dense = [keras.Sequential([keras.Input((2,)), keras.layers.Dense(2, name=name)]) for name in ("a", "b")]
+    dense[1].set_weights(dense[0].get_weights())  # the same values under other weight paths
+    assert weights_digest(dense[0]) != weights_digest(dense[1])
     changed = model.weights[-1]
     changed.assign(changed + 1e-6)
     assert weights_digest(model) != digest
@@ -161,6 +166,8 @@ def test_a_streaming_export_records_its_calibration_import_and_golden(tmp_path):
     assert (tmp_path / "golden.npz").stat().st_size == record.golden.file.bytes
     golden = np.load(tmp_path / "golden.npz")
     assert golden["input_0"].shape[0] == 16 and golden["input_0"].dtype == np.int16
+    assert (tmp_path / "golden.npz").read_bytes() == golden_npz(result.content, calls[:16], (8,))
+    assert golden_npz(result.content, calls[:16]) != result.golden  # the reset changes the sequence
     assert json.loads(path.read_text())["weights"]["import"]["mapping"] == "silero_vad_v6_onnx"
     with pytest.raises(ValueError, match="streaming"):
         export(seeded(SPEC, batch_size=1), precision="fp32", io_dtype="float32", resets=(1,))
