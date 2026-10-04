@@ -7,11 +7,10 @@ ResNet is a type of convolutional neural network (CNN) that is commonly used for
 
 For more info, refer to the original paper [Deep Residual Learning for Image Recognition](https://doi.org/10.1109/CVPR.2016.90).
 
-Classes:
-    ResNetParams: ResNet parameters
-    ResNetModel: Helper class to generate model from parameters
+Parameters are in ``helia_edge.models.resnet_params``.
 
 Functions:
+    build: ResNet model from ``ResNetParams``
     generate_bottleneck_block: Generate functional bottleneck block
     generate_residual_block: Generate functional residual block
     resnet_layer: Generate functional ResNet model
@@ -23,58 +22,10 @@ Functions:
 """
 
 import keras
-from pydantic import BaseModel, Field
 
 from ..layers.convolutional import conv2d
 from ..layers.normalization import batch_normalization
-
-
-class ResNetBlockParams(BaseModel):
-    """ResNet block parameters
-
-    Attributes:
-        filters (int): Number of filters
-        depth (int): Layer depth
-        kernel_size (int | tuple[int, int]): Kernel size
-        strides (int | tuple[int, int]): Stride size
-        bottleneck (bool): Use bottleneck blocks
-        activation (str): Activation function
-
-    """
-
-    filters: int = Field(..., description="# filters")
-    depth: int = Field(default=1, description="Layer depth")
-    kernel_size: int | tuple[int, int] = Field(default=3, description="Kernel size")
-    strides: int | tuple[int, int] = Field(default=1, description="Stride size")
-    bottleneck: bool = Field(default=False, description="Use bottleneck blocks")
-    activation: str = Field(default="relu6", description="Activation function")
-
-
-class ResNetParams(BaseModel):
-    """ResNet parameters
-
-    Attributes:
-        blocks (list[ResNetBlockParams]): ResNet blocks
-        input_filters (int): Input filters
-        input_kernel_size (int | tuple[int, int]): Input kernel size
-        input_strides (int | tuple[int, int]): Input stride
-        input_activation (str): Input activation
-        include_top (bool): Include top
-        output_activation (str | None): Output activation
-        dropout (float): Dropout rate
-        name (str): Model name
-
-    """
-
-    blocks: list[ResNetBlockParams] = Field(default_factory=list, description="ResNet blocks")
-    input_filters: int = Field(default=0, description="Input filters")
-    input_kernel_size: int | tuple[int, int] = Field(default=3, description="Input kernel size")
-    input_strides: int | tuple[int, int] = Field(default=2, description="Input stride")
-    input_activation: str = Field(default="relu6", description="Input activation")
-    include_top: bool = Field(default=True, description="Include top")
-    output_activation: str | None = Field(default=None, description="Output activation")
-    dropout: float = Field(default=0.2, description="Dropout rate")
-    name: str = Field(default="ResNet", description="Model name")
+from .resnet_params import ResNetParams
 
 
 def generate_bottleneck_block(
@@ -157,16 +108,11 @@ def generate_residual_block(
     return layer
 
 
-def resnet_layer(
-    x: keras.KerasTensor,
-    params: ResNetParams,
-    num_classes: int | None = None,
-) -> keras.KerasTensor:
+def resnet_layer(x: keras.KerasTensor, params: ResNetParams) -> keras.KerasTensor:
     """Generate functional ResNet model.
     Args:
         x (keras.KerasTensor): Inputs
         params (ResNetParams): Model parameters.
-        num_classes (int, optional): Number of class outputs. Defaults to None.
 
     Returns:
         keras.KerasTensor: Output tensor
@@ -207,8 +153,8 @@ def resnet_layer(
         if 0 < params.dropout < 1:
             y = keras.layers.Dropout(params.dropout)(y)
 
-        if num_classes is not None:
-            y = keras.layers.Dense(num_classes, name=name)(y)
+        if params.num_classes is not None:
+            y = keras.layers.Dense(params.num_classes, name=name)(y)
 
         if params.output_activation:
             y = keras.layers.Activation(params.output_activation)(y)
@@ -220,18 +166,19 @@ def resnet_layer(
     return y
 
 
-class ResNetModel:
-    """Helper class to generate model from parameters"""
+def build(
+    params: ResNetParams, input_shape: tuple[int | None, ...], *, batch_size: int | None = None, name: str | None = None
+) -> keras.Model:
+    """Build a ResNet model.
 
-    @staticmethod
-    def layer_from_params(inputs: keras.Input, params: ResNetParams | dict, num_classes: int | None = None):
-        """Create layer from parameters"""
-        if isinstance(params, dict):
-            params = ResNetParams(**params)
-        return resnet_layer(x=inputs, params=params, num_classes=num_classes)
+    Args:
+        params (ResNetParams): Model parameters.
+        input_shape (tuple[int | None, ...]): Input shape without the batch axis; None for a variable axis.
+        batch_size (int | None): Static batch size; None for a dynamic batch.
+        name (str | None): Model name; the family when None.
 
-    @staticmethod
-    def model_from_params(inputs: keras.Input, params: ResNetParams | dict, num_classes: int | None = None):
-        """Create model from parameters"""
-        outputs = ResNetModel.layer_from_params(inputs=inputs, params=params, num_classes=num_classes)
-        return keras.Model(inputs=inputs, outputs=outputs)
+    Returns:
+        keras.Model: The model, named ``resnet`` unless ``name`` is given.
+    """
+    inputs = keras.Input(shape=input_shape, batch_size=batch_size, name="inputs")
+    return keras.Model(inputs=inputs, outputs=resnet_layer(inputs, params), name=name or params.family)

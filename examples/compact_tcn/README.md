@@ -3,7 +3,7 @@
 This example builds **seeded, untrained compact TCN models** and their LiteRT
 exports for performance work. They are not task-quality models.
 
-It reuses `TcnModel` with a preset fixed in `generate.py`:
+It builds `TcnParams` with `helia_edge.models.tcn.build`, using a preset fixed in `generate.py`:
 
 - four small depthwise/pointwise blocks with batch normalization and ReLU6;
 - dilations 1/2/4/8 and SE ratio 4;

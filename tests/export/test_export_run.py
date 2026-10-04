@@ -438,10 +438,11 @@ def test_calibration_uses_the_first_rows_in_stored_order(workdir):
 def test_params_weights_and_keras_file_verify(workdir):
     keras.backend.clear_session()
     keras.utils.set_random_seed(9)
-    inputs = keras.Input((32, 4))  # batch None: the recipe rebuilds it with batch size 1
-    from helia_edge.models import TcnModel, TcnParams
+    from helia_edge.models import TcnParams
+    from helia_edge.models.tcn import build
 
-    model = TcnModel.model_from_params(inputs, TcnParams.from_config(TCN), num_classes=2)
+    # batch None: the recipe rebuilds it with batch size 1
+    model = build(TcnParams.model_validate({**TCN, "num_classes": 2}), (32, 4))
     model.save(workdir / "free.keras")
     model.save_weights(workdir / "free.weights.h5")
     exports = [{"name": "fp32", "precision": "fp32", "io_dtype": "float32", "mode": "keras"}]
@@ -549,3 +550,13 @@ def test_recipes_refuse_formats_other_than_litert(workdir):
     write(workdir / "o.yaml", recipe)
     with pytest.raises(ValueError, match="litert format only"):
         run_recipe(workdir / "o.yaml", workdir / "out")
+
+
+def test_recipe_tcn_is_built_with_batch_one_and_one_class_count():
+    from helia_edge.export.architectures import build_tcn
+
+    model = build_tcn(TCN, [32, 4], 2)
+    assert model.input_shape == (1, 32, 4) and model.output_shape[-1] == 2
+    assert build_tcn({**TCN, "num_classes": 2}, [32, 4], 2).output_shape[-1] == 2
+    with pytest.raises(ValueError, match="differs"):
+        build_tcn({**TCN, "num_classes": 3}, [32, 4], 2)

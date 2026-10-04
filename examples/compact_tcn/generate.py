@@ -16,7 +16,7 @@ from ai_edge_litert.interpreter import Interpreter, OpResolverType
 from tensorflow.lite.python import schema_py_generated as schema
 
 from helia_edge.export import ExportSpec, export_model
-from helia_edge.models.tcn import TcnModel, TcnParams
+from helia_edge.models.tcn import TcnParams, build
 
 
 def sha256(data):
@@ -59,7 +59,6 @@ TCN = {
     "include_top": True,
     "use_logits": True,
     "output_activation": None,
-    "name": "compact_tcn",
 }
 
 
@@ -70,9 +69,8 @@ def build_model(width, tcn=TCN):
     config = copy.deepcopy(tcn)
     for block in config["blocks"]:
         block["filters"] = width
-    params = TcnParams.model_validate(config)
-    inputs = keras.Input(shape=INPUT_SHAPE, batch_size=1, name="features")
-    model = TcnModel.model_from_params(inputs, params, num_classes=NUM_CLASSES)
+    params = TcnParams.model_validate({**config, "num_classes": NUM_CLASSES})
+    model = build(params, INPUT_SHAPE, batch_size=1)
     if model.output_shape != (1, 240, 2):
         raise ValueError(f"Unexpected output shape {model.output_shape}")
     return model, params.model_dump(mode="json")

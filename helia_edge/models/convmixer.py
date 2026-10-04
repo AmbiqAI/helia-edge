@@ -3,11 +3,8 @@
 
 For more info, refer to the original paper [ConvMixer: Revisiting Convolution in Vision](https://arxiv.org/abs/2201.09792).
 
-Classes:
-    ConvMixerParams: ConvMixer parameters
-    ConvMixerModel: Helper class to generate model from parameters
-
 Functions:
+    build: ConvMixer model from ``ConvMixerParams``
     conv_mixer_block: ConvMixer block
     conv_mixer_layer: ConvMixer layer
 
@@ -16,32 +13,9 @@ Functions:
 from typing import Callable
 
 import keras
-from pydantic import BaseModel, Field
 
 from ..layers.normalization import batch_normalization
-
-
-class ConvMixerParams(BaseModel):
-    """ConvMixer parameters
-
-    Attributes:
-        filters (int): Number of filters per layer
-        depth (int): Network depth
-        kernel_size (int): Filter size
-        patch_size (int): Patch size
-        include_top (bool): Include top
-        output_activation (str | None): Output activation
-        name (str): Model name
-
-    """
-
-    filters: int = Field(default=256, description="# filters per layer")
-    depth: int = Field(default=8, description="Network depth")
-    kernel_size: int = Field(default=5, description="Filter size")
-    patch_size: int = Field(default=2, description="Patch size")
-    include_top: bool = Field(default=True, description="Include top")
-    output_activation: str | None = Field(default=None, description="Output activation")
-    name: str = Field(default="RegNet", description="Model name")
+from .convmixer_params import ConvMixerParams
 
 
 def conv_mixer_block(filters: int, kernel_size: int) -> Callable[[keras.KerasTensor], keras.KerasTensor]:
@@ -70,17 +44,12 @@ def conv_mixer_block(filters: int, kernel_size: int) -> Callable[[keras.KerasTen
     return layer
 
 
-def conv_mixer_layer(
-    x: keras.KerasTensor,
-    params: ConvMixerParams,
-    num_classes: int | None = None,
-) -> keras.KerasTensor:
+def conv_mixer_layer(x: keras.KerasTensor, params: ConvMixerParams) -> keras.KerasTensor:
     """ConvMixer: https://openreview.net/pdf?id=TVHS5Y4dNvM.
 
     Args:
         x (keras.KerasTensor): Input tensor
         params (ConvMixerParams): Model parameters.
-        num_classes (int, optional): Number of classes.
 
     Returns:
         keras.KerasTensor: Model output
@@ -103,26 +72,31 @@ def conv_mixer_layer(
     # Classification block
     if params.include_top:
         y = keras.layers.GlobalAvgPool2D(keepdims=False)(y)
-        if num_classes is not None:
-            y = keras.layers.Dense(num_classes)(y)
+        if params.num_classes is not None:
+            y = keras.layers.Dense(params.num_classes)(y)
         if params.output_activation:
             y = keras.layers.Activation(params.output_activation)(y)
 
     return y
 
 
-class ConvMixerModel:
-    """Helper class to generate model from parameters"""
+def build(
+    params: ConvMixerParams,
+    input_shape: tuple[int | None, ...],
+    *,
+    batch_size: int | None = None,
+    name: str | None = None,
+) -> keras.Model:
+    """Build a ConvMixer model.
 
-    @staticmethod
-    def layer_from_params(inputs: keras.Input, params: ConvMixerParams | dict, num_classes: int | None = None):
-        """Create layer from parameters"""
-        if isinstance(params, dict):
-            params = ConvMixerParams(**params)
-        return conv_mixer_layer(x=inputs, params=params, num_classes=num_classes)
+    Args:
+        params (ConvMixerParams): Model parameters.
+        input_shape (tuple[int | None, ...]): Input shape without the batch axis; None for a variable axis.
+        batch_size (int | None): Static batch size; None for a dynamic batch.
+        name (str | None): Model name; the family when None.
 
-    @staticmethod
-    def model_from_params(inputs: keras.Input, params: ConvMixerParams | dict, num_classes: int | None = None):
-        """Create model from parameters"""
-        outputs = ConvMixerModel.layer_from_params(inputs=inputs, params=params, num_classes=num_classes)
-        return keras.Model(inputs=inputs, outputs=outputs)
+    Returns:
+        keras.Model: The model, named ``convmixer`` unless ``name`` is given.
+    """
+    inputs = keras.Input(shape=input_shape, batch_size=batch_size, name="inputs")
+    return keras.Model(inputs=inputs, outputs=conv_mixer_layer(inputs, params), name=name or params.family)

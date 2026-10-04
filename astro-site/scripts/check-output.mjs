@@ -25,8 +25,8 @@ for (const file of files(root).filter(f=>f.endsWith('.html'))) {
 }
 const index=JSON.parse(readFileSync('src/data/api-index.json','utf8'));
 assert(index.rows.length > 200, 'API index unexpectedly lost coverage');
-for (const name of ['TcnModel','RandomGaussianNoise1D','TQDMProgressBar','register_keras_serializables']) assert(index.rows.some(r=>r.name===name), `Missing public API: ${name}`);
-assert(readFileSync('dist/reference/api/helia_edge/models/tcn/index.md','utf8').includes('TcnParams'), 'Semantic API Markdown missing');
+for (const name of ['ModelSpec','TcnParams','RandomGaussianNoise1D','TQDMProgressBar','register_keras_serializables']) assert(index.rows.some(r=>r.name===name), `Missing public API: ${name}`);
+assert(readFileSync('dist/reference/api/helia_edge/models/tcn_params/index.md','utf8').includes('TcnParams'), 'Semantic API Markdown missing');
 assert(existsSync('dist/llms-full.txt'), 'Missing LLM export');
 assert(existsSync('dist/pagefind/pagefind.js'), 'Missing search index');
 if(errors.length) throw Error(`Broken internal links (${errors.length}):\n${[...new Set(errors)].join('\n')}`);

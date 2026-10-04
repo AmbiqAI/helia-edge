@@ -107,6 +107,7 @@ helia-edge export verify exports/manifest.json
   - `params_import`: the same architectures, with weights imported from a file trained elsewhere through a named mapping in `helia_edge.registry.weight_mappings` (see [Import weights](/helia-edge/guide/import-weights/)); the file's sha256 must be the one the mapping is pinned to;
   - `keras_file`: a saved `.keras` model;
   - `tflite_import`: an existing `.tflite` file, taken as is.
+- **TCN params:** for `tcn`, `params` are `TcnParams`, which reject unknown fields, so remove the `name` field from older recipes. The recipe's `num_classes` must match any `num_classes` in `params`.
 - **Sources:** `path` sources resolve relative to the recipe. `url` sources are downloaded once into `~/.cache/helia-edge/sources` (set `HELIA_EDGE_CACHE` to move it). A source whose sha256 differs is refused.
 - **Calibration and reference data:** calibration uses the first `samples` rows in stored order (more rows than stored is an error). Reference inputs are run with LiteRT's reference kernels; the inputs as fed and the outputs are saved as `.npy` files next to each model.
 - **Streaming models:** for a model with state pairs and one signal input, calibration and reference rows are consecutive calls of the signal input.

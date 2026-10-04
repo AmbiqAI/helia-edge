@@ -7,49 +7,19 @@ TsMixer is a fully MLP-based architecture for time series data.
 
 For more info, refer to the original paper [TsMixer: An All-MLP Architecture for Time Series](https://arxiv.org/abs/2303.06053).
 
-Classes:
-    TsMixerParams: TsMixer parameters
-    TsMixerModel: Helper class to generate model from parameters
+Parameters are in ``helia_edge.models.tsmixer_params``.
 
 Functions:
+    build: TsMixer model from ``TsMixerParams``
     ts_block: Residual block of TsMixer
     norm_layer: Normalization layer
     tsmixer_layer: TsMixer layer
 
 """
 
-from typing import Literal
-
 import keras
-from pydantic import BaseModel, Field
 
-
-class TsMixerBlockParams(BaseModel):
-    """TsMixer block parameters
-
-    Attributes:
-        norm (Literal["batch", "layer"]): Normalization type
-        activation (Literal["relu", "gelu"]): Activation type
-        dropout (float): Dropout rate
-        ff_dim (int): Feed forward dimension
-    """
-
-    norm: Literal["batch", "layer"] | None = Field(default="layer", description="Normalization type")
-    activation: Literal["relu", "gelu"] | None = Field(default="relu", description="Activation type")
-    dropout: float | None = Field(default=None, description="Dropout rate")
-    ff_dim: int | None = Field(default=None, description="Feed forward dimension")
-
-
-class TsMixerParams(BaseModel):
-    """TsMixer parameters
-
-    Attributes:
-        blocks (list[TsBlockParams]): TsMixer blocks
-        name (str): Model name
-    """
-
-    blocks: list[TsMixerBlockParams] = Field(default_factory=list, description="UNext blocks")
-    name: str = Field(default="TsMixer", description="Model name")
+from .tsmixer_params import TsMixerBlockParams, TsMixerParams
 
 
 def norm_layer(norm: str, name: str) -> keras.Layer:
@@ -120,13 +90,12 @@ def ts_block(params: TsMixerBlockParams, name: str) -> keras.Layer:
     return layer
 
 
-def tsmixer_layer(inputs: keras.KerasTensor, params: any, num_classes: int) -> keras.KerasTensor:
+def tsmixer_layer(inputs: keras.KerasTensor, params: any) -> keras.KerasTensor:
     """TsMixer layer
 
     Args:
         inputs (keras.KerasTensor): Input tensor
         params (any): Model parameters
-        num_classes (int): Number of classes
 
     Returns:
         keras.KerasTensor: Output tensor
@@ -139,24 +108,31 @@ def tsmixer_layer(inputs: keras.KerasTensor, params: any, num_classes: int) -> k
     #     y = y[:, :, target_slice]
 
     y = keras.ops.transpose(y, axes=[0, 2, 1])  # [Batch, Channel, Input Length]
-    y = keras.layers.Dense(num_classes)(y)  # [Batch, Channel, Output Length]
+    y = keras.layers.Dense(params.num_classes)(y)  # [Batch, Channel, Output Length]
     y = keras.ops.transpose(y, axes=[0, 2, 1])  # [Batch, Output Length, Channel])
 
     return y
 
 
-class TsMixerModel:
-    """Helper class to generate model from parameters"""
+def build(
+    params: TsMixerParams,
+    input_shape: tuple[int | None, ...],
+    *,
+    batch_size: int | None = None,
+    name: str | None = None,
+) -> keras.Model:
+    """Build a TsMixer model.
 
-    @staticmethod
-    def layer_from_params(inputs: keras.Input, params: TsMixerParams | dict, num_classes: int | None = None):
-        """Create layer from parameters"""
-        if isinstance(params, dict):
-            params = TsMixerParams(**params)
-        return tsmixer_layer(inputs=inputs, params=params, num_classes=num_classes)
+    Args:
+        params (TsMixerParams): Model parameters.
+        input_shape (tuple[int | None, ...]): Input shape without the batch axis; None for a variable axis.
+        batch_size (int | None): Static batch size; None for a dynamic batch.
+        name (str | None): Model name; the family when None.
 
-    @staticmethod
-    def model_from_params(inputs: keras.Input, params: TsMixerParams | dict, num_classes: int | None = None):
-        """Create model from parameters"""
-        outputs = TsMixerModel.layer_from_params(inputs=inputs, params=params, num_classes=num_classes)
-        return keras.Model(inputs=inputs, outputs=outputs)
+    Returns:
+        keras.Model: The model, named ``tsmixer`` unless ``name`` is given.
+    """
+    if params.num_classes is None:
+        raise ValueError("TsMixer needs num_classes")
+    inputs = keras.Input(shape=input_shape, batch_size=batch_size, name="inputs")
+    return keras.Model(inputs=inputs, outputs=tsmixer_layer(inputs, params), name=name or params.family)

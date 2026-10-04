@@ -63,7 +63,7 @@ def test_missing_backend_guidance():
 import sys
 import helia_edge as helia
 try:
-    helia.models.TcnModel
+    helia.models.tcn
 except ImportError as exc:
     assert 'helia-edge[' in str(exc), str(exc)
     if sys.version_info >= (3, 14):
@@ -84,7 +84,7 @@ def test_selected_backend_does_not_require_the_other():
     run_python(f"""
 import sys
 import helia_edge as helia
-assert callable(helia.models.TcnModel.model_from_params)
+assert callable(helia.models.tcn.build)
 assert callable(helia.models.load_model)
 assert callable(helia.metrics.MultiF1Score)
 from helia_edge.losses.simclr import SimCLRLoss

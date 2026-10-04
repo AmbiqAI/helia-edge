@@ -5,12 +5,10 @@ This module provides utility functions to generate RegNet models.
 
 Fore more information, please refer to the following paper: https://arxiv.org/abs/2101.00590
 
-Classes:
-    RegNetBlockParam: RegNet block parameters
-    RegNetParams: RegNet parameters
-    RegNetModel: Helper class to generate RegNet models
+Parameters are in ``helia_edge.models.regnet_params``.
 
 Functions:
+    build: RegNet model from ``RegNetParams``
     regnet_core: RegNet core
     regnet_layer: Generate RegNet model
 
@@ -19,67 +17,12 @@ Functions:
 from typing import Callable, Literal
 
 import keras
-from pydantic import BaseModel, Field
 
 from ..layers.convolutional import conv2d
 from ..layers.normalization import batch_normalization
 from ..layers.squeeze_excite import se_layer
+from .regnet_params import RegNetBlockParam, RegNetParams
 from .utils import make_divisible
-
-
-class RegNetBlockParam(BaseModel):
-    """RegNet block parameters
-
-    Attributes:
-        filters (int): Number of filters
-        depth (int): Layer depth
-        group_width (int): Group width
-        kernel_size (int | tuple[int, int]): Kernel size
-        strides (int | tuple[int, int]): Stride size
-        se_ratio (float): Squeeze Excite ratio
-        droprate (float): Drop rate
-        activation (str): Activation function
-
-    """
-
-    filters: int = Field(..., description="# filters")
-    depth: int = Field(default=1, description="Layer depth")
-    group_width: int = Field(default=1, description="Group width. Must be divisible by in/out filters")
-    kernel_size: int | tuple[int, int] = Field(default=3, description="Kernel size")
-    strides: int | tuple[int, int] = Field(default=1, description="Stride size")
-    se_ratio: float = Field(default=8, description="Squeeze Excite ratio")
-    droprate: float = Field(default=0, description="Drop rate")
-    activation: str = Field(default="relu6", description="Activation function")
-
-
-class RegNetParams(BaseModel):
-    """RegNet parameters
-
-    Attributes:
-
-        blocks (list[RegNetBlockParam]): RegNet blocks
-        input_filters (int): Input filters
-        input_strides (int | tuple[int, int]): Input stride
-        input_activation (str): Input activation
-        output_filters (int): Output filters
-        block_style (Literal["y", "z"]): Block style
-        include_top (bool): Include top
-        output_activation (str | None): Output activation
-        dropout (float): Dropout rate
-        name (str): Model name
-
-    """
-
-    blocks: list[RegNetBlockParam] = Field(default_factory=list, description="RegNet blocks")
-    input_filters: int = Field(default=0, description="Input filters")
-    input_strides: int | tuple[int, int] = Field(default=2, description="Input stride")
-    input_activation: str = Field(default="relu6", description="Input activation")
-    output_filters: int = Field(default=0, description="Output filters")
-    block_style: Literal["y", "z"] = Field(default="y", description="Block style")
-    include_top: bool = Field(default=True, description="Include top")
-    output_activation: str | None = Field(default=None, description="Output activation")
-    dropout: float = Field(default=0.2, description="Dropout rate")
-    name: str = Field(default="RegNet", description="Model name")
 
 
 def yblock(
@@ -248,17 +191,12 @@ def regnet_core(
     return layer
 
 
-def regnet_layer(
-    x: keras.KerasTensor,
-    params: RegNetParams,
-    num_classes: int | None = None,
-) -> keras.KerasTensor:
+def regnet_layer(x: keras.KerasTensor, params: RegNetParams) -> keras.KerasTensor:
     """Create RegNet TF functional model
 
     Args:
         x (keras.KerasTensor): Input tensor
         params (RegNetParams): Model parameters.
-        num_classes (int, optional): Number of classes.
 
     Returns:
         keras.KerasTensor: Output tensor
@@ -295,8 +233,8 @@ def regnet_layer(
 
         if params.dropout > 0 and params.dropout < 1:
             y = keras.layers.Dropout(params.dropout)(y)
-        if num_classes is not None:
-            y = keras.layers.Dense(num_classes, name=name)(y)
+        if params.num_classes is not None:
+            y = keras.layers.Dense(params.num_classes, name=name)(y)
         if params.output_activation:
             y = keras.layers.Activation(params.output_activation)(y)
 
@@ -307,18 +245,19 @@ def regnet_layer(
     return y
 
 
-class RegNetModel:
-    """Helper class to generate model from parameters"""
+def build(
+    params: RegNetParams, input_shape: tuple[int | None, ...], *, batch_size: int | None = None, name: str | None = None
+) -> keras.Model:
+    """Build a RegNet model.
 
-    @staticmethod
-    def layer_from_params(inputs: keras.Input, params: RegNetParams | dict, num_classes: int | None = None):
-        """Create layer from parameters"""
-        if isinstance(params, dict):
-            params = RegNetParams(**params)
-        return regnet_layer(x=inputs, params=params, num_classes=num_classes)
+    Args:
+        params (RegNetParams): Model parameters.
+        input_shape (tuple[int | None, ...]): Input shape without the batch axis; None for a variable axis.
+        batch_size (int | None): Static batch size; None for a dynamic batch.
+        name (str | None): Model name; the family when None.
 
-    @staticmethod
-    def model_from_params(inputs: keras.Input, params: RegNetParams | dict, num_classes: int | None = None):
-        """Create model from parameters"""
-        outputs = RegNetModel.layer_from_params(inputs=inputs, params=params, num_classes=num_classes)
-        return keras.Model(inputs=inputs, outputs=outputs)
+    Returns:
+        keras.Model: The model, named ``regnet`` unless ``name`` is given.
+    """
+    inputs = keras.Input(shape=input_shape, batch_size=batch_size, name="inputs")
+    return keras.Model(inputs=inputs, outputs=regnet_layer(inputs, params), name=name or params.family)

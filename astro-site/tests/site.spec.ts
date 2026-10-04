@@ -4,14 +4,14 @@ test('API search, filters, empty state and symbol navigation', async ({page})=>{
   await page.goto('reference/');
   const browser=page.getByRole('region',{name:'Search Python API'});
   await expect(browser).toHaveAttribute('data-ready','true');
-  await page.getByRole('searchbox',{name:'Search Python API'}).fill('TcnModel');
-  await expect(browser.getByRole('link',{name:'TcnModel',exact:true})).toBeVisible();
+  await page.getByRole('searchbox',{name:'Search Python API'}).fill('TcnParams');
+  await expect(browser.getByRole('link',{name:'TcnParams',exact:true})).toBeVisible();
   await page.getByLabel('Category',{exact:true}).selectOption('Metrics');
-  await expect(browser.getByRole('link',{name:'TcnModel',exact:true})).toHaveCount(0);
+  await expect(browser.getByRole('link',{name:'TcnParams',exact:true})).toHaveCount(0);
   await page.getByLabel('Category',{exact:true}).selectOption('Architectures');
-  await browser.getByRole('link',{name:'TcnModel',exact:true}).click();
-  await expect(page).toHaveURL(/models\/tcn\/#helia_edge.models.tcn.TcnModel$/);
-  await expect(page.locator('[id="helia_edge.models.tcn.TcnModel"]')).toBeVisible();
+  await browser.getByRole('link',{name:'TcnParams',exact:true}).click();
+  await expect(page).toHaveURL(/models\/tcn_params\/#helia_edge.models.tcn_params.TcnParams$/);
+  await expect(page.locator('[id="helia_edge.models.tcn_params.TcnParams"]')).toBeVisible();
 });
 
 test('legacy guide and API URLs resolve',async({page})=>{
@@ -41,10 +41,10 @@ test('site search returns generated API',async({page})=>{
   const results=await page.evaluate(async()=>{
     const path='/helia-edge/pagefind/pagefind.js';
     const pf=await import(/* @vite-ignore */ path);
-    const result=await pf.search('TcnModel');
+    const result=await pf.search('TcnParams');
     return Promise.all(result.results.map((r:{data:()=>Promise<{url:string}>})=>r.data()));
   });
-  expect(results.some((r:{url:string})=>r.url.includes('models/tcn'))).toBe(true);
+  expect(results.some((r:{url:string})=>r.url.includes('models/tcn_params'))).toBe(true);
 });
 
 test('installation choices sync and advanced examples stay available', async ({page}) => {

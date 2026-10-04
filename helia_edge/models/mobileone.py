@@ -7,12 +7,10 @@ MobileOne is a fully convolutional neural network designed to have minimal laten
 
 For more info, refer to the original paper [MobileOne: An Improved One millisecond Mobile Backbone](https://doi.org/10.48550/arXiv.2206.04040).
 
-Classes:
-    MobileOneParams: MobileOne parameters
-    MobileOneBlockParams: MobileOne block parameters
-    MobileOneModel: Helper class to generate model from parameters
+Parameters are in ``helia_edge.models.mobileone_params``.
 
 Functions:
+    build: MobileOne model from ``MobileOneParams``
     mobileone_block: MobileOne block
     mobileone_layer: MobileOne layer
 
@@ -28,94 +26,33 @@ The MobileOne architecture has been modified to allow the following:
 ## Usage
 
 ```python
-import keras
-from helia_edge.models import MobileOne, MobileOneParams, MobileOneBlockParams
+from helia_edge.models import MobileOneBlockParams, MobileOneParams, ModelSpec, build
 
-inputs = keras.Input(shape=(800, 1), name="inputs")
-
-model = MobileOne.model_from_params(
-    x=inputs,
-    params=MobileOneParams(
-        input_filters=24,
-        input_kernel_size=(1, 7),
-        input_strides=(1, 2),
-        blocks=[
-            MobileOneBlockParams(filters=32, depth=2, kernel_size=(1, 7), strides=(1, 2), se_ratio=2, se_depth=2, num_conv_branches=2)
-        ],
-        include_top=True,
-        model_name="MobileOne",
-    ),
+params = MobileOneParams(
+    input_filters=24,
+    input_kernel_size=(1, 7),
+    input_strides=(1, 2),
+    input_padding=(0, 3),
+    blocks=[
+        MobileOneBlockParams(
+            filters=32, depth=2, kernel_size=(1, 7), strides=(1, 2), padding=(0, 3), se_ratio=2, num_conv_branches=2
+        )
+    ],
+    include_top=True,
+    num_classes=5,
 )
-
+model = build(ModelSpec(params=params, input_shape=(1, 800, 1)))
 model.summary()
-
 ```
+
 """
 
 import keras
-from pydantic import BaseModel, Field
 
 from ..layers import se_layer
 from ..layers.convolutional import conv2d
 from ..layers.normalization import batch_normalization
-
-
-class MobileOneBlockParams(BaseModel):
-    """MobileOne block parameters
-
-    Attributes:
-        filters (int): Number of filters
-        depth (int): Layer depth
-        kernel_size (int | tuple[int, int]): Kernel size
-        strides (int | tuple[int, int]): Stride size
-        padding (int | tuple[int, int]): Padding size
-        se_ratio (float): Squeeze Excite ratio
-        se_depth (int): Depth length to apply SE
-        num_conv_branches (int): Number of conv branches
-        activation (str): Activation function
-
-    """
-
-    filters: int = Field(..., description="# filters")
-    depth: int = Field(default=1, description="Layer depth")
-    kernel_size: int | tuple[int, int] = Field(default=3, description="Kernel size")
-    strides: int | tuple[int, int] = Field(default=1, description="Stride size")
-    padding: int | tuple[int, int] = Field(default=0, description="Padding size")
-    se_ratio: float = Field(default=8, description="Squeeze Excite ratio")
-    se_depth: int = Field(default=0, description="Depth length to apply SE")
-    num_conv_branches: int = Field(default=2, description="# conv branches")
-    activation: str = Field(default="relu6", description="Activation function")
-
-
-class MobileOneParams(BaseModel):
-    """MobileOne parameters
-
-    Attributes:
-        blocks (list[MobileOneBlockParams]): MobileOne blocks
-        input_filters (int): Input filters
-        input_kernel_size (int | tuple[int, int]): Input kernel size
-        input_strides (int | tuple[int, int]): Input stride
-        input_padding (int | tuple[int, int]): Input padding
-        include_top (bool): Include top
-        output_activation (str | None): Output activation
-        dropout (float): Dropout rate
-        name (str): Model name
-
-    """
-
-    blocks: list[MobileOneBlockParams] = Field(default_factory=list, description="MobileOne blocks")
-
-    input_filters: int = Field(default=3, description="Input filters")
-    input_kernel_size: int | tuple[int, int] = Field(default=3, description="Input kernel size")
-    input_strides: int | tuple[int, int] = Field(default=2, description="Input stride")
-    input_padding: int | tuple[int, int] = Field(default=1, description="Input padding")
-
-    # output_filters: int = Field(default=0, description="Output filters")
-    include_top: bool = Field(default=True, description="Include top")
-    output_activation: str | None = Field(default=None, description="Output activation")
-    dropout: float = Field(default=0.2, description="Dropout rate")
-    # drop_connect_rate: float = Field(default=0.2, description="Drop connect rate")
-    name: str = Field(default="MobileOne", description="Model name")
+from .mobileone_params import MobileOneParams
 
 
 def mobileone_block(
@@ -259,18 +196,12 @@ def mobileone_block(
     return layer
 
 
-def mobileone_layer(
-    x: keras.KerasTensor,
-    params: MobileOneParams,
-    num_classes: int | None = None,
-    inference_mode: bool = False,
-) -> keras.KerasTensor:
+def mobileone_layer(x: keras.KerasTensor, params: MobileOneParams, inference_mode: bool = False) -> keras.KerasTensor:
     """Create MobileOne TF functional model
 
     Args:
         x (keras.KerasTensor): Input tensor
         params (MobileOneParams): Model parameters.
-        num_classes (int, optional): Number of classes.
 
     Returns:
         keras.KerasTensor: Output tensor
@@ -329,8 +260,8 @@ def mobileone_layer(
         y = keras.layers.GlobalAveragePooling2D(name=f"{name}_pool")(y)
         if 0 < params.dropout < 1:
             y = keras.layers.Dropout(params.dropout)(y)
-        if num_classes is not None:
-            y = keras.layers.Dense(num_classes, name=name)(y)
+        if params.num_classes is not None:
+            y = keras.layers.Dense(params.num_classes, name=name)(y)
         if params.output_activation:
             y = keras.layers.Activation(params.output_activation)(y)
 
@@ -340,18 +271,23 @@ def mobileone_layer(
     return y
 
 
-class MobileOneModel:
-    """Helper class to generate model from parameters"""
+def build(
+    params: MobileOneParams,
+    input_shape: tuple[int | None, ...],
+    *,
+    batch_size: int | None = None,
+    name: str | None = None,
+) -> keras.Model:
+    """Build a MobileOne model.
 
-    @staticmethod
-    def layer_from_params(inputs: keras.Input, params: MobileOneParams | dict, num_classes: int | None = None):
-        """Create layer from parameters"""
-        if isinstance(params, dict):
-            params = MobileOneParams(**params)
-        return mobileone_layer(x=inputs, params=params, num_classes=num_classes)
+    Args:
+        params (MobileOneParams): Model parameters.
+        input_shape (tuple[int | None, ...]): Input shape without the batch axis; None for a variable axis.
+        batch_size (int | None): Static batch size; None for a dynamic batch.
+        name (str | None): Model name; the family when None.
 
-    @staticmethod
-    def model_from_params(inputs: keras.Input, params: MobileOneParams | dict, num_classes: int | None = None):
-        """Create model from parameters"""
-        outputs = MobileOneModel.layer_from_params(inputs=inputs, params=params, num_classes=num_classes)
-        return keras.Model(inputs=inputs, outputs=outputs)
+    Returns:
+        keras.Model: The model, named ``mobileone`` unless ``name`` is given.
+    """
+    inputs = keras.Input(shape=input_shape, batch_size=batch_size, name="inputs")
+    return keras.Model(inputs=inputs, outputs=mobileone_layer(inputs, params), name=name or params.family)

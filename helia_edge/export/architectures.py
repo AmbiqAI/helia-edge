@@ -51,10 +51,15 @@ def _input(input_shape):
 
 def build_tcn(params, input_shape, num_classes):
     """Build a TCN from ``TcnParams``; needs ``input_shape``, ``num_classes`` optional."""
-    from ..models import TcnModel, TcnParams
+    from ..models import TcnParams
+    from ..models.tcn import build
 
     _require("tcn", input_shape, num_classes, shape=True, classes=None)
-    return TcnModel.model_from_params(_input(input_shape), TcnParams.from_config(params), num_classes=num_classes)
+    if num_classes is not None:
+        if params.get("num_classes") not in (None, num_classes):
+            raise ValueError(f"tcn: num_classes {num_classes} differs from params num_classes {params['num_classes']}")
+        params = {**params, "num_classes": num_classes}
+    return build(TcnParams.model_validate(params), tuple(input_shape), batch_size=1)
 
 
 def build_mlperf_tiny(params, input_shape, num_classes):

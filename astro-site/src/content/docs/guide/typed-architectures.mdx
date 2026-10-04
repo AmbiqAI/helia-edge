@@ -4,8 +4,7 @@ description: Construct models from typed configuration and preserve architecture
 ---
 
 Model construction belongs to the reusable library. Callers own Keras backend
-selection, input tensors, initialization seeds, weight loading, conversion and
-execution. These factories do not clear sessions, reset random seeds or export
+selection, initialization seeds, weight loading, conversion and execution. These factories do not clear sessions, reset random seeds or export
 models. Backend selection must happen before importing Keras.
 
 ## Faithful MLPerf Tiny family
@@ -25,80 +24,59 @@ calibration or precision controls. These are the same fixed architectures as the
 their default names remain unchanged. An optional `name=` on the family factory
 names the model instance without changing its architecture.
 
-## Compact TCN preset and strict config ingestion
+## Compact TCN preset
 
 ```python
-import keras
-from helia_edge.models import compact_tcn_params, TcnParams, TcnModel
+from helia_edge.models import ModelSpec, build, compact_tcn_params
 
-params = compact_tcn_params(filters=8)
-# Strict boundary for a decoded JSON object; rejects unknown nested fields.
-params = TcnParams.from_config(params.model_dump(mode="json"))
-inputs = keras.Input(shape=(240, 14), batch_size=1, dtype="float32")
-model = TcnModel.model_from_params(inputs, params, num_classes=2)
+spec = ModelSpec(params=compact_tcn_params(filters=8, num_classes=2), input_shape=(240, 14))
+model = build(spec, batch_size=1)
 ```
 
-The preset returns ordinary `TcnParams`: four small depthwise/pointwise blocks,
-SE ratio 4, batch normalization/ReLU6, kernels 1×3, dilations 1/2/4/8 and a linear
-1×1 output head. Integer filters must be at least 8 to retain the existing
-builder's SE path. Input dimensions and output class count are supplied by the
-caller; the example dimensions are not preset restrictions.
+The preset returns ordinary `TcnParams`:
+- four small depthwise/pointwise blocks with SE ratio 4;
+- batch normalization and ReLU6;
+- kernels 1×3 and dilations 1/2/4/8;
+- a linear 1×1 output head.
 
-`TcnParams.from_config()` is an explicit unknown-field-rejecting boundary for
-model and block fields. It rejects nonpositive kernels, dilations, filters, depth,
-branches and expansion ratios; SE ratios must be finite and nonnegative, dropout
-finite in [0,1). It retains normal Pydantic coercion and does not validate every
-historical TCN combination or claim strict primitive types.
-Existing `TcnParams.model_validate()` and dictionary factory calls retain their
-previous behavior for compatibility. Use the explicit parser for new JSON
-consumers, then pass typed objects internally. Parameter JSON describes the
-architecture; Keras model/config and weight serialization describe the actual
-initialized instance. A seed alone does not guarantee identical bytes across
-backends or dependency versions.
+Integer filters must be at least 8 to retain the builder's SE path. The input shape comes with the spec and the class count with `num_classes`; the example values are not preset restrictions.
 
-## Config hydration and explicit trained weights
+`TcnParams` and `TcnBlockParams` are immutable and reject unknown fields at every level. They also reject:
+- nonpositive kernels, dilations, filters, depth, branches and expansion ratios;
+- SE ratios that are not finite and nonnegative;
+- dropout that is not finite in [0, 1).
 
-`TcnParams.get_config()` returns JSON-shaped architecture data. Standard Keras
-serialization roundtrips that data through the same validated `from_config`
-boundary; no model instance, input signature, weights or execution policy is
-embedded. Register public custom objects when deserializing in a fresh process:
+They keep normal Pydantic coercion and do not validate every historical TCN combination.
+
+## Specs and explicit trained weights
+
+`TcnParams` is no longer a Keras-serializable object, and has no `get_config`/`from_config`. To read JSON written by `keras.saving.serialize_keras_object(params)` in earlier versions, validate its `config` entry: `TcnParams.model_validate({k: v for k, v in encoded["config"].items() if k != "name"})`.
+
+
+A `ModelSpec` serializes as JSON: the family parameters (with their `family` field) and the input shape. It describes the architecture only. Weights, the batch size, seeds and execution policy are kept separately:
 
 ```python
 import keras
-from helia_edge import register_keras_serializables
-from helia_edge.models import TcnParams, TcnModel
+from helia_edge.models import ModelSpec, build
 
-register_keras_serializables()
-params = TcnParams.from_config(architecture_config)
-encoded = keras.saving.serialize_keras_object(params)
-params = keras.saving.deserialize_keras_object(encoded)
-model = TcnModel.model_from_params(keras.Input((256, 1)), params, num_classes=4)
+spec = ModelSpec.model_validate_json(architecture_json)
+model = build(spec)
 model.load_weights(checkpoint_path)  # Compatible .keras or .weights.h5; no skipped mismatches.
 model.save("reconstructed.keras")
 restored = keras.models.load_model("reconstructed.keras", compile=False)
 ```
 
-The trained heartKIT `seg-4-tcn-sm` artifact can be reconstructed with existing
-`block_type="mb"`, not the compact `sm` preset. Its configuration uses input/output
-kernels (1,7), batch normalization, four blocks with widths 16/24/32/48, dilations
-1/2/4/8, SE ratios 0/2/2/2, dropout0.1 and ReLU6; the saved model produces four
-logits per sample. Map its legacy `model_name` field explicitly to `name` before
-strict parsing. Do not replace the architecture's `use_logits=True` with the
-export task's separate softmax policy. The model and typed factory have 52 layers
-and 7,310 parameters; weight loading and selected FP32 outputs were checked on
-CPU TensorFlow and Torch. This is compatibility evidence, not task accuracy.
-
-The historical file does not load directly on either backend: its saved compile
-metrics are registered under an earlier name. Construct the typed model and use
-`load_weights` instead. (Dotted layer names alone no longer block Torch:
-`helia_edge.models.load_model` renames them when it loads a `.keras` file.) Keras
-save/load of the reconstructed model works on both qualified backends. Historical
-SE 1x1 convolutions use same padding while the current helper uses valid; with
-unit stride these have identical spatial behavior. Names and untrained initializer
-metadata may differ; all loaded weights, graph connections, kernels, dilation,
-activation and normalization settings must agree. Keep source hashes, original
-precision and verification inputs with the consumer; this library does not ship
-trained checkpoints. Accelerator arithmetic is not qualified by the CPU result.
+**Reconstructing heartKIT's `seg-4-tcn-sm`:** the trained artifact can be reconstructed with `block_type="mb"`, not the compact `sm` preset.
+- **Its configuration:**
+  - input and output kernels (1,7) and batch normalization;
+  - four blocks with widths 16/24/32/48, dilations 1/2/4/8, SE ratios 0/2/2/2 and dropout 0.1;
+  - ReLU6;
+  - four logits per sample (`num_classes=4`).
+- **Converting it:** drop its legacy `model_name` field before parsing, because parameters reject unknown fields. Do not replace the architecture's `use_logits=True` with the export task's separate softmax policy.
+- **Checks:** the model has 52 layers and 7,310 parameters. Weight loading and selected FP32 outputs were checked on CPU TensorFlow and Torch. This is compatibility evidence, not task accuracy.
+- **Loading the historical file:** it does not load directly on either backend, because its saved compile metrics are registered under an earlier name. Build the model from its spec and use `load_weights`. Dotted layer names alone no longer block Torch: `helia_edge.models.load_model` renames them when it loads a `.keras` file.
+- **Known differences:** historical SE 1×1 convolutions use same padding, while the current helper uses valid; with unit stride these behave identically. Names and untrained initializer metadata may differ. All loaded weights, graph connections, kernels, dilation, activation and normalization settings must agree.
+- **What this library doesn't ship:** keep source hashes, original precision and verification inputs with the consumer; this library does not ship trained checkpoints. Accelerator arithmetic is not qualified by the CPU result.
 
 ## Export and benchmark consumers
 
