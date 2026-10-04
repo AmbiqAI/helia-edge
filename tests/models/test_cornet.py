@@ -24,6 +24,8 @@ def build(unroll=False, params=CorNetParams(), batch_size=None):
 
 def test_default_matches_paper_table_iii():
     model = build()
+    assert model.name == "cornet"
+    assert build_spec(ModelSpec(params=CorNetParams(), input_shape=(1000, 1)), name="hr").name == "hr"
     for name, count in TABLE_III.items():
         assert sum(int(np.prod(w.shape)) for w in model.get_layer(name).trainable_weights) == count
     assert model.get_layer("conv1_pool").output.shape[1] == 50

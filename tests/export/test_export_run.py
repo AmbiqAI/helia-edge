@@ -560,3 +560,20 @@ def test_recipe_tcn_is_built_with_batch_one_and_one_class_count():
     assert build_tcn({**TCN, "num_classes": 2}, [32, 4], 2).output_shape[-1] == 2
     with pytest.raises(ValueError, match="differs"):
         build_tcn({**TCN, "num_classes": 3}, [32, 4], 2)
+
+
+@pytest.mark.parametrize(
+    "architecture,params,input_shape,num_classes",
+    [
+        ("tcn", TCN, [32, 4], 2),
+        ("miniresnet_v1", {"base_filters": 8, "pooling": "avg"}, [33, 25, 1], 3),
+        ("timeppg", {}, [256, 4], None),
+        ("cornet", {"filters": 8, "lstm_units": 16}, [1000, 1], None),
+        ("vad_silero_v6", {}, None, None),
+    ],
+)
+def test_recipe_architectures_build_with_batch_one(architecture, params, input_shape, num_classes):
+    from helia_edge.export.architectures import resolve_architecture
+
+    model = resolve_architecture(architecture)(params, input_shape, num_classes)
+    assert all(t.shape[0] == 1 for t in model.inputs)

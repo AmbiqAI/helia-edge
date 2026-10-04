@@ -71,6 +71,7 @@ def reference(model, params, x):
 def randomized(params, seed=0):
     keras.utils.set_random_seed(seed)
     model = build_spec(ModelSpec(params=params, input_shape=(256, 4)))
+    assert model.name == "timeppg"
     rng = np.random.default_rng(seed)
     for layer in model.layers:
         if isinstance(layer, keras.layers.BatchNormalization):
