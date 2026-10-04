@@ -8,7 +8,8 @@ from ..importers.mapping import Reshape, SourcePin, Transpose, WeightMapping, We
 
 
 class SileroVadParams(BaseModel):
-    """Silero VAD v6 (16 kHz). Every value is fixed by the v6.2.2 weights.
+    """Silero VAD v6 (16 kHz). The geometry is fixed by the v6.2.2 weights; the options choose how the
+    model computes it, and every option keeps the same weights.
 
     Attributes:
         family: Model family.
@@ -16,6 +17,14 @@ class SileroVadParams(BaseModel):
         context: Samples of the previous call repeated at the start of each call.
         hop: New samples per call (32 ms).
         units: LSTM state size of ``state_in_0``/``state_in_1`` (h, c).
+        stft: ``conv1d`` frames the reflect-padded audio with a strided convolution. ``conv_blocks``
+            convolves 64-sample blocks instead, with the right reflect padding folded into the last
+            frame's kernel; it is exact in float.
+        magnitude: ``sqrt`` is the exact magnitude of each bin. ``max_projection`` is the largest of 9
+            projections of (|re|, |im|) onto directions from 0 to 90 degrees, within +-0.24%; it needs no
+            square root.
+        encoder_tail: ``conv`` runs the last two encoder layers as convolutions. ``live_taps`` runs them as
+            dense layers over the kernel taps that see real frames rather than padding; it is exact in float.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -25,6 +34,9 @@ class SileroVadParams(BaseModel):
     context: Literal[64] = 64
     hop: Literal[512] = 512
     units: Literal[128] = 128
+    stft: Literal["conv1d", "conv_blocks"] = "conv1d"
+    magnitude: Literal["sqrt", "max_projection"] = "sqrt"
+    encoder_tail: Literal["conv", "live_taps"] = "conv"
 
     @property
     def samples(self) -> int:
