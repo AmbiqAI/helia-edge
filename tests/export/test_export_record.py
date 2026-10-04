@@ -97,6 +97,11 @@ def test_the_export_is_the_export_model_artifact_with_its_record():
         model, precision="a8w8", io_dtype="int8", calibration=calibration.astype(np.float64), spec=SPEC
     )
     assert from_float64.content == result.content and from_float64.record == record  # cast to float32, then hashed
+    import ml_dtypes
+
+    for other in (calibration.astype(ml_dtypes.bfloat16), np.round(calibration * 100).astype(np.int16)):
+        expected = export(model, precision="a8w8", io_dtype="int8", calibration=other.astype(np.float32), spec=SPEC)
+        assert export(model, precision="a8w8", io_dtype="int8", calibration=other, spec=SPEC).record == expected.record
     for wrong in (
         calibration.astype(np.complex64),
         calibration.astype(str),

@@ -269,8 +269,8 @@ def _reference_build():
 def _steps(resets: Collection[int]) -> tuple[int, ...]:
     """``resets`` as integer steps from an ordered collection.
 
-    Bools, floats, strings and bytes are refused rather than converted, and so are sets and mappings,
-    whose order is not the caller's.
+    Bools, floats, strings and bytes are refused rather than converted, and so are sets (no order) and
+    mappings (keys or values would be ambiguous).
     """
     if isinstance(resets, set | frozenset | Mapping):
         raise ValueError(f"resets are an ordered collection of steps, not {type(resets).__name__}")
@@ -286,9 +286,10 @@ def _steps(resets: Collection[int]) -> tuple[int, ...]:
 
 
 def _float32_samples(samples: npt.ArrayLike, what: str) -> npt.NDArray:
-    """``samples`` along axis 0 as float32; anything but a float or integer array of samples is refused."""
+    """``samples`` along axis 0 as float32: real numbers (any float or integer dtype that casts to float32,
+    such as bfloat16) of at least one dimension; bool, complex, string and object arrays are refused."""
     array = np.asarray(samples)
-    if array.dtype.kind not in "fiu" or array.ndim < 1:
+    if array.dtype == np.bool_ or not np.can_cast(array.dtype, np.float32, "same_kind") or array.ndim < 1:
         raise ValueError(
             f"{what} must be a float or integer array of samples, not {array.dtype} with shape {array.shape}"
         )
