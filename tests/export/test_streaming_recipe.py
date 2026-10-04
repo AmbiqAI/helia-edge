@@ -272,8 +272,8 @@ def test_silero_vad_is_a_registered_architecture():
         resolve_architecture("vad_silero_v6")({"context": 32}, None, None)
     with pytest.raises(ValueError, match="fixed input shape"):
         resolve_architecture("vad_silero_v6")({}, (576,), None)
-    npu = {"stft": "conv_blocks", "magnitude": "max_projection", "encoder_tail": "live_taps"}
-    model = resolve_architecture("vad_silero_v6")(npu, None, None)
+    sqrt_mirror_pad_free = {"stft": "conv_blocks", "magnitude": "max_projection", "encoder_tail": "live_taps"}
+    model = resolve_architecture("vad_silero_v6")(sqrt_mirror_pad_free, None, None)
     assert model.get_layer("stft").get_config()["magnitude"] == "max_projection" and model.input_shape[0] == (1, 576)
     with pytest.raises(ValueError, match="magnitude"):
         resolve_architecture("vad_silero_v6")({"magnitude": "power"}, None, None)

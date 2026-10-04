@@ -101,8 +101,8 @@ VARIANTS = [
     )
 ]
 VARIANT_IDS = ["/".join((p.stft, p.magnitude, p.encoder_tail)) for p in VARIANTS]
-NPU = SileroVadParams(stft="conv_blocks", magnitude="max_projection", encoder_tail="live_taps")
-"""The options that run on integer NPUs: no square root, no reflect padding, no strided frames over samples."""
+SQRT_MIRROR_PAD_FREE = SileroVadParams(stft="conv_blocks", magnitude="max_projection", encoder_tail="live_taps")
+"""Sqrt-free, mirror-pad-free: these options export without SQRT, MIRROR_PAD or TRANSPOSE operators."""
 
 
 def frontend(stft, magnitude="sqrt"):
@@ -228,14 +228,14 @@ def test_the_block_frames_fold_the_reflection():
 
 
 @pytest.mark.skipif(keras.backend.backend() != "tensorflow", reason="LiteRT export runs on the TensorFlow backend")
-def test_the_npu_options_export_with_folded_weights_and_no_square_root(importer):
+def test_the_sqrt_mirror_pad_free_options_export_with_folded_weights(importer):
     pytest.importorskip("ai_edge_litert")
     import tensorflow as tf
 
     from helia_edge.export import ExportSpec, export_model
     from helia_edge.export.litert import operator_names
 
-    model, _, _ = importer(NPU)
+    model, _, _ = importer(SQRT_MIRROR_PAD_FREE)
     content = export_model(model, ExportSpec(precision="fp32", io_dtype="float32", mode="keras")).content
     ops = operator_names(content)
     assert not {"SQRT", "MIRROR_PAD", "TRANSPOSE", "GATHER"} & set(ops)
@@ -277,7 +277,11 @@ def test_the_layers_refuse_other_geometries():
         built(np.zeros((1, 2 * SAMPLES), np.float32))
 
 
-@pytest.mark.parametrize("params", [NPU, SileroVadParams(magnitude="max_projection")], ids=["npu", "conv1d_projection"])
+@pytest.mark.parametrize(
+    "params",
+    [SQRT_MIRROR_PAD_FREE, SileroVadParams(magnitude="max_projection")],
+    ids=["sqrt_mirror_pad_free", "conv1d_projection"],
+)
 @pytest.mark.parametrize("policy", ["mixed_float16", "mixed_bfloat16"])
 def test_the_projected_magnitude_runs_under_mixed_precision(params, policy):
     previous = keras.config.dtype_policy()
@@ -290,7 +294,7 @@ def test_the_projected_magnitude_runs_under_mixed_precision(params, policy):
     assert prob.shape == (1, 1)
 
 
-@pytest.mark.parametrize("params", [SileroVadParams(), NPU], ids=["default", "npu"])
+@pytest.mark.parametrize("params", [SileroVadParams(), SQRT_MIRROR_PAD_FREE], ids=["default", "sqrt_mirror_pad_free"])
 def test_saved_models_load_in_a_new_process(importer, params, tmp_path):
     import subprocess
     import sys
@@ -314,13 +318,13 @@ np.testing.assert_array_equal(got, np.load({str(tmp_path / "want.npy")!r}))
 
 
 @pytest.mark.skipif(keras.backend.backend() != "tensorflow", reason="LiteRT export runs on the TensorFlow backend")
-def test_the_npu_options_export_to_int16(importer):
+def test_the_sqrt_mirror_pad_free_options_export_to_int16(importer):
     pytest.importorskip("ai_edge_litert")
     from helia_edge.export import ExportSpec, LiteRTStreamRunner, export_model, stream_calibration
     from helia_edge.export.litert import operator_names
     from helia_edge.export.result import state_scales_tied
 
-    model, _, _ = importer(NPU)
+    model, _, _ = importer(SQRT_MIRROR_PAD_FREE)
     signal = np.concatenate([np.zeros(64, np.float32), audio(48)])
     calls = np.stack([signal[i * 512 : i * 512 + SAMPLES] for i in range(48)])
     result = export_model(
@@ -328,7 +332,7 @@ def test_the_npu_options_export_to_int16(importer):
         ExportSpec(precision="a16w8", io_dtype="int16", mode="keras"),
         stream_calibration(model, {"audio": calls}),
     )
-    assert "SQRT" not in operator_names(result.content)
+    assert not {"SQRT", "MIRROR_PAD", "TRANSPOSE"} & set(operator_names(result.content))
     assert state_scales_tied(result.inputs, result.outputs) is True
     runner = LiteRTStreamRunner(result.content, reference_kernels=True)
     _, outputs = runner.run({"audio": runner.encode("audio", calls[:, None])})
@@ -347,10 +351,10 @@ def test_the_model_saves_and_reloads(imported, tmp_path):
         np.testing.assert_array_equal(keras.ops.convert_to_numpy(got), keras.ops.convert_to_numpy(want))
 
 
-def test_the_npu_options_save_and_reload(importer, tmp_path):
-    model, _, _ = importer(NPU)
-    model.save(tmp_path / "silero_npu.keras")
-    loaded = keras.saving.load_model(tmp_path / "silero_npu.keras")
+def test_the_sqrt_mirror_pad_free_options_save_and_reload(importer, tmp_path):
+    model, _, _ = importer(SQRT_MIRROR_PAD_FREE)
+    model.save(tmp_path / "silero_sqrt_mirror_pad_free.keras")
+    loaded = keras.saving.load_model(tmp_path / "silero_sqrt_mirror_pad_free.keras")
     feed = [audio(2)[None, :SAMPLES], *np.random.default_rng(3).standard_normal((2, 1, UNITS)).astype(np.float32)]
     for got, want in zip(loaded(feed), model(feed), strict=True):
         np.testing.assert_array_equal(keras.ops.convert_to_numpy(got), keras.ops.convert_to_numpy(want))
@@ -373,8 +377,8 @@ def speech():
 @pytest.mark.skipif(not ONNX_FILE, reason="set HELIA_EDGE_SILERO_ONNX to the pinned silero_vad_16k_op15.onnx")
 @pytest.mark.parametrize(
     ("params", "tolerance"),
-    [(SileroVadParams(), (1e-4, 1e-4, 1e-3)), (NPU, (2e-3, 0.02, 0.05))],
-    ids=["exact", "npu"],
+    [(SileroVadParams(), (1e-4, 1e-4, 1e-3)), (SQRT_MIRROR_PAD_FREE, (2e-3, 0.02, 0.05))],
+    ids=["exact", "sqrt_mirror_pad_free"],
 )
 def test_imported_weights_match_onnx_runtime(params, tolerance):
     """A1: probability, h and c within (1e-4, 1e-4, 1e-3) of ONNX Runtime with the state carried, or
