@@ -99,5 +99,6 @@ class StftMagnitude(keras.layers.Layer):
             "frame_step": self.frame_step,
             "bins": self.bins,
             "padding": self.padding,
-            "magnitude": self.magnitude,
+            # Written only when not the default, so configs of the exact magnitude load in earlier versions
+            **({"magnitude": self.magnitude} if self.magnitude != "sqrt" else {}),
         }

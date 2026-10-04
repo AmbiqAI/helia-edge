@@ -10,8 +10,9 @@ independent stream. Weights come from ``helia_edge.importers`` with ``SILERO_VAD
 (``silero_vad_params``).
 
 The default options compute the reference model exactly: an STFT magnitude with a square root. The
-other options (``SileroVadParams``) compute the same model from operators that integer kernels and
-NPUs run, deriving what they need (block kernels, the folded padding, tap slices) from the same
+other options (``SileroVadParams``) compute the same model in other ways: ``max_projection`` needs no
+square root, so the model exports to int16 activations; ``conv_blocks`` and ``live_taps`` are exact
+rewrites. They derive what they need (block kernels, the folded padding, tap slices) from the same
 weights inside the graph, so an exporter folds them into constants.
 """
 
@@ -56,6 +57,8 @@ class SileroBlockStft(keras.layers.Layer):
         self.basis = self.add_weight(name="basis", shape=(FRAME, 1, 2 * BINS), initializer="zeros", trainable=False)
 
     def call(self, audio):
+        if audio.shape[-1] != SAMPLES:
+            raise ValueError(f"SileroBlockStft takes {SAMPLES} samples per call, not {audio.shape[-1]}")
         # Interleave the columns: 2b is the real part of bin b, 2b + 1 the imaginary part
         taps = keras.ops.take(self.basis[:, 0, :], np.stack([np.arange(BINS), np.arange(BINS) + BINS], 1).ravel(), 1)
         blocks = keras.ops.reshape(audio, (-1, SAMPLES // BLOCK, 1, BLOCK))
@@ -122,11 +125,13 @@ class SileroLiveTaps(keras.layers.Layer):
 
     def __init__(self, filters: int, taps: tuple[int, ...], **kwargs):
         super().__init__(**kwargs)
+        if not taps or len(set(taps)) != len(taps) or not set(taps) <= {0, 1, 2}:
+            raise ValueError(f"taps are distinct kernel taps from 0 to 2, not {taps}")
         self.filters = filters
         self.taps = tuple(taps)
 
     def build(self, input_shape):
-        if not self.taps or input_shape[-1] % len(self.taps):
+        if input_shape[-1] is None or input_shape[-1] % len(self.taps):
             raise ValueError(f"{input_shape[-1]} input channels do not split over the taps {self.taps}")
         channels = input_shape[-1] // len(self.taps)
         self.kernel = self.add_weight(name="kernel", shape=(3, channels, self.filters), initializer="glorot_uniform")

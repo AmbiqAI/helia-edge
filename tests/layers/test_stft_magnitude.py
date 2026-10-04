@@ -34,6 +34,7 @@ def test_the_basis_is_a_stored_non_trainable_weight():
     assert [w.name for w in layer.weights] == ["basis"] and not layer.trainable_weights
     config = layer.get_config()
     assert config["padding"] == (0, 8)
+    assert "magnitude" not in config  # the exact magnitude's config loads in earlier versions
     assert StftMagnitude.from_config(config).get_config() == config
 
 

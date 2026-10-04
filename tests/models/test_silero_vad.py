@@ -250,7 +250,7 @@ def test_the_npu_options_export_with_folded_weights_and_no_square_root(importer)
 
 
 def test_the_default_keeps_its_layers_so_saved_weights_still_load():
-    """Keras weight files are keyed by layer class: the default model keeps the classes of earlier releases."""
+    """Keras weight files are keyed by layer class: the default model keeps the classes of earlier versions."""
     model = build(SileroVadParams(), batch_size=1)
     assert type(model.get_layer("stft")) is StftMagnitude
     assert all(type(model.get_layer(f"encoder{i}")) is keras.layers.Conv1D for i in range(4))
@@ -259,20 +259,26 @@ def test_the_default_keeps_its_layers_so_saved_weights_still_load():
 def test_the_layers_refuse_other_geometries():
     with pytest.raises(ValueError, match="576 samples"):
         SileroBlockStft().build((1, 2 * SAMPLES))
-    with pytest.raises(ValueError, match="split over the taps"):
-        SileroLiveTaps(8, ()).build((1, 128))
+    for taps in ((), (1, 1), (-1,), (3,)):
+        with pytest.raises(ValueError, match="distinct kernel taps"):
+            SileroLiveTaps(8, taps)
     with pytest.raises(ValueError, match="split over the taps"):
         SileroLiveTaps(8, (1, 2)).build((1, 127))
     with pytest.raises(ValueError, match="magnitude"):
         SileroBlockStft("power")
+    built = SileroBlockStft()
+    built.build((1, SAMPLES))
+    with pytest.raises(ValueError, match="576 samples"):
+        built(np.zeros((1, 2 * SAMPLES), np.float32))
 
 
+@pytest.mark.parametrize("params", [NPU, SileroVadParams(magnitude="max_projection")], ids=["npu", "conv1d_projection"])
 @pytest.mark.parametrize("policy", ["mixed_float16", "mixed_bfloat16"])
-def test_the_npu_options_run_under_mixed_precision(policy):
+def test_the_projected_magnitude_runs_under_mixed_precision(params, policy):
     previous = keras.config.dtype_policy()
     keras.config.set_dtype_policy(policy)
     try:
-        model = build(NPU, batch_size=1)
+        model = build(params, batch_size=1)
         prob, *_ = model([audio(2)[None, :SAMPLES], np.zeros((1, UNITS), np.float32), np.zeros((1, UNITS), np.float32)])
     finally:
         keras.config.set_dtype_policy(previous)
