@@ -70,7 +70,8 @@ def import_weights(model, mapping: WeightMapping, path: Path | str) -> ImportRep
     Nothing is assigned unless every check passes:
 
     - the file's sha256 is the mapping's pinned ``source.sha256``;
-    - every source tensor is used exactly once (each part once when split), or listed as ``unused``;
+    - every source tensor is used exactly once (each part once when split), or listed as ``unused``,
+      with its row's ``source_shape`` when the row gives one;
     - every weight of ``model`` is assigned exactly once, with its shape, from a source of a matching
       kind (float to float), finite as stored in the weight's dtype (integers within its range).
 
@@ -138,6 +139,10 @@ def import_weights(model, mapping: WeightMapping, path: Path | str) -> ImportRep
             dtype = _numpy_dtype(weight.dtype)
         except ValueError as exc:
             problems.append(f"{row.layer}/{row.weight}: {exc}")
+            continue
+        shapes = [tuple(np.shape(tensors[name])) for name in row.sources]
+        if row.source_shape is not None and any(shape != row.source_shape for shape in shapes):
+            problems.append(f"{row.layer}/{row.weight}: source shapes {shapes} for source_shape {row.source_shape}")
             continue
         kinds = {np.asarray(tensors[name]).dtype.kind for name in row.sources}
         if (kinds != {"f"}) if dtype.kind == "f" else ("f" in kinds):

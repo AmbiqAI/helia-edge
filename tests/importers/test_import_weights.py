@@ -7,7 +7,16 @@ import keras
 import numpy as np
 import pytest
 
-from helia_edge.importers import ImportReport, SourcePin, Split, Transpose, WeightMapping, WeightRow, import_weights
+from helia_edge.importers import (
+    ImportReport,
+    Reshape,
+    SourcePin,
+    Split,
+    Transpose,
+    WeightMapping,
+    WeightRow,
+    import_weights,
+)
 from helia_edge.importers.readers import read_onnx, read_torch
 
 
@@ -248,6 +257,21 @@ def test_a_float_source_for_an_integer_weight_is_refused(source):
     path, sha256 = source({"count": np.array([1, 2], np.int64)})
     import_weights(counted, mapping(sha256, rows), path)
     np.testing.assert_array_equal(keras.ops.convert_to_numpy(counted.get_layer("counter").count), [1, 2])
+
+
+def test_a_source_of_another_shape_is_refused_before_its_transforms(source):
+    path, sha256 = source()
+    m = model()
+    before = weights(m)
+    reshaped = (Reshape(shape=(3, 4)), Transpose(perm=(1, 0)))  # (4, 3) is the right source, (3, 4) the same size
+    rows = (
+        WeightRow(sources=("dense.weight",), transforms=reshaped, layer="dense", weight="kernel", source_shape=(3, 4)),
+        *ROWS[1:],
+    )
+    with pytest.raises(ValueError, match=r"source shapes \[\(4, 3\)\] for source_shape \(3, 4\)"):
+        import_weights(m, mapping(sha256, rows), path)
+    assert all(np.array_equal(a, b) for a, b in zip(before, weights(m)))
+    import_weights(m, mapping(sha256, (ROWS[0].model_copy(update={"source_shape": (4, 3)}), *ROWS[1:])), path)
 
 
 def test_a_file_changed_while_read_is_refused(source, monkeypatch):

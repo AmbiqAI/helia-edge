@@ -12,8 +12,8 @@ import pytest
 
 from helia_edge.importers import SourcePin, import_weights
 from helia_edge.models import FastEnhancerParams
-from helia_edge.models.fastenhancer import build, fastenhancer_weight_shapes, linear_filterbanks
-from helia_edge.models.fastenhancer_params import FASTENHANCER_T_ONNX, fastenhancer_mapping
+from helia_edge.models.fastenhancer import build, linear_filterbanks
+from helia_edge.models.fastenhancer_params import FASTENHANCER_T_ONNX, fastenhancer_mapping, fastenhancer_weight_shapes
 
 sys.path.insert(0, str(Path(__file__).parent))
 from fastenhancer_reference import reference_frame  # noqa: E402
@@ -152,6 +152,27 @@ def test_the_mapping_refuses_tensors_of_other_params(hydrated, tmp_path, write_s
     assert all(np.array_equal(a, b) for a, b in zip(before, model.get_weights()))
 
 
+def test_the_mapping_refuses_same_size_tensors_in_another_layout(hydrated, tmp_path, write_safetensors):
+    params = FastEnhancerParams()
+    model, tensors = hydrated(params)
+    before = [w.copy() for w in model.get_weights()]
+    for name, value in (
+        ("rf_block.0.rnn.W", tensors["rf_block.0.rnn.W"].transpose(0, 2, 1)),  # (1, in, 3H)
+        ("rf_block.0.rnn.R", tensors["rf_block.0.rnn.R"][0]),  # PyTorch nn.GRU weight_hh_l0, (3H, H)
+        ("enc_pre.0.weight", tensors["enc_pre.0.weight"].reshape(24, 2, 8)),  # a standard strided kernel layout
+    ):
+        path = tmp_path / "relaid.safetensors"
+        mapping = fastenhancer_mapping(params, "relaid", pinned(path, {**tensors, name: value}, write_safetensors))
+        with pytest.raises(ValueError, match="source_shape"):
+            import_weights(model, mapping, path)
+    assert all(np.array_equal(a, b) for a, b in zip(before, model.get_weights()))
+
+
+def test_tensor_names_must_rename_tensors_of_the_params():
+    with pytest.raises(ValueError, match="not tensors of these params"):
+        fastenhancer_mapping(VARIANT, "m", FASTENHANCER_T_ONNX.source, tensor_names={"rf_block.1.rnn.W": "w"})
+
+
 def test_the_release_mapping_renames_only_the_anonymous_initializers():
     by_path = fastenhancer_mapping(FastEnhancerParams(), "paths", FASTENHANCER_T_ONNX.source)
     renamed = {a.sources: b.sources for a, b in zip(by_path.rows, FASTENHANCER_T_ONNX.rows, strict=True) if a != b}
@@ -164,20 +185,27 @@ RELEASE_FILE = os.environ.get("HELIA_EDGE_FASTENHANCER_ONNX")
 
 
 @pytest.mark.skipif(not RELEASE_FILE, reason="set HELIA_EDGE_FASTENHANCER_ONNX to the pinned fastenhancer_t.spec.onnx")
-def test_the_release_imports_and_matches_the_reference():
-    if importlib.util.find_spec("onnx") is None:
-        pytest.skip("needs onnx")
-    from helia_edge.importers.readers import read_onnx
+def test_the_release_imports_and_matches_onnx_runtime():
+    """The imported release matches ONNX Runtime on the same file, with the state carried for 20 frames."""
+    if importlib.util.find_spec("onnxruntime") is None or importlib.util.find_spec("onnx") is None:
+        pytest.skip("needs onnx and onnxruntime")
+    import onnxruntime
 
-    params = FastEnhancerParams()
-    model = build(params)
+    model = build(FastEnhancerParams(), batch_size=1)
     report = import_weights(model, FASTENHANCER_T_ONNX, RELEASE_FILE)
-    assert len(report.assignments) == len(model.weights) == len(fastenhancer_weight_shapes(params))
-    release = read_onnx(Path(RELEASE_FILE))
-    by_path = fastenhancer_mapping(params, "paths", FASTENHANCER_T_ONNX.source)
-    tensors = {a.sources[0]: release[b.sources[0]] for a, b in zip(by_path.rows, FASTENHANCER_T_ONNX.rows)}
-    out_error, state_error = max_error(model, params, tensors)
-    assert out_error < TOLERANCE and state_error < TOLERANCE
+    assert len(report.assignments) == len(model.weights) == len(fastenhancer_weight_shapes(FastEnhancerParams()))
+    session = onnxruntime.InferenceSession(RELEASE_FILE, providers=["CPUExecutionProvider"])
+    rng = np.random.default_rng(0)
+    ours = theirs = [np.zeros((1, 16, 20), np.float32)] * 2
+    error = peak = 0.0
+    for _ in range(20):
+        spec = (rng.normal(size=(1, 257, 1, 2)) * 0.3).astype(np.float32)
+        got = [keras.ops.convert_to_numpy(o) for o in model([spec, *ours])]
+        want = session.run(None, {"spec_in": spec, "cache_in_0": theirs[0], "cache_in_1": theirs[1]})
+        error = max(error, *(float(np.abs(g - w).max()) for g, w in zip(got, want, strict=True)))
+        peak = max(peak, *(float(np.abs(w).max()) for w in want))
+        ours, theirs = got[1:], want[1:]
+    assert error / max(peak, 1.0) < TOLERANCE
 
 
 def test_fixed_filterbanks_are_frozen_normalized_projections():

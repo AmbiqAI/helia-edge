@@ -115,6 +115,9 @@ class WeightRow(BaseModel):
         layer: Name of the Keras layer holding the weight (``outer/inner`` for a nested model).
         weight: Name of the weight within the layer, such as ``kernel`` or ``bias``, or its path inside a
             composite layer, such as ``query/kernel`` in a ``MultiHeadAttention``.
+        source_shape: The shape every source tensor must have, checked before ``combine`` and
+            ``transforms``; None checks only the final shape. A ``Reshape`` alone cannot tell a
+            transposed source of the same size from the right one.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -125,6 +128,7 @@ class WeightRow(BaseModel):
     transforms: tuple[Transform, ...] = ()
     layer: str
     weight: str
+    source_shape: tuple[int, ...] | None = None
 
     @model_validator(mode="after")
     def _consistent(self) -> "WeightRow":

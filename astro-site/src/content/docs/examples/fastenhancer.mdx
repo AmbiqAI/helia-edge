@@ -15,7 +15,7 @@ backend-free architecture config; `rnnformer.freq` may not exceed
 import numpy as np
 from helia_edge.importers import import_weights
 from helia_edge.models import ModelSpec, build, resolve_fastenhancer
-from helia_edge.models.fastenhancer_params import FASTENHANCER_T_ONNX
+from helia_edge.models import FASTENHANCER_T_ONNX
 
 record = resolve_fastenhancer("fastenhancer_t")  # serialize record.model_dump_json() with results
 model = build(ModelSpec(params=record.params), batch_size=1)  # the input shape follows from the params
@@ -63,9 +63,13 @@ Weights load through [`import_weights`](/helia-edge/guide/import-weights/).
 `FASTENHANCER_T_ONNX` is pinned to the `fastenhancer_t.spec.onnx` release
 (sha256 `915a451f…`), whose anonymous initializers it names; it does not
 guess names for other exports. For other folded weights, build a mapping with
-`fastenhancer_mapping(params, name, source)`: it reads tensors in ONNX export
-layout keyed by module path, as listed by `fastenhancer_weight_shapes(params)`,
-from a pinned `.safetensors`, `.onnx` or PyTorch file. GRU tensors must use
+`fastenhancer_mapping(params, name, source)` (in
+`helia_edge.models.fastenhancer_params`): it reads tensors in ONNX export
+layout keyed by module path, with the shapes listed by
+`fastenhancer_weight_shapes(params)`, from a pinned `.safetensors`, `.onnx` or
+PyTorch file. Pass `tensor_names` for tensors stored under other names, and
+list every other tensor of the file, such as an ONNX file's graph constants,
+in `unused`. GRU tensors must use
 ONNX gate order z, r, h; PyTorch `nn.GRU` stores r, z, n and must be reordered
 first, because shapes alone cannot detect the difference. Only names and
 shapes are checked, so build the model from the params the tensors came from.

@@ -138,6 +138,54 @@ def resolve_fastenhancer(preset: str, overrides: Mapping[str, Any] | None = None
     )
 
 
+def fastenhancer_weight_shapes(params: FastEnhancerParams) -> dict[str, tuple[int, ...]]:
+    """Folded tensors in ONNX/PyTorch layout, keyed by module path.
+
+    Conv weights are [out, in, kernel]; ``*.kernel`` MatMul weights are
+    [in, out]; ``rnn.W``/``rnn.R`` are [1, 3H, in] and ``rnn.B`` is [1, 6H]
+    with ONNX gate order z, r, h; the upsampler is [in, out, kernel].
+    """
+    rf = params.rnnformer
+    c, rc, k0, s = params.channels, rf.channels, params.kernel_size[0], params.stride
+    shapes: dict[str, tuple[int, ...]] = {
+        "enc_pre.0.weight": (c, 2 * s, k0 // s),
+        "enc_pre.0.bias": (c,),
+        "rf_pre.0.kernel": (params.encoder_bins, rf.freq),
+        "rf_pre.1.weight": (rc, c, 1),
+        "rf_pre.1.bias": (rc,),
+        "rf_post.0.kernel": (rf.freq, params.encoder_bins),
+        "rf_post.1.weight": (c, rc, 1),
+        "rf_post.1.bias": (c,),
+        "dec_post.0.weight": (c, 2 * c, 1),
+        "dec_post.0.bias": (c,),
+        "dec_post.2.weight": (c, 2, k0),
+        "dec_post.2.bias": (2,),
+    }
+    for i, k in enumerate(params.kernel_size[1:]):
+        shapes[f"encoder.{i}.0.weight"] = (c, c, k)
+        shapes[f"encoder.{i}.0.bias"] = (c,)
+    for i, k in enumerate(reversed(params.kernel_size[1:])):
+        shapes[f"decoder.{i}.0.weight"] = (c, 2 * c, 1)
+        shapes[f"decoder.{i}.0.bias"] = (c,)
+        shapes[f"decoder.{i}.2.weight"] = (c, c, k)
+        shapes[f"decoder.{i}.2.bias"] = (c,)
+    for i in range(rf.num_blocks):
+        b = f"rf_block.{i}"
+        shapes[f"{b}.rnn.W"] = (1, 3 * rc, rc)
+        shapes[f"{b}.rnn.R"] = (1, 3 * rc, rc)
+        shapes[f"{b}.rnn.B"] = (1, 6 * rc)
+        shapes[f"{b}.rnn_fc.kernel"] = (rc, rc)
+        shapes[f"{b}.rnn_fc.bias"] = (rc,)
+        shapes[f"{b}.attn.qkv.kernel"] = (rc, 3 * rc)
+        if rf.attn_bias:
+            shapes[f"{b}.attn.qkv.bias"] = (3 * rc,)
+        shapes[f"{b}.attn_fc.kernel"] = (rc, rc)
+        shapes[f"{b}.attn_fc.bias"] = (rc,)
+    if rf.positional_embedding:
+        shapes["rf_block.0.pe"] = (rf.freq, rc)
+    return shapes
+
+
 def fastenhancer_mapping(
     params: FastEnhancerParams,
     name: str,
@@ -148,9 +196,9 @@ def fastenhancer_mapping(
 ) -> WeightMapping:
     """Mapping of every weight of ``build(params)`` from folded tensors in ONNX export layout.
 
-    Source tensors are keyed by module path, as ``fastenhancer.fastenhancer_weight_shapes(params)`` lists
-    them. GRU tensors must use ONNX gate order z, r, h; PyTorch ``nn.GRU`` stores r, z, n, which shapes
-    alone cannot detect.
+    Source tensors are keyed by module path, with the shapes ``fastenhancer_weight_shapes(params)`` lists;
+    each row checks its source's shape. GRU tensors must use ONNX gate order z, r, h; PyTorch ``nn.GRU``
+    stores r, z, n, which shapes alone cannot detect.
 
     Args:
         params: The params the tensors were trained with.
@@ -161,8 +209,15 @@ def fastenhancer_mapping(
 
     Returns:
         WeightMapping: The mapping, for ``helia_edge.importers.import_weights``.
+
+    Raises:
+        ValueError: If ``tensor_names`` renames a tensor these params do not have.
     """
     names = tensor_names or {}
+    shapes = fastenhancer_weight_shapes(params)
+    unknown = sorted(set(names) - set(shapes))
+    if unknown:
+        raise ValueError(f"tensor_names renames {unknown}, which are not tensors of these params")
     rf, c, rc, k0, s = (
         params.rnnformer,
         params.channels,
@@ -174,7 +229,10 @@ def fastenhancer_mapping(
     rows = []
 
     def row(path: str, layer: str, weight: str, *transforms) -> None:
-        rows.append(WeightRow(sources=(names.get(path, path),), transforms=transforms, layer=layer, weight=weight))
+        tensor = names.get(path, path)
+        rows.append(
+            WeightRow(sources=(tensor,), transforms=transforms, layer=layer, weight=weight, source_shape=shapes[path])
+        )
 
     def conv_rows(module: str, layer: str) -> None:
         row(f"{module}.weight", layer, "kernel", conv)
@@ -266,7 +324,8 @@ FASTENHANCER_T_ONNX = fastenhancer_mapping(
         "/enc_pre/enc_pre.0/Concat_2_output_0",
     ),
 )
-"""Mapping of every weight of ``build(FastEnhancerParams())`` from the pinned FastEnhancer-T ONNX release."""
+"""Mapping of every weight of ``build(FastEnhancerParams())`` from the pinned FastEnhancer-T ONNX release; every
+other initializer of the file is a graph constant, listed as unused."""
 
 MAPPINGS: dict[str, WeightMapping] = {FASTENHANCER_T_ONNX.name: FASTENHANCER_T_ONNX}
 """Weight mappings for this family, by name."""

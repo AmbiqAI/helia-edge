@@ -20,7 +20,7 @@ from helia_edge.export.recipe import ParamsImport  # noqa: E402
 from helia_edge.export.run import SourceError, build_model  # noqa: E402
 from helia_edge.importers import SourcePin, Transpose, WeightMapping, WeightRow  # noqa: E402
 from helia_edge.layers import StreamingLSTMCell, state_input, state_output  # noqa: E402
-from helia_edge.models import silero_vad_params  # noqa: E402
+from helia_edge.models import fastenhancer_params, silero_vad_params  # noqa: E402
 
 FEATURES, UNITS = 6, 8
 
@@ -228,6 +228,9 @@ def test_params_import_builds_and_imports_the_pinned_weights(workdir, write_safe
     other_family = {**model, "mapping": "fastenhancer_t_onnx"}
     with pytest.raises(SourceError, match="mapping 'fastenhancer_t_onnx' is pinned to"):
         run_recipe(write(workdir / "r4.json", stream_recipe(workdir, model=other_family)), workdir / "out4")
+    monkeypatch.setitem(fastenhancer_params.MAPPINGS, "toy_mapping", toy_mapping(pinned))
+    with pytest.raises(ValueError, match="'toy_mapping' is defined by more than one family"):
+        run_recipe(write(workdir / "r5.json", stream_recipe(workdir, model=model)), workdir / "out5")
 
 
 def test_multi_input_models_must_stream_with_batch_size_one(workdir):

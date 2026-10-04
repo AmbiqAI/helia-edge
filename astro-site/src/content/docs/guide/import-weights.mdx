@@ -29,7 +29,7 @@ To check the import, the repository's parity test compares the model with ONNX R
 - **Source:** the file's sha256 must equal the mapping's pinned `source.sha256`. A file with the same name but other weights is refused: for example, Silero's `silero_vad_16k.safetensors` holds different weights from the v6.2.2 ONNX.
 - **Sources used once:** every tensor in the file is used exactly once, or listed in `unused`. A tensor split into parts must have each part used once.
 - **Weights set once:** every weight of the model is assigned exactly once.
-- **Values:** shapes must match after the transforms, float weights take float sources and must be finite as stored (for example in bfloat16), and integer weights must stay within their range.
+- **Values:** sources must have their row's `source_shape`, when given, and shapes must match after the transforms, float weights take float sources and must be finite as stored (for example in bfloat16), and integer weights must stay within their range.
 
 ## Write a mapping
 
@@ -59,7 +59,7 @@ mapping = WeightMapping(
 )
 ```
 
-- **Rows:** a row names the Keras layer (`outer/inner` inside a nested model) and the weight within it, such as `kernel` or `bias`, or its path inside a composite layer, such as `query/kernel` in a `MultiHeadAttention`.
+- **Rows:** a row names the Keras layer (`outer/inner` inside a nested model) and the weight within it, such as `kernel` or `bias`, or its path inside a composite layer, such as `query/kernel` in a `MultiHeadAttention`. An optional `source_shape` checks each source tensor's shape before the transforms; give it whenever a row starts with a `Reshape`, which would otherwise accept a transposed source of the same size.
 - **Combining sources:** several sources are combined with `sum` or `concat` before the transforms.
 - **Transforms:** `Transpose`, `Reshape`, `GateReorder` (for example ONNX LSTM gates `iofc` to Keras `ifco`; PyTorch's `ifgo` is already the Keras order), `SumParts` (add equal parts, such as an ONNX LSTM's two biases) and `Split`, which may only come first.
 - **Formats:** the source pin's `format` is one of `SourceFormat`. `onnx` reads the initializers of a self-contained file (not `Constant` nodes; weights in separate data files are refused, since the pin covers one file), `safetensors` reads a `.safetensors` file with NumPy, and `torch` reads a flat state dict saved with `torch.save` (loaded with `weights_only=True`).

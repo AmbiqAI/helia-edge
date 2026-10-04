@@ -50,6 +50,7 @@ from .convmixer_params import ConvMixerParams as ConvMixerParams
 from .cornet_params import CorNetParams as CorNetParams
 from .efficientnet import efficientnetv2_layer as efficientnetv2_layer
 from .efficientnet_params import EfficientNetParams as EfficientNetParams
+from .fastenhancer_params import FASTENHANCER_T_ONNX as FASTENHANCER_T_ONNX
 from .fastenhancer_params import FastEnhancerParams as FastEnhancerParams
 from .fastenhancer_params import FastEnhancerResolvedConfig as FastEnhancerResolvedConfig
 from .fastenhancer_params import FastEnhancerRNNFormerParams as FastEnhancerRNNFormerParams
