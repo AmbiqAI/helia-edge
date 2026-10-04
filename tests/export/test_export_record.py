@@ -130,16 +130,51 @@ def test_export_leaves_the_callers_keras_state_alone():
     model = seeded(SPEC, batch_size=1)
     previous = keras.config.dtype_policy()
     keras.config.set_dtype_policy("mixed_float16")
+    default = export(model, precision="fp32", io_dtype="float32", spec=SPEC).content
+    floatx = keras.config.floatx()
+    keras.config.set_dtype_policy("mixed_float16")
+    keras.config.set_floatx("float16")
     try:
-        before = keras.layers.Dense(2).name
-        export(model, precision="fp32", io_dtype="float32", spec=SPEC)
+        before = keras.layers.Dense(2, dtype="float32").name
+        assert export(model, precision="fp32", io_dtype="float32", spec=SPEC).content == default
         with pytest.raises(ValueError, match="shapes of build"):
             export(model, precision="fp32", io_dtype="float32", spec=SPEC.model_copy(update={"input_shape": (128, 4)}))
-        assert keras.config.dtype_policy().name == "mixed_float16" and keras.config.floatx() == "float32"
-        after = keras.layers.Dense(2).name  # the caller's numbering goes on
-        assert after != before and after.rsplit("_", 1)[0] == "dense"
+        assert keras.config.dtype_policy().name == "mixed_float16" and keras.config.floatx() == "float16"
+        index = int(before.rsplit("_", 1)[1]) if "_" in before else 0
+        assert keras.layers.Dense(2, dtype="float32").name == f"dense_{index + 1}"  # the caller's numbering goes on
     finally:
         keras.config.set_dtype_policy(previous)
+        keras.config.set_floatx(floatx)
+
+
+def test_the_reference_build_restores_the_callers_state_when_it_fails():
+    from helia_edge.export.api import _reference_build
+
+    previous = keras.config.dtype_policy()
+    keras.config.set_dtype_policy("mixed_bfloat16")
+    try:
+        before = keras.layers.Dense(2, dtype="float32").name
+        with pytest.raises(RuntimeError), _reference_build():
+            assert keras.config.dtype_policy().name == "float32"
+            raise RuntimeError("build failed")
+        assert keras.config.dtype_policy().name == "mixed_bfloat16"
+        index = int(before.rsplit("_", 1)[1]) if "_" in before else 0
+        assert keras.layers.Dense(2, dtype="float32").name == f"dense_{index + 1}"
+    finally:
+        keras.config.set_dtype_policy(previous)
+
+
+def test_a_record_loads_under_any_caller_policy(tmp_path):
+    model = seeded(SPEC, batch_size=1)
+    path = export(model, precision="fp32", io_dtype="float32", spec=SPEC).write(tmp_path)
+    previous = keras.config.dtype_policy()
+    keras.config.set_dtype_policy("float16")
+    try:
+        loaded = load_export_record(path)
+    finally:
+        keras.config.set_dtype_policy(previous)
+    x = samples(SPEC.input_shape, count=1)
+    np.testing.assert_array_equal(keras.ops.convert_to_numpy(loaded(x)), keras.ops.convert_to_numpy(model(x)))
 
 
 def test_the_record_refuses_what_it_does_not_describe():
@@ -290,6 +325,9 @@ def test_a_streaming_export_records_its_calibration_import_and_golden(tmp_path):
             export(model, precision="a16w8", io_dtype="int16", calibration=calls, resets=resets, spec=spec)
     with pytest.raises(ValueError, match="resets"):
         result.with_golden(calls[:4], resets=(4,))
+    for resets in ([2.0], ["3"], 3):
+        with pytest.raises(ValueError, match="integer steps"):
+            result.with_golden(calls[:4], resets=resets)
     with pytest.raises(ValueError, match="at least one call"):
         result.with_golden(calls[:0])
     bare = export(model, precision="a16w8", io_dtype="int16", calibration=calls, resets=(32,), spec=spec)

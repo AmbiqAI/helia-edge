@@ -240,11 +240,11 @@ def export_model(
 
 @contextmanager
 def _reference_build():
-    """Build as in a new session with default settings, then give the caller's Keras state back.
+    """Build with unnamed layers numbered from zero and a float32 dtype policy and ``floatx``, then restore those.
 
-    Unnamed layers are numbered from zero (their names become the artifact's tensor names) and the dtype
-    policy and ``floatx`` are float32, so a model built here exports the same bytes in any process. Only
-    these three are set and then restored; seeds and other session state are left as they are.
+    Unnamed layers' names become the artifact's tensor names, so a model built here exports the same bytes
+    whatever the caller built before or set as its policy. Only these three settings are changed, and they
+    are restored even when the build fails; they are process-wide, so do not export from two threads at once.
     """
     import keras
     from keras.src.backend.common import global_state
@@ -262,6 +262,14 @@ def _reference_build():
         )
         keras.config.set_floatx(floatx)
         keras.config.set_dtype_policy(policy)
+
+
+def _steps(resets: Collection[int]) -> tuple[int, ...]:
+    """``resets`` as integer steps; a float, a string or a non-collection is refused, not converted."""
+    try:
+        return tuple(operator.index(step) for step in resets)
+    except TypeError as exc:
+        raise ValueError(f"resets are integer steps, not {resets!r}") from exc
 
 
 def _array_sha256(array: npt.ArrayLike) -> str:
@@ -301,12 +309,13 @@ class Export:
         if len(inputs) == 0:
             raise ValueError("A golden needs at least one call")
         stateful = any(entry.role is TensorRole.STATE for entry in self.record.io.inputs)
+        resets = _steps(resets)
         check_resets(resets, len(inputs), stateful, "Golden")
         data = golden_npz(self.content, inputs, resets)
         golden = GoldenRecord(
             file=file_record("golden.npz", data),
             steps=len(inputs),
-            resets=tuple(resets),
+            resets=resets,
             inputs=Source(sha256=_array_sha256(inputs), uri=uri),
         )
         return replace(self, record=self.record.model_copy(update={"golden": golden}), golden=data)
@@ -345,10 +354,11 @@ def export(
     """Export a Keras model to LiteRT with its export record (``helia-edge/export-record@1``).
 
     The exported model has a static batch: every input's batch is ``batch_size``. With ``spec``, the export
-    is ``build(spec, batch_size=batch_size)`` with the model's weights, built as in a new session (unnamed
-    layers numbered from zero, float32 dtype policy and ``floatx``), so a record re-exports the same bytes
-    in another process; the caller's Keras state is given back unchanged. Without ``spec``, the model is exported as it is, its batch must be ``batch_size``,
-    and the record cannot rebuild it. A streaming model (``state_in_k``/``state_out_k``) is calibrated with
+    is ``build(spec, batch_size=batch_size)`` with the model's weights, built with unnamed layers numbered
+    from zero and a float32 dtype policy and ``floatx`` (then restored), so the artifact does not depend
+    on the caller's layer numbering or those settings, and a record re-exports the same bytes. Without
+    ``spec``, the model is exported as it is, its batch must be ``batch_size``, and the record cannot
+    rebuild it. A streaming model (``state_in_k``/``state_out_k``) is calibrated with
     ``stream_calibration`` from its signal, the states reset at ``resets``.
 
     Args:
@@ -374,10 +384,7 @@ def export(
             the calibration or resets are invalid.
     """
     calibration = None if calibration is None else np.asarray(calibration)
-    try:
-        resets = tuple(operator.index(step) for step in resets)
-    except TypeError as exc:
-        raise ValueError(f"resets are integer steps, not {list(resets)}") from exc
+    resets = _steps(resets)
     if resets and calibration is None:
         raise ValueError("resets apply to the calibration of a streaming model; no calibration was given")
     if batch_size != 1 and Precision(precision) in CALIBRATED:
@@ -470,7 +477,8 @@ def load_export_record(path: Path | str, weights: Path | str | None = None):
     record = ExportRecord.read(path)
     if record.model is None:
         raise ValueError(f"{path} has no model spec, so the model cannot be rebuilt")
-    model = build(record.model, batch_size=record.export.batch_size)
+    with _reference_build():  # as export() built it
+        model = build(record.model, batch_size=record.export.batch_size)
     model.load_weights(Path(weights) if weights is not None else Path(path).with_name("model.weights.h5"))
     digest = weights_digest(model)
     if digest != record.weights.digest:
