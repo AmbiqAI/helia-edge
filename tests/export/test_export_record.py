@@ -81,7 +81,7 @@ def test_the_export_is_the_export_model_artifact_with_its_record():
     assert again.record == record
 
 
-def test_a_dynamic_batch_needs_a_spec_and_a_fixed_batch_must_match():
+def test_without_a_spec_the_batch_must_match_and_with_one_the_spec_is_built():
     with pytest.raises(ValueError, match="batch"):
         export(seeded(SPEC), precision="fp32", io_dtype="float32")
     with pytest.raises(ValueError, match="batch"):
@@ -124,6 +124,22 @@ def test_with_a_spec_the_export_is_the_spec_with_the_model_weights():
     got = keras.ops.convert_to_numpy(result.model(x))
     np.testing.assert_array_equal(got, keras.ops.convert_to_numpy(expected(x)))
     assert not np.array_equal(got, keras.ops.convert_to_numpy(other(x)))
+
+
+def test_export_leaves_the_callers_keras_state_alone():
+    model = seeded(SPEC, batch_size=1)
+    previous = keras.config.dtype_policy()
+    keras.config.set_dtype_policy("mixed_float16")
+    try:
+        before = keras.layers.Dense(2).name
+        export(model, precision="fp32", io_dtype="float32", spec=SPEC)
+        with pytest.raises(ValueError, match="shapes of build"):
+            export(model, precision="fp32", io_dtype="float32", spec=SPEC.model_copy(update={"input_shape": (128, 4)}))
+        assert keras.config.dtype_policy().name == "mixed_float16" and keras.config.floatx() == "float32"
+        after = keras.layers.Dense(2).name  # the caller's numbering goes on
+        assert after != before and after.rsplit("_", 1)[0] == "dense"
+    finally:
+        keras.config.set_dtype_policy(previous)
 
 
 def test_the_record_refuses_what_it_does_not_describe():
@@ -241,6 +257,15 @@ def test_a_streaming_export_records_its_calibration_import_and_golden(tmp_path):
     with pytest.raises(pydantic.ValidationError, match="resets"):
         record.golden.model_validate({**record.golden.model_dump(by_alias=True), "resets": (16,)})
     from_array = export(model, precision="a16w8", io_dtype="int16", calibration=calls, resets=np.array([32]), spec=spec)
+    for resets in ([4.5], ["3"]):
+        with pytest.raises(ValueError, match="integer steps"):
+            export(model, precision="a16w8", io_dtype="int16", calibration=calls, resets=resets, spec=spec)
+    from helia_edge.export.manifest import GoldenRecord as ManifestGolden
+
+    manifest_golden = {"file": {"path": "g.npz", "sha256": "0" * 64, "bytes": 1}, "kind": "sequence", "steps": 4}
+    manifest_golden |= {"source": {"uri": "file://x", "sha256": "0" * 64}}
+    with pytest.raises(pydantic.ValidationError, match="resets"):
+        ManifestGolden.model_validate({**manifest_golden, "resets": (4,)})
     assert from_array.record.export.calibration.resets == (32,)
     assert record.io.state_scales_tied is True
     assert (

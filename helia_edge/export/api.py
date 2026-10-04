@@ -1,9 +1,12 @@
 """Export entry points: ``export`` (an artifact with its export record) and ``export_model`` (the
 conversion), validating, then converting with the exporter for the active backend."""
 
+import collections
 import hashlib
 import io
+import operator
 from collections.abc import Collection, Mapping
+from contextlib import contextmanager
 from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
@@ -235,6 +238,32 @@ def export_model(
     return exporters.get(f"{spec.format}:{backend}")(model, spec, calibration)
 
 
+@contextmanager
+def _reference_build():
+    """Build as in a new session with default settings, then give the caller's Keras state back.
+
+    Unnamed layers are numbered from zero (their names become the artifact's tensor names) and the dtype
+    policy and ``floatx`` are float32, so a model built here exports the same bytes in any process. Only
+    these three are set and then restored; seeds and other session state are left as they are.
+    """
+    import keras
+    from keras.src.backend.common import global_state
+
+    names = global_state.get_global_attribute("object_name_uids")
+    policy, floatx = keras.config.dtype_policy(), keras.config.floatx()
+    global_state.set_global_attribute("object_name_uids", collections.defaultdict(int))
+    keras.config.set_floatx("float32")
+    keras.config.set_dtype_policy("float32")
+    try:
+        yield
+    finally:
+        global_state.set_global_attribute(
+            "object_name_uids", names if names is not None else collections.defaultdict(int)
+        )
+        keras.config.set_floatx(floatx)
+        keras.config.set_dtype_policy(policy)
+
+
 def _array_sha256(array: npt.ArrayLike) -> str:
     """sha256 of ``array`` as ``numpy.save`` stores it."""
     buffer = io.BytesIO()
@@ -316,9 +345,9 @@ def export(
     """Export a Keras model to LiteRT with its export record (``helia-edge/export-record@1``).
 
     The exported model has a static batch: every input's batch is ``batch_size``. With ``spec``, the export
-    is ``build(spec, batch_size=batch_size)`` with the model's weights, built after clearing the Keras
-    session so the artifact's bytes depend on the spec and the weights alone, and the record can rebuild
-    and re-export it. Without ``spec``, the model is exported as it is, its batch must be ``batch_size``,
+    is ``build(spec, batch_size=batch_size)`` with the model's weights, built as in a new session (unnamed
+    layers numbered from zero, float32 dtype policy and ``floatx``), so a record re-exports the same bytes
+    in another process; the caller's Keras state is given back unchanged. Without ``spec``, the model is exported as it is, its batch must be ``batch_size``,
     and the record cannot rebuild it. A streaming model (``state_in_k``/``state_out_k``) is calibrated with
     ``stream_calibration`` from its signal, the states reset at ``resets``.
 
@@ -345,7 +374,10 @@ def export(
             the calibration or resets are invalid.
     """
     calibration = None if calibration is None else np.asarray(calibration)
-    resets = tuple(int(step) for step in resets)
+    try:
+        resets = tuple(operator.index(step) for step in resets)
+    except TypeError as exc:
+        raise ValueError(f"resets are integer steps, not {list(resets)}") from exc
     if resets and calibration is None:
         raise ValueError("resets apply to the calibration of a streaming model; no calibration was given")
     if batch_size != 1 and Precision(precision) in CALIBRATED:
@@ -362,17 +394,13 @@ def export(
         ),
     )
     if spec is not None:
-        import keras
-
         from ..models.spec import build
 
         weights = model.get_weights()
         weight_shapes = [tuple(w.shape) for w in model.weights]
         input_shapes = [tuple(t.shape[1:]) for t in model.inputs]
-        # Unnamed layers are numbered per session and their names become the artifact's tensor names, so
-        # build in a fresh session: the bytes then depend on the spec and the weights alone
-        keras.backend.clear_session()
-        rebuilt = build(spec, batch_size=batch_size)
+        with _reference_build():
+            rebuilt = build(spec, batch_size=batch_size)
         want = [tuple(w.shape) for w in rebuilt.weights]
         if want != weight_shapes:
             raise ValueError(f"The model's weights do not have the shapes of build(spec): {weight_shapes} vs {want}")
