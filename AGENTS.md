@@ -19,8 +19,8 @@ Keras 3 add-on for training and exporting models to Ambiq edge targets. Full gui
   `input_shape=None` (fixed by their params).
 - Export with `helia_edge.export.export` (artifact plus `helia-edge/export-record@1`, static batch; `load_export_record`
   rebuilds the model) or `export_model` (bytes only), and run with `LiteRTRunner`, or `LiteRTStreamRunner` for streaming
-  models with state pairs (export guide); the `converters` and `interpreters.tflite` classes are deprecated
-  (they warn) and must not be used in new code or examples.
+  models with state pairs (export guide). Precisions are `fp32`, `fp16`, `a8w8` and `a16w8`; the converters,
+  interpreters and the item factory were removed in 0.8.
 - Command line: `helia-edge export create SPEC.yaml --weights W --precision P --out DIR` (`--mapping NAME` to
   import, `--require-provenance` for published exports), then `helia-edge export reproduce DIR/record.json --weights W`
   (exit 0 same, 1 different, 2 environment mismatch, 3 missing or mismatched input, 4 export failed);

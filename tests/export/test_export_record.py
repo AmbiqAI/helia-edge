@@ -267,8 +267,9 @@ def test_a_record_loads_under_any_caller_policy(tmp_path):
 
 def test_the_record_refuses_what_it_does_not_describe():
     model = seeded(SPEC, batch_size=1)
-    with pytest.raises(pydantic.ValidationError, match="precision"):
-        export(model, precision="fp32-w16", io_dtype="float32")
+    for precision in ("fp32-w16", "FP32", "bogus"):
+        with pytest.raises(ValueError, match=precision):
+            export(model, precision=precision, io_dtype="float32")
     with pytest.raises(pydantic.ValidationError, match="mode"):
         ExportOptions(mode="saved_model")
     with pytest.raises(pydantic.ValidationError, match="strict"):

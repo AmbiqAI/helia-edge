@@ -34,9 +34,8 @@ console.log(`Checked internal links and anchors across ${cache.size} HTML pages;
 
 const coverage=JSON.parse(readFileSync('.cache/api-coverage.json','utf8'));
 assert.deepEqual(coverage.missingDescriptions, [], 'Public API descriptions must be documented in source');
-const litert=readFileSync('dist/reference/api/helia_edge/converters/litert/converter/index.md','utf8');
-assert(litert.includes('TfLiteKerasConverter.export_header'), 'Inherited converter export contract missing');
-assert(litert.includes('model'), 'Inherited constructor contract missing');
+const inherited=readFileSync('dist/reference/api/helia_edge/layers/preprocessing/random_gaussian_noise/index.md','utf8');
+assert(inherited.includes('base_augmentation.BaseAugmentation.batch_augment'), 'Inherited member links missing');
 const exported=index.rows.find(row=>row.name==='ConfusionMatrix');
 assert(exported.publicPaths.includes('helia_edge.metrics.ConfusionMatrix'), 'Canonical metrics import missing');
 
@@ -50,9 +49,9 @@ for (const contract of ['RandomCutout1D(factor=', '| cutouts | int | 1 | Nonnega
   assert(cutout.includes(contract), `API Markdown contract missing: ${contract}`);
   assert(full.includes(contract), `LLM contract missing: ${contract}`);
 }
-for (const contract of ['LiteRTKerasConverter(model: keras.Model)', 'convert(', '**Parameters**']) {
-  assert(litert.includes(contract), `Converter Markdown contract missing: ${contract}`);
-  assert(full.includes(contract), `LLM converter contract missing: ${contract}`);
+for (const contract of ['RandomGaussianNoise1D(factor:', 'batch_augment()', '**Parameters**']) {
+  assert(inherited.includes(contract), `Inherited Markdown contract missing: ${contract}`);
+  assert(full.includes(contract), `LLM inherited contract missing: ${contract}`);
 }
 
-assert(readFileSync('dist/reference/api/helia_edge/converters/tflite/converter/index.md', 'utf8').includes('**Returns**'), 'Return contracts missing from defining converter module');
+assert(readFileSync('dist/reference/api/helia_edge/export/api/index.md', 'utf8').includes('**Returns**'), 'Return contracts missing from the export API module');

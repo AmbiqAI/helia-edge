@@ -1,7 +1,5 @@
 """Export of streaming models: state roles and pairs, name-keyed calibration and tied INT state scales."""
 
-import tempfile
-
 import keras
 import numpy as np
 import pytest
@@ -144,16 +142,14 @@ def test_int16_export_carries_the_raw_state_and_tracks_keras(model, signal, cali
 
 def converted(model, spec, calibration):
     """The converter's model before the tie."""
-    with tempfile.TemporaryDirectory() as workdir:
-        return convert_litert(
-            model,
-            precision=spec.precision,
-            io_type=spec.io_dtype.value,
-            mode=spec.mode,
-            strict=spec.strict,
-            calibration=calibration,
-            workdir=workdir,
-        ).content
+    return convert_litert(
+        model,
+        precision=spec.precision,
+        io_dtype=spec.io_dtype,
+        mode=spec.mode,
+        strict=spec.strict,
+        calibration=calibration,
+    )
 
 
 @pytest.mark.parametrize("factor", [1.004, 1 / 1.004])

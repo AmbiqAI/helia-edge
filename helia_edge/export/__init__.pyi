@@ -21,8 +21,6 @@ from .result import TensorRecord as TensorRecord
 from .runner import LiteRTRunner as LiteRTRunner
 from .runner import LiteRTStreamRunner as LiteRTStreamRunner
 from .spec import CALIBRATED as CALIBRATED
-from .spec import LEGACY_MODE as LEGACY_MODE
-from .spec import LEGACY_PRECISION as LEGACY_PRECISION
 from .spec import VALID_IO as VALID_IO
 from .spec import BackendUnavailable as BackendUnavailable
 from .spec import ConversionMode as ConversionMode

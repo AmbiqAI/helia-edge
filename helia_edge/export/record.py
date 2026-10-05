@@ -10,7 +10,7 @@ import hashlib
 from pathlib import Path
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, StrictBool, StrictFloat, StrictInt, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, StrictBool, StrictFloat, StrictInt, model_validator
 
 from ..importers.mapping import SHA256
 from ..models.spec import ModelSpec
@@ -92,13 +92,6 @@ class ExportSettings(BaseModel):
     batch_size: StrictInt = Field(ge=1, le=2**31 - 1)  # LiteRT tensor dimensions are int32
     options: ExportOptions = ExportOptions()
     calibration: CalibrationRecord | None = None
-
-    @field_validator("precision")
-    @classmethod
-    def _working_precision(cls, precision: Precision) -> Precision:
-        if precision is Precision.FP32_FP16W:
-            raise ValueError("precision is fp32, fp16, a8w8 or a16w8; fp32-w16 is not recorded")
-        return precision
 
     @model_validator(mode="after")
     def _consistent(self) -> "ExportSettings":

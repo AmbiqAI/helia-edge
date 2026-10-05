@@ -1,7 +1,6 @@
 from . import aws as aws
 from . import env as env
 from . import export as export
-from . import factory as factory
 from . import file as file
 from . import preprocessing as preprocessing
 from . import rng as rng
@@ -14,8 +13,6 @@ from .env import env_flag as env_flag
 from .env import setup_logger as setup_logger
 from .env import silence_tensorflow as silence_tensorflow
 from .export import helia_export as helia_export
-from .factory import ItemFactory as ItemFactory
-from .factory import create_factory as create_factory
 from .file import compute_checksum as compute_checksum
 from .file import download_file as download_file
 from .file import load_pkl as load_pkl

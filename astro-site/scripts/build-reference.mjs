@@ -66,7 +66,7 @@ const visit = (m) => { modules.push(m); (m.submodules ?? []).forEach(visit); };
 model.modules.forEach(visit);
 const slug = (s) => s.toLowerCase();
 const route = (m) => `reference/api/${m.path.split('.').map(slug).join('/')}`;
-const groups = {models:'Architectures', callbacks:'Callbacks', converters:'Conversion', export:'Conversion', data:'Data', interpreters:'Inference', losses:'Losses', metrics:'Metrics', plotting:'Plotting', trainers:'Training', utils:'Utilities', layers:'Layers'};
+const groups = {models:'Architectures', callbacks:'Callbacks', export:'Conversion', data:'Data', losses:'Losses', metrics:'Metrics', plotting:'Plotting', trainers:'Training', utils:'Utilities', layers:'Layers'};
 function category(m) {
   if (m.path.startsWith('helia_edge.layers.preprocessing')) {
     return /random|augment|warp|mix_style|sine_wave/.test(m.path) ? 'Augmentation' : 'Preprocessing';
@@ -89,7 +89,7 @@ for (const m of modules) {
 }
 mkdirSync(resolve(site, 'src/data'), { recursive:true });
 writeFileSync(resolve(site, 'src/data/api-redirects.json'), JSON.stringify(Object.fromEntries(modules.filter(m => !m.path.includes('._')).map(m => ['/api/'+m.path.replaceAll('.', '/'), '/helia-edge/'+route(m)+'/'])),null,2)+'\n');
-const order = ['Architectures','Preprocessing','Augmentation','Layers','Metrics','Callbacks','Losses','Training','Conversion','Inference','Plotting','Utilities','Package'];
+const order = ['Architectures','Preprocessing','Augmentation','Layers','Metrics','Callbacks','Losses','Training','Conversion','Plotting','Utilities','Package'];
 sidebar.sort((a,b)=>order.indexOf(a.label)-order.indexOf(b.label));
 writeFileSync(resolve(site, 'src/data/api-sidebar.json'), JSON.stringify(sidebar,null,2)+'\n');
 writeFileSync(resolve(site, 'src/data/api-index.json'), JSON.stringify({rows, filters:[{id:'surface',label:'Import surface',values:['Package export','Module API']},{id:'category',label:'Category',values:[...new Set(rows.map(r=>r.group))].sort()},{id:'kind',label:'Symbol type',values:['class','function']}]},null,2)+'\n');
