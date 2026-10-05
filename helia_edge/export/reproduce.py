@@ -2,6 +2,7 @@
 
 import hashlib
 import sys
+import zipfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
@@ -40,8 +41,16 @@ def file_sha256(path: Path | str) -> str:
 
 
 def load_npy(path: Path | str) -> np.ndarray:
-    """A ``.npy`` array, memory-mapped so that its header cannot make the load allocate more than the file holds."""
-    return np.load(path, allow_pickle=False, mmap_mode="r")
+    """A ``.npy`` array, memory-mapped, so that a header claiming more data than the file holds is refused
+    rather than allocated.
+
+    Raises:
+        ValueError: If the file is not a ``.npy`` array of the size its header states.
+    """
+    try:
+        return np.load(path, allow_pickle=False, mmap_mode="r")
+    except OverflowError as exc:  # a negative or overflowing dimension in the header
+        raise ValueError(f"{path} has an invalid .npy header: {exc}") from exc
 
 
 def load_spec(path: Path | str):
@@ -58,7 +67,7 @@ def load_spec(path: Path | str):
 
         try:
             data = yaml.safe_load(text)
-        except yaml.YAMLError as exc:
+        except (yaml.YAMLError, RecursionError) as exc:
             raise ValueError(f"{path} is not valid YAML: {exc}") from exc
         return ModelSpec.model_validate(data)
     return ModelSpec.model_validate_json(text)
@@ -142,8 +151,9 @@ def reproduce(
         allow_env_mismatch: Compare even when the environment differs from the record's.
 
     Returns:
-        Reproduction: ``same`` when the weights digest, the artifact, the I/O, the golden (with
-        ``golden_inputs``) and the ``model.tflite`` and ``golden.npz`` beside the record (when present) match.
+        Reproduction: ``same`` when the weights digest, the export settings, the artifact, the I/O, the golden
+        (with ``golden_inputs``) and the ``model.tflite`` and ``golden.npz`` beside the record (when present)
+        match. A failure of the export itself is raised.
     """
     from ..importers import import_weights
     from .api import _reference_build, export, load_export_record
@@ -194,7 +204,8 @@ def reproduce(
         golden = None
         if record.golden is not None and golden_inputs is not None:
             golden = _load_samples(golden_inputs, "golden inputs", record.golden.inputs.sha256)
-    except (OSError, ValueError, EOFError) as exc:
+        differences = _files_beside(record_path, record)
+    except (OSError, ValueError, EOFError, zipfile.BadZipFile) as exc:  # an input that cannot be read
         return Reproduction("input", (str(exc),), environment, skipped)
     again = export(
         model,
@@ -210,9 +221,10 @@ def reproduce(
     )
     if golden is not None and record.golden is not None:
         again = again.with_golden(golden, record.golden.resets, record.golden.inputs.uri)
-    differences = _files_beside(record_path, record)
     if again.record.weights != record.weights:
         differences.append(f"weights: {record.weights.digest} -> {again.record.weights.digest}")
+    if again.record.export != record.export:
+        differences.append(f"export settings: {record.export} -> {again.record.export}")
     if again.record.artifact != record.artifact:
         differences.append(f"artifact: sha256 {record.artifact.sha256} -> {again.record.artifact.sha256}")
     if again.record.io != record.io:

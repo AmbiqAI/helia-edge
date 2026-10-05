@@ -105,9 +105,19 @@ def test_other_weights_or_calibration_exit_3(created):
     empty.write_bytes(b"")
     with open(huge, "wb") as file:  # a header that claims about 4 TB, and no data
         np.lib.format.write_array_header_1_0(file, {"descr": "<f4", "fortran_order": False, "shape": (10**12, 1)})
-    for samples in (empty, huge):
+    negative = tmp / "negative.npy"
+    with open(negative, "wb") as file:
+        np.lib.format.write_array_header_1_0(file, {"descr": "<f4", "fortran_order": False, "shape": (-1, 32, 4)})
+    for samples in (empty, huge, negative):
         changed = invoke("export", "reproduce", record, "--weights", weights, "--calibration", samples)
         assert changed.exit_code == 3 and changed.output.strip().endswith("input"), changed.output
+    garbage = tmp / "garbage.keras"
+    garbage.write_bytes(b"not a zip")
+    changed = invoke("export", "reproduce", record, "--weights", garbage, "--calibration", calibration)
+    assert changed.exit_code == 3 and changed.output.strip().endswith("input"), changed.output
+    huge_batch = edit_record(record, lambda data: data["export"].update(batch_size=2**31))
+    changed = invoke("export", "reproduce", huge_batch, "--weights", weights, "--calibration", calibration)
+    assert changed.exit_code == 3 and "is not a readable export record" in changed.output
     binary = tmp / "binary.json"
     binary.write_bytes(b"\xff\xfe\x00garbage")
     changed = invoke("export", "reproduce", binary, "--weights", weights)
@@ -157,6 +167,14 @@ def test_the_calibration_uri_is_carried_and_a_changed_artifact_beside_the_record
     (out / "model.tflite").write_bytes(b"TFL3 garbage")
     changed = invoke("export", "reproduce", out / "record.json", "--weights", weights, "--calibration", calibration)
     assert changed.exit_code == 1 and "different: model.tflite beside the record has sha256" in changed.output
+    (out / "model.tflite").chmod(0)
+    try:
+        unreadable = invoke(
+            "export", "reproduce", out / "record.json", "--weights", weights, "--calibration", calibration
+        )
+    finally:
+        (out / "model.tflite").chmod(0o644)
+    assert unreadable.exit_code == 3 and "Permission denied" in unreadable.output
 
 
 def test_a_failed_export_exits_4(created, monkeypatch):
@@ -357,6 +375,7 @@ def test_create_records_the_install_and_warns_unless_it_identifies_the_code(tmp_
         ("io", "is not a valid IODType"),
         ("golden resets", "--golden-resets needs --golden-inputs"),
         ("yaml", "is not valid YAML"),
+        ("npy", "invalid .npy header"),
     ],
 )
 def test_create_reports_a_refused_export(tmp_path, change, message):
@@ -364,11 +383,14 @@ def test_create_reports_a_refused_export(tmp_path, change, message):
     spec = ModelSpec(params=SileroVadParams())
     spec_file.write_text({"spec": "{}", "yaml": "params: [unclosed"}.get(change, spec.model_dump_json()))
     weights = weights_file(spec, tmp_path / "w.weights.h5", seed=0)
+    with open(tmp_path / "negative.npy", "wb") as file:
+        np.lib.format.write_array_header_1_0(file, {"descr": "<f4", "fortran_order": False, "shape": (-1, 576)})
     flags = {
         "mapping": ["--mapping", "nope"],
         "precision": ["--precision", "a16w8"],
         "io": ["--io-dtype", ""],
         "golden resets": ["--golden-resets", 2],
+        "npy": ["--golden-inputs", tmp_path / "negative.npy"],
     }.get(change, [])
     precision = [] if change == "precision" else ["--precision", "fp32"]
     result = invoke("export", "create", spec_file, "--weights", weights, *precision, *flags, "--out", tmp_path / "out")

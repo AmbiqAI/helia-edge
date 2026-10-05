@@ -89,7 +89,7 @@ class ExportSettings(BaseModel):
     format: Literal["litert"] = "litert"
     precision: Precision
     io_dtype: IODType
-    batch_size: StrictInt = Field(ge=1)
+    batch_size: StrictInt = Field(ge=1, le=2**31 - 1)  # LiteRT tensor dimensions are int32
     options: ExportOptions = ExportOptions()
     calibration: CalibrationRecord | None = None
 
