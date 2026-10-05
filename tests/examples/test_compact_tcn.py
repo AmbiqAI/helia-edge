@@ -73,34 +73,39 @@ def exported(tmp_path_factory):
     return output
 
 
-def test_four_exports_with_manifest(exported):
-    manifest = json.loads((exported / "manifest.json").read_text())
-    assert {(e["width"], e["precision"]) for e in manifest["exports"]} == {
-        (8, "FP32"),
-        (8, "INT8"),
-        (16, "FP32"),
-        (16, "INT8"),
-    }
-    for name, digest in manifest["files"].items():
-        assert fixture.sha256((exported / name).read_bytes()) == digest
-    assert not [p for p in exported.iterdir() if "golden" in p.name or p.name == "recipe.json"]
-    for export in manifest["exports"]:
-        assert export["output"]["shape"] == [1, 240, 2]
-        assert export["output_bytes"] == (480 if export["precision"] == "INT8" else 1920)
-        assert fixture.sha256((exported / export["model"]).read_bytes()) == export["model_sha256"]
-        peers = [e for e in manifest["exports"] if e["width"] == export["width"]]
-        assert peers[0]["weight_array_hashes"] == peers[1]["weight_array_hashes"]
-        if export["precision"] == "INT8":
-            graph = json.loads((exported / export["graph"]).read_text())
+def test_four_export_records(exported):
+    from helia_edge.export import ExportRecord
+
+    records = {path.parent.name: ExportRecord.read(path) for path in exported.glob("*/record.json")}
+    assert set(records) == {f"tcn-w{w}-{p}" for w in (8, 16) for p in ("fp32", "a8w8")}
+    assert not [p for p in exported.iterdir() if p.name in ("manifest.json", "recipe.json")]
+    for name, record in records.items():
+        width = int(name.split("-")[1][1:])
+        assert record.model.params.blocks[0].filters == width and record.model.input_shape == (240, 14)
+        assert record.export.batch_size == 1 and record.export.options.mode == "concrete"
+        assert fixture.sha256((exported / name / "model.tflite").read_bytes()) == record.artifact.sha256
+        assert record.io.outputs[0].shape == (1, 240, 2)
+        assert record.weights.digest == records[f"tcn-w{width}-fp32"].weights.digest  # one weight lineage per width
+        if record.export.precision == "a8w8":
+            assert record.export.calibration.sha256 and record.io.outputs[0].dtype == "int8"
+            graph = json.loads((exported / name / "graph.json").read_text())
             assert all(t["dtype"] in {"INT8", "INT32"} for t in graph["tensors"])
-            assert export["fp32_keras_max_abs_error_on_calibration"] is None
         else:
-            assert export["fp32_keras_max_abs_error_on_calibration"] <= 1e-5
+            assert record.export.calibration is None and record.io.outputs[0].dtype == "float32"
+
+
+@pytest.mark.parametrize("name", ["tcn-w8-fp32", "tcn-w16-a8w8"])
+def test_records_reproduce(exported, name):
+    from helia_edge.export.reproduce import reproduce
+
+    calibration = exported / "calibration.npy" if name.endswith("a8w8") else None
+    report = reproduce(exported / name / "record.json", exported / name / "model.weights.h5", calibration)
+    assert report.status == "same", report
 
 
 def test_int8_validator_rejects_float_graph(exported):
     with pytest.raises(ValueError, match="floating-point"):
-        fixture.graph_info((exported / "tcn-w8-fp32.tflite").read_bytes(), "INT8")
+        fixture.graph_info((exported / "tcn-w8-fp32" / "model.tflite").read_bytes(), "a8w8")
 
 
 def test_emitted_graph_detects_builder_dilation_regression(tmp_path, monkeypatch):
@@ -112,7 +117,8 @@ def test_emitted_graph_detects_builder_dilation_regression(tmp_path, monkeypatch
         return build(width, changed)
 
     monkeypatch.setattr(fixture, "build_model", wrong_builder)
-    with pytest.raises(ValueError, match="violates compact TCN preset"):
+    monkeypatch.setattr(fixture, "validate_model", lambda model, width: None)  # reach the emitted-graph check
+    with pytest.raises(ValueError, match="violates compact TCN preset kernel/dilation"):
         fixture.generate(tmp_path / "wrong-builder")
 
 
@@ -140,7 +146,7 @@ def test_generation_rejects_actual_builder_regression_before_conversion(tmp_path
     def must_not_convert(*args, **kwargs):
         raise RuntimeError("invalid model reached conversion")
 
-    monkeypatch.setattr(fixture, "export_model", must_not_convert)
+    monkeypatch.setattr(fixture, "export", must_not_convert)
     with pytest.raises(ValueError, match="preset"):
         fixture.generate(tmp_path / mutation)
 
@@ -149,13 +155,13 @@ def test_int8_validator_rejects_non_int8_operand_without_export(exported):
     import flatbuffers
 
     schema = fixture.schema
-    retained = exported / "tcn-w8-int8.tflite"
+    retained = exported / "tcn-w8-a8w8" / "model.tflite"
     model = schema.ModelT.InitFromObj(schema.Model.GetRootAsModel(retained.read_bytes(), 0))
     model.subgraphs[0].tensors[model.subgraphs[0].inputs[0]].type = schema.TensorType.UINT8
     builder = flatbuffers.Builder(0)
     builder.Finish(model.Pack(builder), file_identifier=b"TFL3")
     with pytest.raises(ValueError, match="operand dtype"):
-        fixture.graph_info(bytes(builder.Output()), "INT8")
+        fixture.graph_info(bytes(builder.Output()), "a8w8")
 
 
 @pytest.mark.parametrize("width", [8, 16])
@@ -165,9 +171,9 @@ def test_production_guard_accepts_preset_and_template_filters_are_overridden(wid
     tcn = copy.deepcopy(fixture.TCN)
     for block in tcn["blocks"]:
         block["filters"] = 123
-    changed, config = fixture.build_model(width, tcn)
+    changed, spec = fixture.build_model(width, tcn)
     fixture.validate_model(changed, width)
-    assert all(block["filters"] == width for block in config["blocks"])
+    assert all(block.filters == width for block in spec.params.blocks)
     assert [fixture.array_hash(w) for w in original.get_weights()] == [
         fixture.array_hash(w) for w in changed.get_weights()
     ]
@@ -178,3 +184,45 @@ def test_retained_license_metadata_matches_copied_source(tmp_path):
     assert metadata["source_spdx"] == "BSD-3-Clause"
     assert metadata["sha256"] == fixture.sha256((ROOT / "LICENSE").read_bytes())
     assert (tmp_path / metadata["file"]).read_bytes() == (ROOT / "LICENSE").read_bytes()
+
+
+def test_a_record_naming_other_weights_is_refused(tmp_path, monkeypatch):
+    monkeypatch.setattr(fixture, "weights_digest", lambda model: "sha256:" + "0" * 64)
+    with pytest.raises(ValueError, match="does not name the source weights"):
+        fixture.generate(tmp_path / "exports")
+    assert not list((tmp_path / "exports").glob("*/record.json"))
+
+
+def test_the_converted_model_is_validated(tmp_path, monkeypatch):
+    import dataclasses
+
+    wrong_tcn = copy.deepcopy(fixture.TCN)
+    wrong_tcn["blocks"][1]["dilation"] = [1, 1]
+    wrong, _ = fixture.build_model(8, wrong_tcn)
+    export = fixture.export
+    monkeypatch.setattr(fixture, "export", lambda *a, **k: dataclasses.replace(export(*a, **k), model=wrong))
+    with pytest.raises(ValueError, match="preset"):
+        fixture.generate(tmp_path / "exports")
+    assert not list((tmp_path / "exports").glob("*/record.json"))
+
+
+def test_the_record_is_written_last(tmp_path, monkeypatch):
+    write_json = fixture.write_json
+
+    def fail_on_graph(path, value):
+        if path.name == "graph.json":
+            raise OSError("disk full")
+        write_json(path, value)
+
+    monkeypatch.setattr(fixture, "write_json", fail_on_graph)
+    with pytest.raises(OSError, match="disk full"):
+        fixture.generate(tmp_path / "exports")
+    assert not list((tmp_path / "exports").glob("*/record.json"))
+
+
+def test_an_fp32_export_that_differs_from_keras_is_refused(tmp_path, monkeypatch):
+    infer = fixture.infer
+    monkeypatch.setattr(fixture, "infer", lambda interpreter, inputs: infer(interpreter, inputs) + 1e-3)
+    with pytest.raises(AssertionError):
+        fixture.generate(tmp_path / "exports")
+    assert not list((tmp_path / "exports").glob("*/record.json"))

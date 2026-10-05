@@ -1,13 +1,11 @@
-"""Generate seeded compact TCN models and their FP32/INT8 LiteRT exports."""
+"""Generate seeded compact TCN models and their FP32/INT8 LiteRT exports, each with its export record."""
 
 import argparse
 import copy
 import hashlib
-import importlib.metadata
 import json
-import platform
 import shutil
-import subprocess
+import sys
 from pathlib import Path
 
 import keras
@@ -15,7 +13,9 @@ import numpy as np
 from ai_edge_litert.interpreter import Interpreter, OpResolverType
 from tensorflow.lite.python import schema_py_generated as schema
 
-from helia_edge.export import ExportSpec, export_model
+from helia_edge.export import ExportOptions, export, weights_digest
+from helia_edge.export.result import environment_record, unidentified_install
+from helia_edge.models import ModelSpec
 from helia_edge.models.tcn import TcnParams, build
 
 
@@ -73,7 +73,7 @@ def build_model(width, tcn=TCN):
     model = build(params, INPUT_SHAPE, batch_size=1)
     if model.output_shape != (1, 240, 2):
         raise ValueError(f"Unexpected output shape {model.output_shape}")
-    return model, params.model_dump(mode="json")
+    return model, ModelSpec(params=params, input_shape=INPUT_SHAPE)
 
 
 def validate_model(model, width):
@@ -182,18 +182,6 @@ def runtime(content):
     return interpreter
 
 
-def tensor_info(detail):
-    quant = detail["quantization_parameters"]
-    return {
-        "name": detail["name"],
-        "shape": detail["shape"].tolist(),
-        "dtype": np.dtype(detail["dtype"]).name,
-        "scales": quant["scales"].tolist(),
-        "zero_points": quant["zero_points"].tolist(),
-        "quantized_dimension": int(quant["quantized_dimension"]),
-    }
-
-
 def graph_info(content, precision):
     """Record graph operand types, not unobservable target accumulator/dispatch claims."""
     model = schema.Model.GetRootAsModel(content, 0)
@@ -268,14 +256,14 @@ def graph_info(content, precision):
             or kernel[1:3] != [1, 3]
         ):
             raise ValueError("Export violates compact TCN preset kernel/dilation/stride/padding")
-    allowed = {"INT8", "INT32"} if precision == "INT8" else {"FLOAT32", "INT32"}
-    if precision not in {"INT8", "FP32"} or any(t["dtype"] not in allowed for t in tensors):
+    allowed = {"INT8", "INT32"} if precision == "a8w8" else {"FLOAT32", "INT32"}
+    if precision not in {"a8w8", "fp32"} or any(t["dtype"] not in allowed for t in tensors):
         raise ValueError("Unexpected operand dtype (including floating-point in INT8 export)")
     return {
         "tensors": tensors,
         "operators": operators,
         "compute_contract": "INT8 activations/weights with integer bias/shape operands"
-        if precision == "INT8"
+        if precision == "a8w8"
         else "FP32 data operands with integer shape operands",
         "target_accumulator_and_dispatch": "not measured",
     }
@@ -292,95 +280,55 @@ def infer(interpreter, inputs):
     return np.stack(result)
 
 
-def provenance():
-    root = Path(__file__).resolve().parents[2]
-    files = [Path(__file__).resolve()]
-    files += sorted((root / "helia_edge").rglob("*.py"))
-    files += [root / "pyproject.toml", root / "uv.lock"]
-    dependencies = dict(sorted((d.metadata["Name"], d.version) for d in importlib.metadata.distributions()))
-    return {
-        "git_head": subprocess.check_output(["git", "-C", str(root), "rev-parse", "HEAD"], text=True).strip(),
-        "files": {str(p.relative_to(root)): sha256(p.read_bytes()) for p in files},
-        "python": platform.python_version(),
-        "dependencies": dependencies,
-        "dependencies_sha256": sha256(json.dumps(dependencies, sort_keys=True).encode()),
-    }
-
-
 def generate(output, calibration_samples=32):
+    """Write ``calibration.npy``, the license and one export record directory per width and precision.
+
+    Returns:
+        list[Path]: The ``record.json`` of each export, which ``helia-edge export reproduce`` checks.
+    """
     calibration = calibration_inputs(calibration_samples)
     output.mkdir(parents=True, exist_ok=False)
+    install = environment_record()
+    if not install.identified:  # the records then cannot name the code that exported
+        print(f"warning: {unidentified_install(install)}", file=sys.stderr)
     np.save(output / "calibration.npy", calibration, allow_pickle=False)
-    manifest = {
-        "schema_version": 2,
-        "kind": "seeded synthetic models and exports; no trained task-quality claim",
-        "state": "stateless same-padding whole windows; no streaming claim",
-        "source": provenance(),
-        "license": retain_license(output),
-        "preset": {
-            "seed": SEED,
-            "input_shape": list(INPUT_SHAPE),
-            "num_classes": NUM_CLASSES,
-            "calibration_samples": calibration_samples,
-            "tcn": TCN,
-        },
-        "calibration_sample_hashes": list(map(array_hash, calibration)),
-        "exports": [],
-    }
+    write_json(output / "license.json", retain_license(output))
+    records = []
     for width in WIDTHS:
-        model, config = build_model(width)
+        model, spec = build_model(width)
         validate_model(model, width)
-        weights = model.get_weights()
-        weight_hashes = list(map(array_hash, weights))
-        np.savez(output / f"w{width}-weights.npz", **{f"weight_{i}": w for i, w in enumerate(weights)})
-        write_json(output / f"w{width}-config.json", config)
-        for precision in ("FP32", "INT8"):
-            stem = f"tcn-w{width}-{precision.lower()}"
-            if precision == "INT8":
-                spec = ExportSpec(precision="a8w8", io_dtype="int8", mode="concrete")
-                content = export_model(model, spec, calibration).content
-            else:
-                content = export_model(model, ExportSpec(precision="fp32", io_dtype="float32", mode="concrete")).content
-            (output / f"{stem}.tflite").write_bytes(content)
-            graph = graph_info(content, precision)
-            write_json(output / f"{stem}-graph.json", graph)
-            interpreter = runtime(content)
+        digest = weights_digest(model)
+        for precision, io_dtype in (("fp32", "float32"), ("a8w8", "int8")):
+            result = export(
+                model,
+                precision=precision,
+                io_dtype=io_dtype,
+                calibration=calibration if precision == "a8w8" else None,
+                spec=spec,
+                batch_size=1,
+                options=ExportOptions(mode="concrete"),
+            )
+            validate_model(result.model, width)  # the model export converted, rebuilt from the spec
+            if result.record.weights.digest != digest:
+                raise ValueError("The export record does not name the source weights")
+            graph = graph_info(result.content, precision)
+            interpreter = runtime(result.content)
             (inp,) = interpreter.get_input_details()
             (out,) = interpreter.get_output_details()
-            expected_dtype = np.int8 if precision == "INT8" else np.float32
+            expected_dtype = np.int8 if precision == "a8w8" else np.float32
             if inp["dtype"] != expected_dtype or out["dtype"] != expected_dtype:
                 raise ValueError("Export interface dtype mismatch")
             if inp["shape"].tolist() != [1, *INPUT_SHAPE] or out["shape"].tolist() != [1, INPUT_SHAPE[0], NUM_CLASSES]:
                 raise ValueError("Export shape mismatch")
-            fp32_error = None
-            if precision == "FP32":
+            if precision == "fp32":
                 exported = infer(interpreter, calibration)
                 reference = np.concatenate([model(x[None], training=False).numpy() for x in calibration])
                 np.testing.assert_allclose(exported, reference, rtol=1e-5, atol=1e-5)
-                fp32_error = float(np.max(np.abs(exported - reference)))
-            if weight_hashes != list(map(array_hash, model.get_weights())):
-                raise ValueError("Conversion changed the source weights")
-            manifest["exports"].append(
-                {
-                    "width": width,
-                    "precision": precision,
-                    "model": f"{stem}.tflite",
-                    "model_sha256": sha256(content),
-                    "model_bytes": len(content),
-                    "graph": f"{stem}-graph.json",
-                    "config": f"w{width}-config.json",
-                    "weights": f"w{width}-weights.npz",
-                    "weight_array_hashes": weight_hashes,
-                    "parameter_count": model.count_params(),
-                    "input": tensor_info(inp),
-                    "output": tensor_info(out),
-                    "output_bytes": int(np.prod(out["shape"])) * np.dtype(out["dtype"]).itemsize,
-                    "fp32_keras_max_abs_error_on_calibration": fp32_error,
-                }
-            )
-    manifest["files"] = {p.name: sha256(p.read_bytes()) for p in sorted(output.iterdir()) if p.is_file()}
-    write_json(output / "manifest.json", manifest)
-    return manifest
+            directory = output / f"tcn-w{width}-{precision}"
+            directory.mkdir()
+            write_json(directory / "graph.json", graph)
+            records.append(result.write(directory))  # record.json last: it marks a complete export
+    return records
 
 
 def main():
@@ -388,8 +336,8 @@ def main():
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--calibration-samples", type=int, default=32)
     args = parser.parse_args()
-    manifest = generate(args.output, args.calibration_samples)
-    print(json.dumps({"exports": len(manifest["exports"]), "manifest": str(args.output / "manifest.json")}))
+    records = generate(args.output, args.calibration_samples)
+    print(json.dumps({"records": [str(path) for path in records]}))
 
 
 if __name__ == "__main__":

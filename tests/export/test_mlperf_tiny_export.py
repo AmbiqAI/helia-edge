@@ -84,24 +84,29 @@ def topology(operators):
     return sum(not removable_flatten(i) for i in range(len(operators))), node(len(operators) - 1)
 
 
-@pytest.mark.parametrize("name", generator.BUILDERS)
+@pytest.mark.parametrize("name", generator.SPECS)
 def test_real_fp32_export_preserves_captured_topology_and_reference_output(name, tmp_path):
+    from helia_edge.export import ExportRecord, load_export_record
+    from helia_edge.export.reproduce import reproduce
+
     output = tmp_path / name
-    manifest = generator.generate(name, output)
-    assert manifest["precision"] == "FP32"
+    path = generator.generate(name, output)
+    record = ExportRecord.read(path)
+    assert record.export.precision == "fp32" and record.model == generator.SPECS[name]
+    assert reproduce(path, output / "model.weights.h5").status == "same"
     goldens = np.load(output / "goldens.npz")
     expected = goldens["keras_outputs"]
     with pytest.raises(AssertionError):
         generator.check_outputs(np.broadcast_to(expected[0], expected.shape), expected)
     actual = graph((output / "model.tflite").read_bytes())
-    source_model = keras.models.load_model(output / "model.keras")
+    source_model = load_export_record(path)
     dense_layers = [layer for layer in source_model.layers if isinstance(layer, keras.layers.Dense)]
     exported_dense = [op for op in actual if op["op"] == "FULLY_CONNECTED"]
     for layer, op in zip(dense_layers, exported_dense, strict=True):
         if len(op["parameter_shapes"]) == 1:
             np.testing.assert_array_equal(layer.bias.numpy(), np.zeros(layer.units, np.float32))
     assert topology(actual) == topology(REFERENCES[name]["capture"]["operators"])
-    assert manifest["output"]["shape"] == REFERENCES[name]["capture"]["operators"][-1]["output_shapes"][0]
+    assert list(record.io.outputs[0].shape) == REFERENCES[name]["capture"]["operators"][-1]["output_shapes"][0]
 
 
 def test_topology_comparison_detects_wrong_resnet_width_and_disconnected_skip():
@@ -112,3 +117,21 @@ def test_topology_comparison_detects_wrong_resnet_width_and_disconnected_skip():
     wrong_skip = copy.deepcopy(expected)
     wrong_skip[3]["inputs"][0] = wrong_skip[3]["inputs"][1]
     assert topology(wrong_skip) != topology(expected)
+
+
+def test_the_record_is_written_last(tmp_path, monkeypatch):
+    def fail(*args, **kwargs):
+        raise OSError("disk full")
+
+    monkeypatch.setattr(generator.shutil, "copyfile", fail)
+    with pytest.raises(OSError, match="disk full"):
+        generator.generate("ad", tmp_path / "ad")
+    assert not (tmp_path / "ad" / "record.json").exists()
+
+
+def test_an_export_that_differs_from_keras_is_refused(tmp_path, monkeypatch):
+    cases = generator.diagnostic_cases
+    monkeypatch.setattr(generator, "diagnostic_cases", lambda model: (lambda x, y, a: (x, y + 1e-3, a))(*cases(model)))
+    with pytest.raises(AssertionError):
+        generator.generate("ad", tmp_path / "ad")
+    assert not (tmp_path / "ad" / "record.json").exists()
