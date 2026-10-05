@@ -227,6 +227,16 @@ def test_the_record_refuses_what_it_does_not_describe():
         export(seeded(SPEC), precision="fp32", io_dtype="float32", spec=SPEC, batch_size=2, options=concrete)
     at_one = export(seeded(SPEC), precision="fp32", io_dtype="float32", spec=SPEC, options=concrete).record
     assert at_one.io.inputs[0].shape[0] == at_one.export.batch_size == 1
+    outputs = [
+        {**e, "shape": [5, *e["shape"][1:]]} for e in json.loads(at_one.model_dump_json(by_alias=True))["io"]["outputs"]
+    ]
+    with pytest.raises(pydantic.ValidationError, match="output batch"):
+        ExportRecord.model_validate(
+            {
+                **json.loads(at_one.model_dump_json(by_alias=True)),
+                "io": {**json.loads(at_one.model_dump_json(by_alias=True))["io"], "outputs": outputs},
+            }
+        )
     record = export(model, precision="fp32", io_dtype="float32").record
     assert record.model is None and record.export.calibration is None
     data = json.loads(record.model_dump_json(by_alias=True))
@@ -249,7 +259,7 @@ def test_the_record_refuses_what_it_does_not_describe():
             {**settings, "precision": "a16w8", "io_dtype": "int16", "calibration": calibration, "batch_size": 2},
             "batch_size 1",
         ),
-        ({**settings, "batch_size": 2}, "input batch"),
+        ({**settings, "batch_size": 2}, "output batch"),
     ):
         with pytest.raises(pydantic.ValidationError, match=message):
             ExportRecord.model_validate({**data, "export": wrong})

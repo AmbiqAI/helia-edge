@@ -269,8 +269,8 @@ def _reference_build():
 def _steps(resets: Collection[int]) -> tuple[int, ...]:
     """``resets`` as integer steps from an ordered collection.
 
-    Bools, floats, strings and bytes-like objects are refused rather than converted, and so are sets (no order) and
-    mappings (keys or values would be ambiguous).
+    Bools, floats, str, bytes, bytearray and memoryview are refused rather than converted, and so are sets
+    (no order) and mappings (keys or values would be ambiguous).
     """
     if isinstance(resets, set | frozenset | Mapping):
         raise ValueError(f"resets are an ordered collection of steps, not {type(resets).__name__}")
@@ -328,6 +328,10 @@ class Export:
                 holds the sha256 of the float32 array.
             resets: Calls at which the states are zero.
             uri: Where the inputs can be fetched, if anywhere; recorded with their sha256.
+
+        Raises:
+            ValueError: If the export has no state pairs (golden@2 sequences are for streaming models), the
+                inputs are not finite real numbers, or the resets are not increasing steps within them.
         """
         from .golden import golden_npz
 
@@ -406,8 +410,8 @@ def export(
 
     Raises:
         ValueError: If the batch differs from ``batch_size`` without ``spec``, the model's weight or input
-            shapes differ from ``build(spec)``'s, a calibrated precision has ``batch_size`` other than 1, or
-            the calibration or resets are invalid.
+            shapes differ from ``build(spec)``'s, a calibrated precision or ``concrete`` mode has
+            ``batch_size`` other than 1, or the calibration or resets are invalid.
     """
     calibration = None if calibration is None else _float32_samples(calibration, "Calibration")
     resets = _steps(resets)

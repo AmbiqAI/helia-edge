@@ -233,9 +233,11 @@ class ExportRecord(BaseModel):
 
     @model_validator(mode="after")
     def _artifact_has_the_batch(self) -> "ExportRecord":
-        batches = {entry.shape[0] for entry in self.io.inputs if entry.shape}
+        batches = {entry.shape[0] for entry in (*self.io.inputs, *self.io.outputs) if entry.shape}
         if batches - {self.export.batch_size}:
-            raise ValueError(f"The artifact's input batch {sorted(batches)} is not batch_size {self.export.batch_size}")
+            raise ValueError(
+                f"The artifact's input and output batch {sorted(batches)} is not batch_size {self.export.batch_size}"
+            )
         return self
 
     def write(self, path: Path | str) -> None:
