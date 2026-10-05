@@ -65,7 +65,7 @@ Support is component-specific. This table does not certify every architecture, p
 <details>
 <summary>Optional dependencies and compatibility with older installs</summary>
 
-Base installations provide file, factory and logging helpers without Keras. Plotting and S3 require `plotting` and `aws` respectively; S3 model URLs also need `aws`. Patch extraction does not need plotting, but `PatchLayer2D.show_patched_image` does.
+Base installations provide file and logging helpers without Keras. Plotting and S3 require `plotting` and `aws` respectively; S3 model URLs also need `aws`. Patch extraction does not need plotting, but `PatchLayer2D.show_patched_image` does.
 
 Backend extras retain h5py for Keras serialization. Applications importing plotting, AWS or h5py directly should declare those dependencies themselves. `litert` includes TensorFlow conversion and the LiteRT runtime. `metal` must be combined with `tensorflow`; compatibility has not been validated for the recorded baseline.
 

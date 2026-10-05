@@ -9,20 +9,13 @@ from typing import Annotated
 
 import typer
 
+from .export.spec import Precision
+
 app = typer.Typer(no_args_is_help=True, add_completion=False, help="heliaEDGE model export tools.")
 export_app = typer.Typer(no_args_is_help=True, help="Create and reproduce exports with their records.")
 app.add_typer(export_app, name="export")
 
 DEFAULT_IO = {"fp32": "float32", "fp16": "float16", "a8w8": "int8", "a16w8": "int16"}
-
-
-class Precision(StrEnum):
-    """Precisions ``helia-edge export create`` exports."""
-
-    FP32 = "fp32"
-    FP16 = "fp16"
-    A8W8 = "a8w8"
-    A16W8 = "a16w8"
 
 
 class Mode(StrEnum):

@@ -33,12 +33,25 @@ def convert_litert(
     strict: bool,
     calibration: npt.NDArray | Mapping[str, npt.NDArray] | None,
 ) -> bytes:
-    """Convert a Keras model to LiteRT bytes.
+    """Convert a Keras model to LiteRT bytes; ``export_model`` validates the arguments first.
 
-    ``io_dtype`` sets the inputs and outputs of calibrated precisions; FP32 graphs have float32 and FP16
-    graphs float16 inputs and outputs. Calibration for a model with several inputs maps each input name to its samples; the converter
-    orders inputs its own way, so samples are fed by name. A model with state inputs is converted with its
-    outputs keyed by output name, so the signature names ``state_in_k`` and ``state_out_k``.
+    A model with state inputs is converted with its outputs keyed by output name, so the signature names
+    ``state_in_k`` and ``state_out_k``.
+
+    Args:
+        model: The Keras model, on the TensorFlow backend.
+        precision: The numeric format; FP16 is TensorFlow's float16 weight storage rewritten to a native
+            float16 graph (``to_native_fp16``).
+        io_dtype: Inputs and outputs of the calibrated precisions. FP32 graphs have float32 and FP16 graphs
+            float16 inputs and outputs whatever ``io_dtype`` says, so pass those.
+        mode: How the model is traced; SAVED_MODEL exports to a temporary directory removed after conversion.
+        strict: For calibrated precisions, refuse operators without an integer kernel.
+        calibration: Samples for the calibrated precisions, used one at a time in stored order; for a model
+            with several inputs, a mapping of each input name to its samples, fed by name because the
+            converter orders inputs its own way.
+
+    Returns:
+        bytes: The LiteRT flatbuffer.
 
     Raises:
         ValueError: If ``mode`` is CONCRETE and the model has several inputs or state inputs: a concrete

@@ -46,6 +46,17 @@ def test_every_precision_exports_in_every_mode(model, calibration, precision, mo
     assert export_model(model, spec, data).content == result.content  # deterministic
 
 
+@pytest.mark.parametrize("precision", list(Precision))
+def test_each_mode_converts_its_own_way(model, calibration, precision):
+    io_dtype = FLOAT_IO.get(precision, IODType.INT8 if precision is Precision.A8W8 else IODType.INT16)
+    data = calibration if precision in (Precision.A8W8, Precision.A16W8) else None
+    contents = {
+        mode: export_model(model, ExportSpec(precision=precision, io_dtype=io_dtype, mode=mode), data).content
+        for mode in MODES
+    }
+    assert len(set(contents.values())) == len(MODES)  # keras, concrete and saved_model graphs differ
+
+
 @pytest.mark.parametrize(("precision", "io_dtype"), [(p, d) for p in Precision for d in sorted(VALID_IO[p])])
 def test_exported_io_dtype_is_the_requested_one(model, calibration, precision, io_dtype):
     data = calibration if precision in (Precision.A8W8, Precision.A16W8) else None
@@ -53,8 +64,9 @@ def test_exported_io_dtype_is_the_requested_one(model, calibration, precision, i
     assert [r.dtype for r in (*result.inputs, *result.outputs)] == [io_dtype, io_dtype]
 
 
+@pytest.mark.parametrize(("precision", "io_dtype"), [("a8w8", "int8"), ("a16w8", "int16")])
 @pytest.mark.parametrize("strict", [True, False])
-def test_strict_reaches_the_converter(model, calibration, monkeypatch, strict):
+def test_strict_reaches_the_converter(model, calibration, monkeypatch, strict, precision, io_dtype):
     import tensorflow as tf
 
     from helia_edge.export import litert
@@ -67,7 +79,8 @@ def test_strict_reaches_the_converter(model, calibration, monkeypatch, strict):
         return converters[-1]
 
     monkeypatch.setattr(litert.tf.lite.TFLiteConverter, "from_concrete_functions", spy)
-    export_model(model, ExportSpec(precision="a8w8", io_dtype="int8", mode="concrete", strict=strict), calibration)
+    spec = ExportSpec(precision=precision, io_dtype=io_dtype, mode="concrete", strict=strict)
+    export_model(model, spec, calibration)
     assert (tf.lite.OpsSet.TFLITE_BUILTINS in converters[0].target_spec.supported_ops) is (not strict)
 
 

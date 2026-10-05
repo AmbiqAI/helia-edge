@@ -9,10 +9,8 @@ import importlib
 
 import pytest
 
-keras = pytest.importorskip("keras")
+pytest.importorskip("keras")
 pytest.importorskip("tensorflow")
-if keras.backend.backend() != "tensorflow":
-    pytest.skip("Kit names include TensorFlow-only trainers", allow_module_level=True)
 
 CORE = [
     "helia_edge.callbacks.TQDMProgressBar",

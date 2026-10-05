@@ -74,10 +74,11 @@ def test_the_item_factory_is_not_exported(name):
         getattr(helia_edge.utils, name)
 
 
-def test_fp32_w16_is_not_a_precision():
-    from helia_edge.export import Precision
+def test_fp32_w16_and_the_legacy_tables_are_gone():
+    from helia_edge.export import spec
 
-    assert "fp32-w16" not in {p.value for p in Precision}
+    assert "fp32-w16" not in {p.value for p in spec.Precision}
+    assert not {"LEGACY_PRECISION", "LEGACY_MODE"} & set(vars(spec))
 
 
 def example_sources(root):
