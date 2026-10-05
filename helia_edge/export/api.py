@@ -513,17 +513,13 @@ def load_weights(model, path: Path | str) -> None:
     """Load a Keras weights file (``.weights.h5`` or ``.keras``) into ``model``.
 
     Raises:
-        FileNotFoundError: If the file does not exist.
-        ValueError: If the file is not a weights file Keras can read for this model.
+        ValueError: If the file cannot be read as weights of this model (missing, unreadable, damaged, not a
+            weights file, or weights of another model).
     """
-    from .reproduce import ARCHIVE_ERRORS
-
-    if not Path(path).exists():
-        raise FileNotFoundError(f"{path} does not exist")
     try:
         model.load_weights(path)
-    except (OSError, KeyError, *ARCHIVE_ERRORS) as exc:  # not HDF5, an archive without weights, a damaged archive
-        raise ValueError(f"{path} is not a weights file for this model: {exc!r}") from exc
+    except Exception as exc:  # reading an untrusted file: any failure means it cannot be loaded
+        raise ValueError(f"{path} cannot be read as weights of this model: {exc!r}") from exc
 
 
 def load_export_record(path: Path | str, weights: Path | str | None = None):
@@ -540,8 +536,8 @@ def load_export_record(path: Path | str, weights: Path | str | None = None):
         keras.Model: ``build(record.model)`` with the record's batch size and the weights.
 
     Raises:
-        ValueError: If the record has no model spec, the weights file cannot be read, or the weights do not
-            have the record's digest.
+        ValueError: If the record has no model spec, the weights file cannot be read as weights of this
+            model, or the weights do not have the record's digest.
     """
     from ..models.spec import build
 

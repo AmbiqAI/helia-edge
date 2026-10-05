@@ -2,8 +2,6 @@
 
 import hashlib
 import sys
-import zipfile
-import zlib
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
@@ -41,25 +39,17 @@ def file_sha256(path: Path | str) -> str:
     return digest.hexdigest()
 
 
-ARCHIVE_ERRORS = (zipfile.BadZipFile, zlib.error, NotImplementedError, RuntimeError)
-"""What reading a damaged zip archive raises: a bad header or CRC, a corrupt deflate stream, an unsupported
-compression method or an encrypted member."""
-
-
 def load_npy(path: Path | str) -> np.ndarray:
     """A ``.npy`` array, memory-mapped, so that a header claiming more data than the file holds is refused
     rather than allocated.
 
     Raises:
-        ValueError: If the file is not a ``.npy`` array of the size its header states.
-        OSError: If it cannot be read. EOFError: If it is empty.
+        ValueError: If the file cannot be read as a ``.npy`` array.
     """
     try:
         array = np.load(path, allow_pickle=False, mmap_mode="r")
-    except OverflowError as exc:  # a negative or overflowing dimension in the header
-        raise ValueError(f"{path} has an invalid .npy header: {exc}") from exc
-    except ARCHIVE_ERRORS as exc:  # np.load reads a file that starts like a zip archive as .npz
-        raise ValueError(f"{path} is not a .npy array: {exc!r}") from exc
+    except Exception as exc:  # parsing an untrusted file: any failure means it is not a readable .npy array
+        raise ValueError(f"{path} cannot be read as a .npy array: {exc!r}") from exc
     if not isinstance(array, np.ndarray):  # an .npz archive
         array.close()
         raise ValueError(f"{path} is not a .npy array")

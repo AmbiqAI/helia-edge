@@ -42,6 +42,13 @@ def weights_file(spec, path, seed):
     return path
 
 
+def npy_with_header(header):
+    """A ``.npy`` file whose header is ``header``, padded as the format requires, and no data."""
+    text = header.encode("latin1")
+    text += b" " * (-(len(text) + 11) % 64) + b"\n"
+    return b"\x93NUMPY\x01\x00" + len(text).to_bytes(2, "little") + text
+
+
 def edit_record(path, change):
     data = json.loads(path.read_text())
     change(data)
@@ -112,7 +119,9 @@ def test_other_weights_or_calibration_exit_3(created):
     zipped = tmp / "zip.npy"
     np.savez(tmp / "arrays.npz", x=np.zeros(3))
     zipped.write_bytes((tmp / "arrays.npz").read_bytes()[:40])  # a truncated archive
-    for samples in (empty, huge, negative, zipped):
+    unterminated = tmp / "token.npy"
+    unterminated.write_bytes(npy_with_header("{'descr': '<f4"))
+    for samples in (empty, huge, negative, zipped, unterminated):
         changed = invoke("export", "reproduce", record, "--weights", weights, "--calibration", samples)
         assert changed.exit_code == 3 and changed.output.strip().endswith("input"), changed.output
     garbage, no_member, corrupt, truncated = (
@@ -129,7 +138,7 @@ def test_other_weights_or_calibration_exit_3(created):
     truncated.write_bytes(weights.read_bytes()[:100])
     for bad in (garbage, no_member, corrupt, truncated):
         changed = invoke("export", "reproduce", record, "--weights", bad, "--calibration", calibration)
-        assert changed.exit_code == 3 and "is not a weights file for this model" in changed.output, changed.output
+        assert changed.exit_code == 3 and "cannot be read as weights of this model" in changed.output, changed.output
 
     binary = tmp / "binary.json"
     binary.write_bytes(b"\xff\xfe\x00garbage")
@@ -388,11 +397,12 @@ def test_create_records_the_install_and_warns_unless_it_identifies_the_code(tmp_
         ("io", "is not a valid IODType"),
         ("golden resets", "--golden-resets needs --golden-inputs"),
         ("yaml", "is not valid YAML"),
-        ("npy", "invalid .npy header"),
-        ("npz", "is not a .npy array"),
-        ("keras", "garbage.keras is not a weights file for this model"),
-        ("no member", "nomember.keras is not a weights file for this model"),
-        ("zip npy", "zip.npy is not a .npy array"),
+        ("npy", "negative.npy cannot be read as a .npy array"),
+        ("npz", "arrays.npz is not a .npy array"),
+        ("keras", "garbage.keras cannot be read as weights of this model"),
+        ("no member", "nomember.keras cannot be read as weights of this model"),
+        ("zip npy", "zip.npy cannot be read as a .npy array"),
+        ("token npy", "token.npy cannot be read as a .npy array"),
     ],
 )
 def test_create_reports_a_refused_export(tmp_path, change, message):
@@ -404,6 +414,7 @@ def test_create_reports_a_refused_export(tmp_path, change, message):
         np.lib.format.write_array_header_1_0(file, {"descr": "<f4", "fortran_order": False, "shape": (-1, 576)})
     np.savez(tmp_path / "arrays.npz", x=np.zeros(3))
     (tmp_path / "zip.npy").write_bytes((tmp_path / "arrays.npz").read_bytes()[:40])  # a truncated archive
+    (tmp_path / "token.npy").write_bytes(npy_with_header("{'descr': '<f4"))
     if change == "keras":
         weights = tmp_path / "garbage.keras"
         weights.write_bytes(b"not a zip")
@@ -419,6 +430,7 @@ def test_create_reports_a_refused_export(tmp_path, change, message):
         "npy": ["--golden-inputs", tmp_path / "negative.npy"],
         "npz": ["--golden-inputs", tmp_path / "arrays.npz"],
         "zip npy": ["--golden-inputs", tmp_path / "zip.npy"],
+        "token npy": ["--golden-inputs", tmp_path / "token.npy"],
     }.get(change, [])
     precision = [] if change == "precision" else ["--precision", "fp32"]
     result = invoke("export", "create", spec_file, "--weights", weights, *precision, *flags, "--out", tmp_path / "out")
