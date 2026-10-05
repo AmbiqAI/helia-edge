@@ -1,5 +1,7 @@
 """Native float16 export: graph invariants against TensorFlow's weight-only float16 conversion."""
 
+import tempfile
+
 import flatbuffers
 import keras
 import numpy as np
@@ -33,6 +35,13 @@ def fp16_weights(model, mode="concrete"):
     """TensorFlow's float16 weight storage with float32 compute: the graph the native rewrite starts from."""
     if mode == "keras":
         converter = tf.lite.TFLiteConverter.from_keras_model(model)
+    elif mode == "saved_model":
+        with tempfile.TemporaryDirectory() as directory:
+            model.export(directory, format="tf_saved_model")
+            converter = tf.lite.TFLiteConverter.from_saved_model(directory)
+            converter.optimizations = [tf.lite.Optimize.DEFAULT]
+            converter.target_spec.supported_types = [tf.float16]
+            return converter.convert()
     else:
         spec = tf.TensorSpec((1, *model.input_shape[1:]), model.input_dtype)
         converter = tf.lite.TFLiteConverter.from_concrete_functions([tf.function(model).get_concrete_function(spec)])
@@ -147,10 +156,12 @@ def test_constants_are_float16_of_the_weight_only_export(exports):
     assert sorted(raw for _, raw in graph(native)[3]) == expected
 
 
-def test_fp16_export_is_the_rewritten_weight_only_conversion(exports):
-    weight_only, native = exports
-    assert to_native_fp16(weight_only) == native
-    assert graph(to_native_fp16(native))[:3] == graph(native)[:3]
+@pytest.mark.parametrize("mode", ["concrete", "keras", "saved_model"])
+def test_fp16_export_is_the_rewritten_weight_only_conversion(mode):
+    model = build_model()
+    native = export(model, "fp16", mode=mode)
+    assert to_native_fp16(fp16_weights(model, mode=mode)) == native
+    assert graph(to_native_fp16(native))[:3] == graph(native)[:3]  # idempotent
 
 
 def test_fp16_weight_storage_is_unchanged(exports):

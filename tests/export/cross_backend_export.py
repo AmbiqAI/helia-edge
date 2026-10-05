@@ -27,8 +27,9 @@ SAMPLES = 16
 
 # Largest |output difference| accepted against the Torch-trained model's own outputs. Observed with
 # TensorFlow 2.21, Torch 2.14 and ai-edge-litert 2.2: Keras <= 1.1e-7, LiteRT fp32 <= 9e-8 and a8w8
-# (calibrated on the compared inputs) <= 9e-3. The float bounds keep at least a 6x margin; the a8w8 bound keeps 2x and rejects untrained weights for the TCN and MiniResNet models
-# (errors >= 0.4), but not for KWS, whose untrained a8w8 error is about 5e-3.
+# (calibrated on the compared inputs) <= 9e-3. The float bounds keep about a 90x margin; the a8w8 bound
+# keeps 2x and rejects untrained weights for the TCN and MiniResNet models (errors >= 0.4), but not for
+# KWS, whose untrained a8w8 error is about 5e-3.
 TOLERANCE = {"keras": 1e-5, "fp32": 1e-5, "a8w8": 2e-2}
 # Fresh (untrained) weights must differ from the trained outputs by more than this (10x the Keras
 # bound; observed >= 4e-3), so the data and training are strong enough to expose a skipped load.

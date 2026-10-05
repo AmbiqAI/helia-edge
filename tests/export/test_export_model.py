@@ -54,7 +54,7 @@ def test_each_mode_converts_its_own_way(model, calibration, precision):
         mode: export_model(model, ExportSpec(precision=precision, io_dtype=io_dtype, mode=mode), data).content
         for mode in MODES
     }
-    assert len(set(contents.values())) == len(MODES)  # keras, concrete and saved_model graphs differ
+    assert len(set(contents.values())) == len(MODES)  # in operators, shapes or signature metadata
 
 
 @pytest.mark.parametrize(("precision", "io_dtype"), [(p, d) for p in Precision for d in sorted(VALID_IO[p])])
@@ -62,6 +62,16 @@ def test_exported_io_dtype_is_the_requested_one(model, calibration, precision, i
     data = calibration if precision in (Precision.A8W8, Precision.A16W8) else None
     result = export_model(model, ExportSpec(precision=precision, io_dtype=io_dtype, mode="concrete"), data)
     assert [r.dtype for r in (*result.inputs, *result.outputs)] == [io_dtype, io_dtype]
+
+
+@pytest.mark.parametrize(("precision", "io_dtype"), [("fp32", "float32"), ("fp16", "float16")])
+def test_strict_does_not_change_float_exports(model, precision, io_dtype):
+    def content(strict):
+        return export_model(
+            model, ExportSpec(precision=precision, io_dtype=io_dtype, mode="concrete", strict=strict)
+        ).content
+
+    assert content(True) == content(False)
 
 
 @pytest.mark.parametrize(("precision", "io_dtype"), [("a8w8", "int8"), ("a16w8", "int16")])
