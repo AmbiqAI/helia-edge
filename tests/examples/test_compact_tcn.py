@@ -191,3 +191,38 @@ def test_a_record_naming_other_weights_is_refused(tmp_path, monkeypatch):
     with pytest.raises(ValueError, match="does not name the source weights"):
         fixture.generate(tmp_path / "exports")
     assert not list((tmp_path / "exports").glob("*/record.json"))
+
+
+def test_the_converted_model_is_validated(tmp_path, monkeypatch):
+    import dataclasses
+
+    wrong_tcn = copy.deepcopy(fixture.TCN)
+    wrong_tcn["blocks"][1]["dilation"] = [1, 1]
+    wrong, _ = fixture.build_model(8, wrong_tcn)
+    export = fixture.export
+    monkeypatch.setattr(fixture, "export", lambda *a, **k: dataclasses.replace(export(*a, **k), model=wrong))
+    with pytest.raises(ValueError, match="preset"):
+        fixture.generate(tmp_path / "exports")
+    assert not list((tmp_path / "exports").glob("*/record.json"))
+
+
+def test_the_record_is_written_last(tmp_path, monkeypatch):
+    write_json = fixture.write_json
+
+    def fail_on_graph(path, value):
+        if path.name == "graph.json":
+            raise OSError("disk full")
+        write_json(path, value)
+
+    monkeypatch.setattr(fixture, "write_json", fail_on_graph)
+    with pytest.raises(OSError, match="disk full"):
+        fixture.generate(tmp_path / "exports")
+    assert not list((tmp_path / "exports").glob("*/record.json"))
+
+
+def test_an_fp32_export_that_differs_from_keras_is_refused(tmp_path, monkeypatch):
+    infer = fixture.infer
+    monkeypatch.setattr(fixture, "infer", lambda interpreter, inputs: infer(interpreter, inputs) + 1e-3)
+    with pytest.raises(AssertionError):
+        fixture.generate(tmp_path / "exports")
+    assert not list((tmp_path / "exports").glob("*/record.json"))

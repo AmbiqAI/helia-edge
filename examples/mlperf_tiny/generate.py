@@ -53,10 +53,10 @@ def generate(name, output, seed=20260926):
         raise ValueError(f"Unknown model {name}")
     if type(seed) is not int or not 0 <= seed < 2**32:
         raise ValueError("seed must be an unsigned32-bit integer")
+    output.mkdir(parents=True, exist_ok=False)
     install = environment_record()
     if not install.identified:  # the record then cannot name the code that exported
         print(f"warning: {unidentified_install(install)}", file=sys.stderr)
-    output.mkdir(parents=True, exist_ok=False)
     keras.utils.set_random_seed(seed)
     model = build(SPECS[name])
     inputs, expected, amplitude = diagnostic_cases(model)

@@ -92,8 +92,9 @@ the seed, `references.json` with the pinned upstream sources, and the licenses;
 `record.json` is written last. In the environment that generated it,
 `helia-edge export reproduce record.json --weights model.weights.h5` exports it
 again and compares. The record names the helia-edge code only for a release or a
-git install at a commit; from a checkout on `PYTHONPATH` it records an `unknown`
-install, and the helper warns. LiteRT BUILTIN_REF runs
+git install at a commit; from a checkout (on `PYTHONPATH`, or installed editable)
+it records an `unknown` or `local` install and the helper warns, and two such
+checkouts record the same environment, so `reproduce` cannot tell their code apart. LiteRT BUILTIN_REF runs
 single-thread without delegates; exported FP32 outputs must match Keras with
 `rtol=1e-5, atol=1e-5`. Seed alone is not a cross-version byte identity guarantee.
 To make initialized KWS/VWW models numerically discriminating, the helper increases

@@ -70,8 +70,9 @@ alone does not guarantee identical bytes across dependency versions; the record
 names the Python, platform and package versions. It names the helia-edge code
 only for a release or a git install at a commit
 (`uv pip install 'helia-edge @ git+https://github.com/AmbiqAI/helia-edge@<commit>'`);
-run from a checkout on `PYTHONPATH`, it records an `unknown` install and the
-generator warns.
+run from a checkout (on `PYTHONPATH`, or installed editable) it records an
+`unknown` or `local` install and the generator warns. Two such checkouts record
+the same environment, so `reproduce` cannot tell their code apart.
 
 Run the focused tests in the same environment:
 

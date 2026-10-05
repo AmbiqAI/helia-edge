@@ -117,3 +117,21 @@ def test_topology_comparison_detects_wrong_resnet_width_and_disconnected_skip():
     wrong_skip = copy.deepcopy(expected)
     wrong_skip[3]["inputs"][0] = wrong_skip[3]["inputs"][1]
     assert topology(wrong_skip) != topology(expected)
+
+
+def test_the_record_is_written_last(tmp_path, monkeypatch):
+    def fail(*args, **kwargs):
+        raise OSError("disk full")
+
+    monkeypatch.setattr(generator.shutil, "copyfile", fail)
+    with pytest.raises(OSError, match="disk full"):
+        generator.generate("ad", tmp_path / "ad")
+    assert not (tmp_path / "ad" / "record.json").exists()
+
+
+def test_an_export_that_differs_from_keras_is_refused(tmp_path, monkeypatch):
+    cases = generator.diagnostic_cases
+    monkeypatch.setattr(generator, "diagnostic_cases", lambda model: (lambda x, y, a: (x, y + 1e-3, a))(*cases(model)))
+    with pytest.raises(AssertionError):
+        generator.generate("ad", tmp_path / "ad")
+    assert not (tmp_path / "ad" / "record.json").exists()

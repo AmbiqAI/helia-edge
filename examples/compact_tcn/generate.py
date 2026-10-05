@@ -287,10 +287,10 @@ def generate(output, calibration_samples=32):
         list[Path]: The ``record.json`` of each export, which ``helia-edge export reproduce`` checks.
     """
     calibration = calibration_inputs(calibration_samples)
+    output.mkdir(parents=True, exist_ok=False)
     install = environment_record()
     if not install.identified:  # the records then cannot name the code that exported
         print(f"warning: {unidentified_install(install)}", file=sys.stderr)
-    output.mkdir(parents=True, exist_ok=False)
     np.save(output / "calibration.npy", calibration, allow_pickle=False)
     write_json(output / "license.json", retain_license(output))
     records = []
