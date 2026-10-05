@@ -66,7 +66,7 @@ model_again = load_export_record(record_path)
 - **Calibrated precisions** (`a8w8`, `a16w8`) export with `batch_size` 1. Streaming `resets` are increasing steps within the calibration.
 - **Streaming models:** pass the signal as `calibration` with the state `resets`; `export` builds the state calibration with `stream_calibration`. `with_golden(inputs, resets)` adds a `helia-model-zoo/golden@2` sequence run with LiteRT's reference kernels.
 - **Options:** `ExportOptions(strict=True, state_tie_tolerance=0.01, mode="keras", dense_per_channel=True)`; `mode="keras"` keeps the model's batch; `concrete` traces batch 1 and exports `batch_size` 1 only.
-- **Dense weights:** for `a8w8` and `a16w8`, `dense_per_channel=False` quantizes `FULLY_CONNECTED` weights with one scale per tensor, while convolutions stay per channel. LiteRT for Microcontrollers runs int16 `FULLY_CONNECTED` only with per-tensor weights, so `a16w8` exports for it use `False`. The record names the setting, and float precisions refuse `False`.
+- **Dense weights:** for `a8w8` and `a16w8`, `dense_per_channel=False` quantizes `FULLY_CONNECTED` weights with one scale per tensor, while convolutions stay per channel. The CMSIS-NN int16 `FULLY_CONNECTED` kernel of LiteRT for Microcontrollers accepts per-tensor weights only, so `a16w8` exports for it use `False`; the reference and heliaRT kernels run either. The record names the setting, and float precisions refuse `False`.
 
 ## Streaming models
 

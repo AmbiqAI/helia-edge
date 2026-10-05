@@ -300,6 +300,15 @@ def test_a_converter_without_the_dense_setting_is_refused(model, calibration, mo
 
     monkeypatch.setattr(litert, "_DENSE_PER_TENSOR", "_no_such_converter_setting")
     spec = ExportSpec(precision="a16w8", io_dtype="int16", mode="concrete", dense_per_channel=False)
-    with pytest.raises(RuntimeError, match="cannot be applied"):
+    with pytest.raises(ValueError, match="cannot be applied"):
         export_model(model, spec, calibration)
     export_model(model, spec.model_copy(update={"dense_per_channel": True}), calibration)  # the default never asks
+
+
+def test_export_passes_dense_per_channel_to_the_exporter(model, calibration):
+    from helia_edge.export import ExportOptions, export
+
+    options = ExportOptions(mode="concrete", dense_per_channel=False)
+    result = export(model, precision="a16w8", io_dtype="int16", calibration=calibration, options=options)
+    assert result.record.export.options.dense_per_channel is False
+    assert ("FULLY_CONNECTED", 1) in weight_scales(result.content)  # the artifact matches its record

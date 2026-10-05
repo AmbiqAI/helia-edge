@@ -166,6 +166,7 @@ def converted(model, spec, calibration):
         mode=spec.mode,
         strict=spec.strict,
         calibration=calibration,
+        dense_per_channel=spec.dense_per_channel,
     )
 
 
@@ -449,3 +450,29 @@ def test_a_tie_carries_through_a_reshape_to_its_reader(signal):
         _, outputs = runner.run({"signal": runner.encode("signal", signal[96:, None])}, resets=[32])
         errors[factor] = np.abs(runner.decode("prob", outputs["prob"])[:, 0] - want).max()
     assert errors[1.25] < 2 * errors[1.0] + 1e-3
+
+
+@pytest.mark.parametrize(("precision", "io_dtype"), [("a16w8", "int16"), ("a8w8", "int8")])
+def test_a_tie_requantizes_a_wide_biased_dense_with_per_tensor_weights(signal, precision, io_dtype):
+    """A biased Dense(8) reads the tied state output, so its per-tensor weight scale meets the bias requantization."""
+    keras.utils.set_random_seed(7)
+    x = keras.Input((FEATURES,), batch_size=1, name="signal")
+    h, c = state_input(0, (UNITS,), batch_size=1), state_input(1, (UNITS,), batch_size=1)
+    h_next, c_next = StreamingLSTMCell(UNITS, name="lstm")([x, h, c])
+    wide = keras.layers.Dense(8, activation="relu", name="wide")(h_next)
+    prob = keras.layers.Dense(1, activation="sigmoid", name="prob")(wide)
+    model = keras.Model([x, h, c], [prob, state_output(0, h_next), state_output(1, c_next)])
+    model.get_layer("wide").bias.assign(np.random.default_rng(5).normal(scale=3, size=(8,)).astype(np.float32))
+    calibration = stream_calibration(model, {"signal": signal[:96]}, resets=[48])
+    want = keras_stream(model, signal[96:], resets=[32])["prob"]
+    spec = ExportSpec(
+        precision=precision, io_dtype=io_dtype, mode="keras", state_tie_tolerance=0.3, dense_per_channel=False
+    )
+    errors = {}
+    for factor in (1.0, 1.25):
+        content = export_model(model, spec, scaled_state(calibration, factor)).content
+        assert all(n == 1 for n in dense_weight_scales(content))
+        runner = LiteRTStreamRunner(content, reference_kernels=True)
+        _, outputs = runner.run({"signal": runner.encode("signal", signal[96:, None])}, resets=[32])
+        errors[factor] = np.abs(runner.decode("prob", outputs["prob"])[:, 0] - want).max()
+    assert errors[1.0] < 0.05 and errors[1.25] < 2 * errors[1.0] + 1e-3

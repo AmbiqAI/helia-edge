@@ -15,7 +15,16 @@ from pydantic import BaseModel, ConfigDict, Field, StrictBool, StrictFloat, Stri
 from ..importers.mapping import SHA256
 from ..models.spec import ModelSpec
 from .result import EnvironmentRecord, HeliaEdgeSource, TensorRecord
-from .spec import CALIBRATED, VALID_IO, ConversionMode, IODType, Precision, TensorRole, check_resets
+from .spec import (
+    CALIBRATED,
+    VALID_IO,
+    ConversionMode,
+    IODType,
+    Precision,
+    TensorRole,
+    check_dense_per_channel,
+    check_resets,
+)
 
 RECORD_SCHEMA = "helia-edge/export-record@1"
 GOLDEN_SCHEMA = "helia-model-zoo/golden@2"
@@ -63,8 +72,9 @@ class ExportOptions(BaseModel):
             exports ``batch_size`` 1 only.
         dense_per_channel: For calibrated precisions, quantize FULLY_CONNECTED weights per output channel
             (True, the converter's default) or with one scale per tensor (False). Convolutions stay per
-            channel either way. LiteRT for Microcontrollers runs int16 FULLY_CONNECTED with per-tensor
-            weights only, so a16w8 exports for it use False. Float precisions refuse False.
+            channel either way. The CMSIS-NN int16 FULLY_CONNECTED kernel of LiteRT for Microcontrollers
+            accepts per-tensor weights only, so a16w8 exports for it use False; the reference and heliaRT
+            kernels run either. Float precisions refuse False.
     """
 
     model_config = _CONFIG
@@ -110,8 +120,7 @@ class ExportSettings(BaseModel):
             raise ValueError(
                 f"precision {self.precision} {'needs' if self.precision in CALIBRATED else 'takes no'} calibration"
             )
-        if not self.options.dense_per_channel and self.precision not in CALIBRATED:
-            raise ValueError(f"dense_per_channel applies to a8w8 and a16w8, not {self.precision}")
+        check_dense_per_channel(self.precision, self.options.dense_per_channel)
         if self.calibration is not None:
             resets = self.calibration.resets
             check_resets(resets, self.calibration.samples, stateful=True, what="Calibration")

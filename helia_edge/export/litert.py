@@ -34,7 +34,7 @@ def convert_litert(
     mode: ConversionMode,
     strict: bool,
     calibration: npt.NDArray | Mapping[str, npt.NDArray] | None,
-    dense_per_channel: bool = True,
+    dense_per_channel: bool,
 ) -> bytes:
     """Convert a Keras model to LiteRT bytes; ``export_model`` validates the arguments first.
 
@@ -49,11 +49,11 @@ def convert_litert(
             float16 inputs and outputs whatever ``io_dtype`` says, so pass those.
         mode: How the model is traced; SAVED_MODEL exports to a temporary directory removed after conversion.
         strict: For calibrated precisions, refuse operators without an integer kernel.
-        dense_per_channel: For calibrated precisions, False quantizes FULLY_CONNECTED weights per tensor
-            (convolutions stay per channel).
         calibration: Samples for the calibrated precisions, used one at a time in stored order; for a model
             with several inputs, a mapping of each input name to its samples, fed by name because the
             converter orders inputs its own way.
+        dense_per_channel: For calibrated precisions, False quantizes FULLY_CONNECTED weights per tensor
+            (convolutions stay per channel).
 
     Returns:
         bytes: The LiteRT flatbuffer.
@@ -63,6 +63,8 @@ def convert_litert(
             function converts to a graph without a signature, which name-keyed calibration and state
             tensors need. Also if a model with state inputs repeats an output name, as two outputs of one
             layer do.
+        ValueError: Also if ``dense_per_channel`` is False and this TensorFlow's converter lacks the
+            setting that applies it.
     """
     stateful = any(state_pair(tensor.name) for tensor in model.inputs)
     if mode == ConversionMode.CONCRETE and (stateful or len(model.inputs) > 1):
@@ -148,7 +150,7 @@ def convert_litert(
         if not dense_per_channel and precision in (Precision.A8W8, Precision.A16W8):
             # A private converter setting (TensorFlow 2.21); refuse rather than ignore the option without it
             if not hasattr(converter, _DENSE_PER_TENSOR):
-                raise RuntimeError(
+                raise ValueError(
                     f"TensorFlow {tf.__version__}'s converter has no {_DENSE_PER_TENSOR}, so dense_per_channel=False "
                     "cannot be applied"
                 )
