@@ -491,6 +491,7 @@ def export(
             mode=options.mode,
             strict=options.strict,
             state_tie_tolerance=options.state_tie_tolerance,
+            dense_per_channel=options.dense_per_channel,
         ),
         data,
     )

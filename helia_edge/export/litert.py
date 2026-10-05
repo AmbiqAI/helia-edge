@@ -16,6 +16,8 @@ from .fp16 import to_native_fp16
 from .result import ExportResult, TensorRecord, environment_record
 from .spec import CALIBRATED, ConversionMode, ExportSpec, IODType, Precision, TensorRole, state_pair
 
+_DENSE_PER_TENSOR = "_experimental_disable_per_channel_quantization_for_dense_layers"
+
 _IO_TYPES = {
     schema.TensorType.FLOAT32: IODType.FLOAT32,
     schema.TensorType.FLOAT16: IODType.FLOAT16,
@@ -32,6 +34,7 @@ def convert_litert(
     mode: ConversionMode,
     strict: bool,
     calibration: npt.NDArray | Mapping[str, npt.NDArray] | None,
+    dense_per_channel: bool = True,
 ) -> bytes:
     """Convert a Keras model to LiteRT bytes; ``export_model`` validates the arguments first.
 
@@ -46,6 +49,8 @@ def convert_litert(
             float16 inputs and outputs whatever ``io_dtype`` says, so pass those.
         mode: How the model is traced; SAVED_MODEL exports to a temporary directory removed after conversion.
         strict: For calibrated precisions, refuse operators without an integer kernel.
+        dense_per_channel: For calibrated precisions, False quantizes FULLY_CONNECTED weights per tensor
+            (convolutions stay per channel).
         calibration: Samples for the calibrated precisions, used one at a time in stored order; for a model
             with several inputs, a mapping of each input name to its samples, fed by name because the
             converter orders inputs its own way.
@@ -140,6 +145,14 @@ def convert_litert(
         # Without strict, calibrated precisions fall back to float operators where no integer kernel exists
         if not strict and precision in (Precision.A8W8, Precision.A16W8):
             converter.target_spec.supported_ops.append(tf.lite.OpsSet.TFLITE_BUILTINS)
+        if not dense_per_channel and precision in (Precision.A8W8, Precision.A16W8):
+            # A private converter setting (TensorFlow 2.21); refuse rather than ignore the option without it
+            if not hasattr(converter, _DENSE_PER_TENSOR):
+                raise RuntimeError(
+                    f"TensorFlow {tf.__version__}'s converter has no {_DENSE_PER_TENSOR}, so dense_per_channel=False "
+                    "cannot be applied"
+                )
+            setattr(converter, _DENSE_PER_TENSOR, True)
 
         content = converter.convert()
     return to_native_fp16(content) if precision == Precision.FP16 else content
@@ -432,6 +445,7 @@ def export_litert(
         mode=spec.mode,
         strict=spec.strict,
         calibration=calibration,
+        dense_per_channel=spec.dense_per_channel,
     )
     # Refuse unpaired or mismatched state tensors, which tensor_records would record as signals
     _state_pairs(schema.ModelT.InitFromObj(schema.Model.GetRootAsModel(bytearray(content), 0)))

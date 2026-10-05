@@ -272,6 +272,10 @@ def test_the_record_refuses_what_it_does_not_describe():
             export(model, precision=precision, io_dtype="float32")
     with pytest.raises(pydantic.ValidationError, match="mode"):
         ExportOptions(mode="saved_model")
+    with pytest.raises(pydantic.ValidationError, match="dense_per_channel"):
+        ExportOptions(dense_per_channel="no")
+    with pytest.raises(pydantic.ValidationError, match="dense_per_channel applies to a8w8 and a16w8"):
+        export(model, precision="fp32", io_dtype="float32", options=ExportOptions(dense_per_channel=False))
     with pytest.raises(pydantic.ValidationError, match="strict"):
         ExportOptions(strict="no")
     with pytest.raises(pydantic.ValidationError, match="state_tie_tolerance"):

@@ -125,8 +125,25 @@ def test_float_export_streams_like_keras(model, signal):
         np.testing.assert_allclose(outputs[name][:, 0], want[name], rtol=1e-5, atol=1e-5)
 
 
-def test_int16_export_carries_the_raw_state_and_tracks_keras(model, signal, calibration):
-    result = export_model(model, INT16, calibration)
+def dense_weight_scales(content):
+    """The number of weight scales of each FULLY_CONNECTED operator."""
+    from tensorflow.lite.python import schema_py_generated as schema
+
+    model = schema.ModelT.InitFromObj(schema.Model.GetRootAsModel(bytearray(content), 0))
+    graph = model.subgraphs[0]
+    codes = [max(c.builtinCode, c.deprecatedBuiltinCode) for c in model.operatorCodes]
+    return [
+        len(graph.tensors[op.inputs[1]].quantization.scale)
+        for op in graph.operators
+        if codes[op.opcodeIndex] == schema.BuiltinOperator.FULLY_CONNECTED
+    ]
+
+
+@pytest.mark.parametrize("dense_per_channel", [True, False])
+def test_int16_export_carries_the_raw_state_and_tracks_keras(model, signal, calibration, dense_per_channel):
+    result = export_model(model, INT16.model_copy(update={"dense_per_channel": dense_per_channel}), calibration)
+    scales = dense_weight_scales(result.content)
+    assert scales and (all(n == 1 for n in scales) if not dense_per_channel else any(n > 1 for n in scales))
     assert state_scales_tied(result.inputs, result.outputs) is True
     runner = LiteRTStreamRunner(result.content, reference_kernels=True)
     fed, outputs = runner.run({"signal": runner.encode("signal", signal[96:, None])}, resets=[32])
@@ -205,9 +222,18 @@ def test_a_state_written_by_a_fixed_scale_operator_is_refused(signal):
         export_model(model, INT16.model_copy(update={"state_tie_tolerance": 0.2}), calibration)
 
 
+@pytest.mark.parametrize("dense_per_channel", [True, False])
 @pytest.mark.parametrize(("precision", "io_dtype"), [("a16w8", "int16"), ("a8w8", "int8")])
-def test_a_tie_keeps_the_bias_of_the_layers_reading_the_state(model, signal, calibration, precision, io_dtype):
-    spec = ExportSpec(precision=precision, io_dtype=io_dtype, mode="keras", state_tie_tolerance=0.3)
+def test_a_tie_keeps_the_bias_of_the_layers_reading_the_state(
+    model, signal, calibration, precision, io_dtype, dense_per_channel
+):
+    spec = ExportSpec(
+        precision=precision,
+        io_dtype=io_dtype,
+        mode="keras",
+        state_tie_tolerance=0.3,
+        dense_per_channel=dense_per_channel,
+    )
     want = keras_stream(model, signal[96:], resets=[32])["prob"]
     errors = {}
     for factor in (1.0, 1.25):

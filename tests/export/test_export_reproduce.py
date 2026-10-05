@@ -457,3 +457,22 @@ def test_a_record_batch_beyond_int32_is_invalid(tmp_path):
     edited = edit_record(tmp_path / "record.json", batch_2_31)
     changed = invoke("export", "reproduce", edited, "--weights", weights)
     assert changed.exit_code == 3 and "is not a readable export record" in changed.output
+
+
+def test_dense_per_tensor_is_recorded_and_reproduces(tmp_path):
+    from helia_edge.models import compact_tcn_params
+
+    spec = ModelSpec(params=compact_tcn_params(num_classes=2), input_shape=(32, 4))
+    spec_file, calibration = tmp_path / "spec.json", tmp_path / "calibration.npy"
+    spec_file.write_text(spec.model_dump_json())
+    np.save(calibration, np.random.default_rng(3).normal(size=(8, 32, 4)).astype(np.float32))
+    weights = weights_file(spec, tmp_path / "w.weights.h5", seed=0)
+    args = ["--weights", weights, "--precision", "a16w8", "--calibration", calibration]
+    result = invoke("export", "create", spec_file, *args, "--dense-per-tensor", "--out", tmp_path / "out")
+    assert result.exit_code == 0, result.output + str(result.exception)
+    record = ExportRecord.read(tmp_path / "out" / "record.json")
+    assert record.export.options.dense_per_channel is False
+    same = invoke(
+        "export", "reproduce", tmp_path / "out" / "record.json", "--weights", weights, "--calibration", calibration
+    )
+    assert same.exit_code == 0 and same.output.strip().endswith("same"), same.output

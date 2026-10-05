@@ -92,6 +92,10 @@ class ExportSpec(BaseModel):
             (``state_in_k``, ``state_out_k``) one scale and zero point covering both tensors' ranges, and
             refuses when that scale differs from either original by more than this fraction of it (at
             most 0.5). Models without state pairs ignore it.
+        dense_per_channel: For calibrated precisions, quantize FULLY_CONNECTED weights per output channel
+            (True, the converter's default) or with one scale per tensor (False). Convolutions stay per
+            channel either way. LiteRT for Microcontrollers runs int16 FULLY_CONNECTED with per-tensor
+            weights only, so a16w8 exports for it use False. Float precisions refuse False.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -102,6 +106,7 @@ class ExportSpec(BaseModel):
     mode: ConversionMode
     strict: StrictBool = True
     state_tie_tolerance: StrictFloat = Field(default=0.01, ge=0.0, le=0.5)
+    dense_per_channel: StrictBool = True
 
     @model_validator(mode="after")
     def _io_dtype_matches_precision(self) -> "ExportSpec":
@@ -111,6 +116,8 @@ class ExportSpec(BaseModel):
             raise ValueError(
                 f"io_dtype {self.io_dtype.value!r} is not valid for {self.precision.value!r}; use {allowed}"
             )
+        if not self.dense_per_channel and self.precision not in CALIBRATED:
+            raise ValueError(f"dense_per_channel applies to a8w8 and a16w8, not {self.precision.value!r}")
         return self
 
 

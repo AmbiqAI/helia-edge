@@ -81,5 +81,9 @@ def test_spec_is_frozen_strict_and_round_trips():
         "mode": "concrete",
         "strict": True,
         "state_tie_tolerance": 0.01,
+        "dense_per_channel": True,
     }
     assert ExportSpec.model_validate(data) == spec
+    assert ExportSpec.model_validate({**data, "dense_per_channel": False}).dense_per_channel is False
+    with pytest.raises(pydantic.ValidationError):
+        ExportSpec.model_validate({**data, "dense_per_channel": "no"})
