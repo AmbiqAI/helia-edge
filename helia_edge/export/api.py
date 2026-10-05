@@ -336,8 +336,7 @@ class Export:
             raise ValueError("A golden needs at least one call of finite inputs")
         if not any(entry.role is TensorRole.STATE for entry in self.record.io.inputs):
             raise ValueError("A golden@2 sequence is for streaming models (state_in_k inputs)")
-        resets = _steps(resets)
-        check_resets(resets, len(inputs), stateful=True, what="Golden")
+        resets = _steps(resets)  # the golden record checks them against the steps
         data = golden_npz(self.content, inputs, resets)
         golden = GoldenRecord(
             file=file_record("golden.npz", data),

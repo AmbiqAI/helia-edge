@@ -119,9 +119,9 @@ def test_the_export_is_the_export_model_artifact_with_its_record():
 
 
 def test_without_a_spec_the_batch_must_match_and_with_one_the_spec_is_built():
-    with pytest.raises(ValueError, match="batch"):
+    with pytest.raises(ValueError, match="Pass spec to export"):  # refused before converting
         export(seeded(SPEC), precision="fp32", io_dtype="float32")
-    with pytest.raises(ValueError, match="batch"):
+    with pytest.raises(ValueError, match="Pass spec to export"):
         export(seeded(SPEC, batch_size=2), precision="fp32", io_dtype="float32")
     assert (
         export(seeded(SPEC, batch_size=2), precision="fp32", io_dtype="float32", spec=SPEC).record.export.batch_size
