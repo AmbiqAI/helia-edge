@@ -279,3 +279,26 @@ def test_conformer_layer_norms_normalize_features():
     axes = [layer.axis for layer in model.layers if isinstance(layer, keras.layers.LayerNormalization)]
     # Five layer norms per block (two feed-forward, attention, convolution, output), each over features.
     assert axes == [[-1]] * 5 * len(CONFORMER.blocks), axes
+
+
+def test_conformer_params_requires_at_least_one_subsample():
+    """Regression: ConformerParams with empty subsamples must raise ValidationError (min_length=1)."""
+    from pydantic import ValidationError
+
+    # Empty subsamples via explicit list
+    with pytest.raises(ValidationError):
+        ConformerParams(
+            subsamples=[],
+            blocks=[{"depth": 16, "num_heads": 2, "kernel_size": 3}],
+        )
+
+    # Default factory produces empty list — validate_default=True must catch it
+    with pytest.raises(ValidationError):
+        ConformerParams()
+
+    # One subsample is OK
+    params = ConformerParams(
+        subsamples=[{"depth": 16}],
+        blocks=[{"depth": 16, "num_heads": 2, "kernel_size": 3}],
+    )
+    assert len(params.subsamples) == 1
