@@ -253,26 +253,10 @@ def test_unknown_format_is_refused():
         ExportSpec(format="onnx", precision="fp32", io_dtype="float32", mode="concrete")
 
 
-def weight_scales(content):
-    """(operator, number of weight scales) for each FULLY_CONNECTED and convolution."""
-    from tensorflow.lite.python import schema_py_generated as schema
-
-    model = schema.ModelT.InitFromObj(schema.Model.GetRootAsModel(bytearray(content), 0))
-    graph = model.subgraphs[0]
-    names = {v: k for k, v in vars(schema.BuiltinOperator).items() if isinstance(v, int)}
-    result = []
-    for op in graph.operators:
-        code = model.operatorCodes[op.opcodeIndex]
-        name = names[max(code.builtinCode, code.deprecatedBuiltinCode)]
-        if name in ("FULLY_CONNECTED", "CONV_2D", "DEPTHWISE_CONV_2D"):
-            result.append((name, len(graph.tensors[op.inputs[1]].quantization.scale)))
-    return result
-
-
 @pytest.mark.parametrize(("precision", "io_dtype"), [("a8w8", "int8"), ("a16w8", "int16"), ("a16w8", "float32")])
 @pytest.mark.parametrize("mode", ["keras", "concrete"])
 def test_dense_per_tensor_quantizes_only_fully_connected_weights_per_tensor(
-    model, calibration, precision, io_dtype, mode
+    model, calibration, precision, io_dtype, mode, weight_scales
 ):
     def scales(dense_per_channel):
         spec = ExportSpec(precision=precision, io_dtype=io_dtype, mode=mode, dense_per_channel=dense_per_channel)
@@ -305,7 +289,7 @@ def test_a_converter_without_the_dense_setting_is_refused(model, calibration, mo
     export_model(model, spec.model_copy(update={"dense_per_channel": True}), calibration)  # the default never asks
 
 
-def test_export_passes_dense_per_channel_to_the_exporter(model, calibration):
+def test_export_passes_dense_per_channel_to_the_exporter(model, calibration, weight_scales):
     from helia_edge.export import ExportOptions, export
 
     options = ExportOptions(mode="concrete", dense_per_channel=False)

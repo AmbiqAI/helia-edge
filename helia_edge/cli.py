@@ -64,7 +64,8 @@ def export_create(
         bool,
         typer.Option(
             "--dense-per-channel/--dense-per-tensor",
-            help="For a8w8 and a16w8, FULLY_CONNECTED weights per channel or per tensor (convolutions stay per channel).",
+            help="For a8w8 and a16w8, FULLY_CONNECTED weights per channel or per tensor "
+            "(convolutions stay per channel).",
         ),
     ] = True,
     require_provenance: Annotated[

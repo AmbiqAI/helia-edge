@@ -148,7 +148,7 @@ def convert_litert(
         if not strict and precision in (Precision.A8W8, Precision.A16W8):
             converter.target_spec.supported_ops.append(tf.lite.OpsSet.TFLITE_BUILTINS)
         if not dense_per_channel and precision in (Precision.A8W8, Precision.A16W8):
-            # A private converter setting, present in the pinned TensorFlow 2.21; refuse rather than ignore the option without it
+            # A private converter setting, present in the pinned TensorFlow 2.21; without it, refuse the option
             if not hasattr(converter, _DENSE_PER_TENSOR):
                 raise ValueError(
                     f"TensorFlow {tf.__version__}'s converter has no {_DENSE_PER_TENSOR}, so dense_per_channel=False "

@@ -459,21 +459,7 @@ def test_a_record_batch_beyond_int32_is_invalid(tmp_path):
     assert changed.exit_code == 3 and "is not a readable export record" in changed.output
 
 
-def dense_weight_scale_counts(content):
-    """The weight scale counts of the FULLY_CONNECTED operators."""
-    from tensorflow.lite.python import schema_py_generated as schema
-
-    model = schema.ModelT.InitFromObj(schema.Model.GetRootAsModel(bytearray(content), 0))
-    graph = model.subgraphs[0]
-    counts = set()
-    for op in graph.operators:
-        code = model.operatorCodes[op.opcodeIndex]
-        if max(code.builtinCode, code.deprecatedBuiltinCode) == schema.BuiltinOperator.FULLY_CONNECTED:
-            counts.add(len(graph.tensors[op.inputs[1]].quantization.scale))
-    return counts
-
-
-def test_dense_per_tensor_is_recorded_and_reproduces(tmp_path):
+def test_dense_per_tensor_is_recorded_and_reproduces(tmp_path, weight_scales):
     spec = ModelSpec(params=MlperfTinyParams(architecture="ad"))
     spec_file, calibration = tmp_path / "spec.json", tmp_path / "calibration.npy"
     spec_file.write_text(spec.model_dump_json())
@@ -484,7 +470,8 @@ def test_dense_per_tensor_is_recorded_and_reproduces(tmp_path):
     assert result.exit_code == 0, result.output + str(result.exception)
     record = ExportRecord.read(tmp_path / "out" / "record.json")
     assert record.export.options.dense_per_channel is False
-    assert dense_weight_scale_counts((tmp_path / "out" / "model.tflite").read_bytes()) == {1}
+    scales = weight_scales((tmp_path / "out" / "model.tflite").read_bytes())
+    assert {n for name, n in scales if name == "FULLY_CONNECTED"} == {1}
     same = invoke(
         "export", "reproduce", tmp_path / "out" / "record.json", "--weights", weights, "--calibration", calibration
     )
