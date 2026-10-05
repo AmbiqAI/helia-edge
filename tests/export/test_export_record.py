@@ -227,6 +227,8 @@ def test_the_reference_build_warns_when_keras_numbers_names_elsewhere(monkeypatc
             warnings.simplefilter("always")
             with _reference_build():
                 assert keras.config.dtype_policy().name == "float32"
+                if table == "present":  # the probe layer leaves no name behind
+                    assert keras.layers.Identity().name == "identity"
         assert keras.config.dtype_policy().name == "mixed_float16"
     finally:
         keras.config.set_dtype_policy(previous)

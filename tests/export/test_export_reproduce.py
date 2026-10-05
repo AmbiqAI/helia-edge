@@ -98,23 +98,45 @@ def test_other_weights_or_calibration_exit_3(created):
     assert changed.exit_code == 3 and "the record names" in changed.output
     missing = invoke("export", "reproduce", record, "--weights", weights)
     assert missing.exit_code == 3 and "pass its .npy file" in missing.output
+    no_model = edit_record(record, lambda data: data.update(model=None))
+    changed = invoke("export", "reproduce", no_model, "--weights", weights, "--calibration", calibration)
+    assert changed.exit_code == 3 and "has no model spec" in changed.output
 
 
-def test_a_record_whose_artifact_differs_exits_1(created):
+def scale_input(data):
+    data["io"]["inputs"][0]["scale"] *= 2
+
+
+@pytest.mark.parametrize(
+    ("change", "message"),
+    [
+        (lambda data: data["export"].update(io_dtype="float32"), "different: artifact: sha256"),
+        (scale_input, "different: io"),
+    ],
+)
+def test_a_record_whose_artifact_or_io_differs_exits_1(created, change, message):
     tmp, _, weights, calibration = created
-    edited = edit_record(tmp / "out" / "record.json", lambda data: data["export"].update(io_dtype="float32"))
+    edited = edit_record(tmp / "out" / "record.json", change)
     result = invoke("export", "reproduce", edited, "--weights", weights, "--calibration", calibration)
-    assert result.exit_code == 1 and "different: artifact: sha256" in result.output
+    assert result.exit_code == 1 and message in result.output
 
 
-def test_another_environment_exits_2_unless_allowed(created):
+@pytest.mark.parametrize(
+    ("change", "message"),
+    [
+        (lambda environment: environment.update(python="0.0.0"), "python: 0.0.0 ->"),
+        (lambda environment: environment["helia_edge"].update(commit="abc123"), "helia_edge.commit: abc123 ->"),
+        (lambda environment: environment["packages"].update(keras="0.0.0"), "keras: 0.0.0 ->"),
+    ],
+)
+def test_another_environment_exits_2_unless_allowed(created, change, message):
     tmp, _, weights, calibration = created
-    edited = edit_record(tmp / "out" / "record.json", lambda data: data["environment"].update(python="0.0.0"))
+    edited = edit_record(tmp / "out" / "record.json", lambda data: change(data["environment"]))
     args = ["export", "reproduce", edited, "--weights", weights, "--calibration", calibration]
     refused = invoke(*args)
-    assert refused.exit_code == 2 and "environment: python: 0.0.0 ->" in refused.output
+    assert refused.exit_code == 2 and f"environment: {message}" in refused.output
     allowed = invoke(*args, "--allow-env-mismatch")
-    assert allowed.exit_code == 0 and "environment: python: 0.0.0 ->" in allowed.output
+    assert allowed.exit_code == 0 and f"environment: {message}" in allowed.output
 
 
 def test_imported_weights_and_a_golden_reproduce(tmp_path, write_safetensors, silero_tensors, monkeypatch):
@@ -139,11 +161,54 @@ def test_imported_weights_and_a_golden_reproduce(tmp_path, write_safetensors, si
     record = ExportRecord.read(out / "record.json")
     assert record.weights.import_.mapping == mapping.name and record.weights.import_.source.sha256 == sha256
     assert record.golden.steps == 12 and record.golden.resets == (6,) and (out / "golden.npz").exists()
-    same = invoke("export", "reproduce", out / "record.json", "--weights", source, "--golden-inputs", calls)
+    reproduce = ["export", "reproduce", out / "record.json", "--weights", source]
+    same = invoke(*reproduce, "--golden-inputs", calls)
     assert same.exit_code == 0 and same.output.strip().endswith("same"), same.output
+    digest = edit_record(out / "record.json", lambda data: data["weights"].update(digest="sha256:" + "0" * 64))
+    changed = invoke("export", "reproduce", digest, "--weights", source)
+    assert changed.exit_code == 1 and "different: weights" in changed.output, changed.output
+    resets = edit_record(out / "record.json", lambda data: data["golden"].update(resets=[4]))
+    changed = invoke("export", "reproduce", resets, "--weights", source, "--golden-inputs", calls)
+    assert changed.exit_code == 1 and "different: golden" in changed.output
+    np.save(tmp_path / "other.npy", np.load(calls)[:6])
+    changed = invoke(*reproduce, "--golden-inputs", tmp_path / "other.npy")
+    assert changed.exit_code == 3 and "the record names" in changed.output
     write_safetensors(source, {name: value + 1 for name, value in tensors.items()})
-    changed = invoke("export", "reproduce", out / "record.json", "--weights", source)
+    changed = invoke(*reproduce)
     assert changed.exit_code == 3 and f"the record names {sha256}" in changed.output
+    # the family's mapping now pins the changed file; the record still names the file it was exported from
+    other = hashlib.sha256(source.read_bytes()).hexdigest()
+    pin = SourcePin(uri="file://silero.safetensors", sha256=other, format="safetensors")
+    monkeypatch.setitem(silero_vad_params.MAPPINGS, mapping.name, mapping.model_copy(update={"source": pin}))
+    changed = invoke(*reproduce)
+    assert changed.exit_code == 3 and f"the record names {sha256}" in changed.output
+
+
+def test_a_streaming_calibrated_export_reproduces_with_its_resets(tmp_path):
+    spec = ModelSpec(params=SileroVadParams(stft="conv_blocks", magnitude="max_projection", encoder_tail="live_taps"))
+    keras.utils.set_random_seed(0)
+    model = build(spec, batch_size=1)
+    rng = np.random.default_rng(3)
+    for weight in model.weights:  # scaled so every layer stays in a useful range
+        shape = tuple(weight.shape)
+        scale = 4.0 if "basis" in weight.path else (0.1 if len(shape) == 1 else 1 / np.sqrt(np.prod(shape[:-1])))
+        weight.assign((scale * rng.standard_normal(shape)).astype(np.float32))
+    model.save_weights(tmp_path / "w.weights.h5")
+    t = np.arange(512 * 48 + 64) / 16000
+    signal = 0.05 * rng.standard_normal(t.size) + 0.4 * np.sin(2 * np.pi * 300 * t) * (np.sin(2 * np.pi * 0.7 * t) > 0)
+    np.save(tmp_path / "calls.npy", np.stack([signal[i * 512 : i * 512 + 576] for i in range(48)]))
+    spec_file, out = tmp_path / "spec.json", tmp_path / "out"
+    spec_file.write_text(spec.model_dump_json())
+    args = ["--weights", tmp_path / "w.weights.h5", "--calibration", tmp_path / "calls.npy"]
+    result = invoke("export", "create", spec_file, *args, "--precision", "a16w8", "--resets", 24, "--out", out)
+    assert result.exit_code == 0, result.output + str(result.exception)
+    record = ExportRecord.read(out / "record.json")
+    assert record.export.io_dtype == "int16" and record.export.calibration.resets == (24,)
+    same = invoke("export", "reproduce", out / "record.json", *args)
+    assert same.exit_code == 0 and same.output.strip().endswith("same"), same.output
+    moved = edit_record(out / "record.json", lambda data: data["export"]["calibration"].update(resets=[8]))
+    changed = invoke("export", "reproduce", moved, *args)
+    assert changed.exit_code == 1 and "different: artifact" in changed.output
 
 
 @pytest.mark.parametrize(
