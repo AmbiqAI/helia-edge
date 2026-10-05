@@ -5,6 +5,7 @@ import json
 import re
 import subprocess
 import sys
+import zipfile
 from pathlib import Path
 
 import keras
@@ -111,10 +112,13 @@ def test_other_weights_or_calibration_exit_3(created):
     for samples in (empty, huge, negative):
         changed = invoke("export", "reproduce", record, "--weights", weights, "--calibration", samples)
         assert changed.exit_code == 3 and changed.output.strip().endswith("input"), changed.output
-    garbage = tmp / "garbage.keras"
+    garbage, no_member = tmp / "garbage.keras", tmp / "nomember.keras"
     garbage.write_bytes(b"not a zip")
-    changed = invoke("export", "reproduce", record, "--weights", garbage, "--calibration", calibration)
-    assert changed.exit_code == 3 and changed.output.strip().endswith("input"), changed.output
+    with zipfile.ZipFile(no_member, "w") as archive:
+        archive.writestr("foo", b"")
+    for bad in (garbage, no_member):
+        changed = invoke("export", "reproduce", record, "--weights", bad, "--calibration", calibration)
+        assert changed.exit_code == 3 and "is not a weights file for this model" in changed.output, changed.output
 
     binary = tmp / "binary.json"
     binary.write_bytes(b"\xff\xfe\x00garbage")
@@ -375,7 +379,8 @@ def test_create_records_the_install_and_warns_unless_it_identifies_the_code(tmp_
         ("yaml", "is not valid YAML"),
         ("npy", "invalid .npy header"),
         ("npz", "is not a .npy array"),
-        ("keras", "error: "),
+        ("keras", "garbage.keras is not a weights file for this model: BadZipFile"),
+        ("no member", "nomember.keras is not a weights file for this model: KeyError"),
     ],
 )
 def test_create_reports_a_refused_export(tmp_path, change, message):
@@ -389,6 +394,10 @@ def test_create_reports_a_refused_export(tmp_path, change, message):
     if change == "keras":
         weights = tmp_path / "garbage.keras"
         weights.write_bytes(b"not a zip")
+    if change == "no member":  # a zip without model.weights.h5
+        weights = tmp_path / "nomember.keras"
+        with zipfile.ZipFile(weights, "w") as archive:
+            archive.writestr("foo", b"")
     flags = {
         "mapping": ["--mapping", "nope"],
         "precision": ["--precision", "a16w8"],

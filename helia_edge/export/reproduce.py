@@ -2,7 +2,6 @@
 
 import hashlib
 import sys
-import zipfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
@@ -46,6 +45,7 @@ def load_npy(path: Path | str) -> np.ndarray:
 
     Raises:
         ValueError: If the file is not a ``.npy`` array of the size its header states.
+        OSError: If it cannot be read. EOFError: If it is empty.
     """
     try:
         array = np.load(path, allow_pickle=False, mmap_mode="r")
@@ -210,7 +210,7 @@ def reproduce(
         if record.golden is not None and golden_inputs is not None:
             golden = _load_samples(golden_inputs, "golden inputs", record.golden.inputs.sha256)
         differences = _files_beside(record_path, record)
-    except (OSError, ValueError, EOFError, zipfile.BadZipFile) as exc:  # an input that cannot be read
+    except (OSError, ValueError, EOFError) as exc:  # an input that cannot be read
         return Reproduction("input", (str(exc),), environment, skipped)
     again = export(
         model,

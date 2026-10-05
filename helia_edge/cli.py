@@ -3,7 +3,6 @@
 import importlib.util
 import json
 import os
-import zipfile
 from enum import StrEnum
 from pathlib import Path
 from typing import Annotated
@@ -82,7 +81,7 @@ def export_create(
     _check_install(require_provenance)
     try:
         from .export import ExportOptions, export
-        from .export.api import _reference_build
+        from .export.api import _reference_build, load_weights
         from .export.reproduce import family_mapping, imported_source, litert_unavailable, load_npy, load_spec
         from .importers import import_weights
         from .models.spec import build
@@ -102,7 +101,7 @@ def export_create(
             import_weights(model, weight_mapping, weights)  # checks the file against the mapping's sha256
             weights_import = imported_source(weight_mapping, weight_mapping.source.sha256)
         else:
-            model.load_weights(weights)
+            load_weights(model, weights)
         result = export(
             model,
             precision=precision.value,
@@ -117,7 +116,7 @@ def export_create(
         if golden_inputs is not None:
             result = result.with_golden(load_npy(golden_inputs), golden_resets or ())
         path = result.write(out)
-    except (OSError, ValueError, EOFError, zipfile.BadZipFile) as exc:
+    except (OSError, ValueError, EOFError) as exc:
         typer.echo(f"error: {exc}", err=True)
         raise typer.Exit(1) from exc
     typer.echo(f"{result.record.artifact.file}: sha256 {result.record.artifact.sha256}")

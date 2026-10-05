@@ -7,6 +7,7 @@ import hashlib
 import io
 import operator
 import warnings
+import zipfile
 from collections.abc import Collection, Mapping
 from contextlib import contextmanager
 from dataclasses import dataclass, replace
@@ -509,6 +510,18 @@ def export(
     return Export(content=result.content, record=record, model=model)
 
 
+def load_weights(model, path: Path | str) -> None:
+    """Load a Keras weights file (``.weights.h5`` or ``.keras``) into ``model``.
+
+    Raises:
+        ValueError: If the file is not a weights file Keras can read for this model.
+    """
+    try:
+        model.load_weights(path)
+    except (KeyError, zipfile.BadZipFile) as exc:  # an archive without weights, or not an archive
+        raise ValueError(f"{path} is not a weights file for this model: {exc!r}") from exc
+
+
 def load_export_record(path: Path | str, weights: Path | str | None = None):
     """Rebuild the Keras model an export record describes, with its weights.
 
@@ -523,7 +536,8 @@ def load_export_record(path: Path | str, weights: Path | str | None = None):
         keras.Model: ``build(record.model)`` with the record's batch size and the weights.
 
     Raises:
-        ValueError: If the record has no model spec, or the weights do not have the record's digest.
+        ValueError: If the record has no model spec, the weights file cannot be read, or the weights do not
+            have the record's digest.
     """
     from ..models.spec import build
 
@@ -532,7 +546,7 @@ def load_export_record(path: Path | str, weights: Path | str | None = None):
         raise ValueError(f"{path} has no model spec, so the model cannot be rebuilt")
     with _reference_build():  # as export() built it
         model = build(record.model, batch_size=record.export.batch_size)
-    model.load_weights(Path(weights) if weights is not None else Path(path).with_name("model.weights.h5"))
+    load_weights(model, Path(weights) if weights is not None else Path(path).with_name("model.weights.h5"))
     digest = weights_digest(model)
     if digest != record.weights.digest:
         raise ValueError(f"The weights have digest {digest}; the record names {record.weights.digest}")
