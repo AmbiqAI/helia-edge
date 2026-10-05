@@ -68,3 +68,25 @@ def silero_tensors():
         return tensors
 
     return make
+
+
+@pytest.fixture
+def weight_scales():
+    """``weight_scales(content)``: (operator, number of weight scales) for each FULLY_CONNECTED and convolution of
+    a LiteRT model."""
+
+    def scales(content):
+        from tensorflow.lite.python import schema_py_generated as schema
+
+        model = schema.ModelT.InitFromObj(schema.Model.GetRootAsModel(bytearray(content), 0))
+        graph = model.subgraphs[0]
+        names = {v: k for k, v in vars(schema.BuiltinOperator).items() if isinstance(v, int)}
+        result = []
+        for op in graph.operators:
+            code = model.operatorCodes[op.opcodeIndex]
+            name = names[max(code.builtinCode, code.deprecatedBuiltinCode)]
+            if name in ("FULLY_CONNECTED", "CONV_2D", "DEPTHWISE_CONV_2D"):
+                result.append((name, len(graph.tensors[op.inputs[1]].quantization.scale)))
+        return result
+
+    return scales

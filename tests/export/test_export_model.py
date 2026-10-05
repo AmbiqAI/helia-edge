@@ -251,3 +251,48 @@ def test_unknown_format_is_refused():
 
     with pytest.raises(pydantic.ValidationError, match="'litert'"):
         ExportSpec(format="onnx", precision="fp32", io_dtype="float32", mode="concrete")
+
+
+@pytest.mark.parametrize(("precision", "io_dtype"), [("a8w8", "int8"), ("a16w8", "int16"), ("a16w8", "float32")])
+@pytest.mark.parametrize("mode", ["keras", "concrete"])
+def test_dense_per_tensor_quantizes_only_fully_connected_weights_per_tensor(
+    model, calibration, precision, io_dtype, mode, weight_scales
+):
+    def scales(dense_per_channel):
+        spec = ExportSpec(precision=precision, io_dtype=io_dtype, mode=mode, dense_per_channel=dense_per_channel)
+        return weight_scales(export_model(model, spec, calibration).content)
+
+    per_channel, per_tensor = scales(True), scales(False)
+    assert [name for name, _ in per_channel] == [name for name, _ in per_tensor]
+    assert ("FULLY_CONNECTED", 4) in per_channel and ("FULLY_CONNECTED", 1) in per_tensor
+    for (name, n), (_, m) in zip(per_channel, per_tensor, strict=True):
+        assert m == (1 if name == "FULLY_CONNECTED" else n)  # convolutions stay per channel
+    assert all(n > 1 for name, n in per_tensor if name != "FULLY_CONNECTED")
+
+
+@pytest.mark.parametrize("precision", ["fp32", "fp16"])
+def test_float_precisions_refuse_dense_per_tensor(precision):
+    import pydantic
+
+    io_dtype = "float32" if precision == "fp32" else "float16"
+    with pytest.raises(pydantic.ValidationError, match="dense_per_channel applies to a8w8 and a16w8"):
+        ExportSpec(precision=precision, io_dtype=io_dtype, mode="concrete", dense_per_channel=False)
+
+
+def test_a_converter_without_the_dense_setting_is_refused(model, calibration, monkeypatch):
+    from helia_edge.export import litert
+
+    monkeypatch.setattr(litert, "_DENSE_PER_TENSOR", "_no_such_converter_setting")
+    spec = ExportSpec(precision="a16w8", io_dtype="int16", mode="concrete", dense_per_channel=False)
+    with pytest.raises(ValueError, match="cannot be applied"):
+        export_model(model, spec, calibration)
+    export_model(model, spec.model_copy(update={"dense_per_channel": True}), calibration)  # the default never asks
+
+
+def test_export_passes_dense_per_channel_to_the_exporter(model, calibration, weight_scales):
+    from helia_edge.export import ExportOptions, export
+
+    options = ExportOptions(mode="concrete", dense_per_channel=False)
+    result = export(model, precision="a16w8", io_dtype="int16", calibration=calibration, options=options)
+    assert result.record.export.options.dense_per_channel is False
+    assert ("FULLY_CONNECTED", 1) in weight_scales(result.content)  # the artifact matches its record

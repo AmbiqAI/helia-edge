@@ -125,8 +125,13 @@ def test_float_export_streams_like_keras(model, signal):
         np.testing.assert_allclose(outputs[name][:, 0], want[name], rtol=1e-5, atol=1e-5)
 
 
-def test_int16_export_carries_the_raw_state_and_tracks_keras(model, signal, calibration):
-    result = export_model(model, INT16, calibration)
+@pytest.mark.parametrize("dense_per_channel", [True, False])
+def test_int16_export_carries_the_raw_state_and_tracks_keras(
+    model, signal, calibration, dense_per_channel, weight_scales
+):
+    result = export_model(model, INT16.model_copy(update={"dense_per_channel": dense_per_channel}), calibration)
+    scales = [n for name, n in weight_scales(result.content) if name == "FULLY_CONNECTED"]
+    assert scales and (all(n == 1 for n in scales) if not dense_per_channel else any(n > 1 for n in scales))
     assert state_scales_tied(result.inputs, result.outputs) is True
     runner = LiteRTStreamRunner(result.content, reference_kernels=True)
     fed, outputs = runner.run({"signal": runner.encode("signal", signal[96:, None])}, resets=[32])
@@ -149,6 +154,7 @@ def converted(model, spec, calibration):
         mode=spec.mode,
         strict=spec.strict,
         calibration=calibration,
+        dense_per_channel=spec.dense_per_channel,
     )
 
 
@@ -205,9 +211,18 @@ def test_a_state_written_by_a_fixed_scale_operator_is_refused(signal):
         export_model(model, INT16.model_copy(update={"state_tie_tolerance": 0.2}), calibration)
 
 
+@pytest.mark.parametrize("dense_per_channel", [True, False])
 @pytest.mark.parametrize(("precision", "io_dtype"), [("a16w8", "int16"), ("a8w8", "int8")])
-def test_a_tie_keeps_the_bias_of_the_layers_reading_the_state(model, signal, calibration, precision, io_dtype):
-    spec = ExportSpec(precision=precision, io_dtype=io_dtype, mode="keras", state_tie_tolerance=0.3)
+def test_a_tie_keeps_the_bias_of_the_layers_reading_the_state(
+    model, signal, calibration, precision, io_dtype, dense_per_channel
+):
+    spec = ExportSpec(
+        precision=precision,
+        io_dtype=io_dtype,
+        mode="keras",
+        state_tie_tolerance=0.3,
+        dense_per_channel=dense_per_channel,
+    )
     want = keras_stream(model, signal[96:], resets=[32])["prob"]
     errors = {}
     for factor in (1.0, 1.25):
@@ -423,3 +438,29 @@ def test_a_tie_carries_through_a_reshape_to_its_reader(signal):
         _, outputs = runner.run({"signal": runner.encode("signal", signal[96:, None])}, resets=[32])
         errors[factor] = np.abs(runner.decode("prob", outputs["prob"])[:, 0] - want).max()
     assert errors[1.25] < 2 * errors[1.0] + 1e-3
+
+
+@pytest.mark.parametrize(("precision", "io_dtype"), [("a16w8", "int16"), ("a8w8", "int8")])
+def test_a_tie_requantizes_a_wide_biased_dense_with_per_tensor_weights(signal, precision, io_dtype, weight_scales):
+    """A biased Dense(8) reads the tied state output, so its per-tensor weight scale meets the bias requantization."""
+    keras.utils.set_random_seed(7)
+    x = keras.Input((FEATURES,), batch_size=1, name="signal")
+    h, c = state_input(0, (UNITS,), batch_size=1), state_input(1, (UNITS,), batch_size=1)
+    h_next, c_next = StreamingLSTMCell(UNITS, name="lstm")([x, h, c])
+    wide = keras.layers.Dense(8, activation="relu", name="wide")(h_next)
+    prob = keras.layers.Dense(1, activation="sigmoid", name="prob")(wide)
+    model = keras.Model([x, h, c], [prob, state_output(0, h_next), state_output(1, c_next)])
+    model.get_layer("wide").bias.assign(np.random.default_rng(5).normal(scale=3, size=(8,)).astype(np.float32))
+    calibration = stream_calibration(model, {"signal": signal[:96]}, resets=[48])
+    want = keras_stream(model, signal[96:], resets=[32])["prob"]
+    spec = ExportSpec(
+        precision=precision, io_dtype=io_dtype, mode="keras", state_tie_tolerance=0.3, dense_per_channel=False
+    )
+    errors = {}
+    for factor in (1.0, 1.25):
+        content = export_model(model, spec, scaled_state(calibration, factor)).content
+        assert all(n == 1 for name, n in weight_scales(content) if name == "FULLY_CONNECTED")
+        runner = LiteRTStreamRunner(content, reference_kernels=True)
+        _, outputs = runner.run({"signal": runner.encode("signal", signal[96:, None])}, resets=[32])
+        errors[factor] = np.abs(runner.decode("prob", outputs["prob"])[:, 0] - want).max()
+    assert errors[1.0] < 0.05 and errors[1.25] < 2 * errors[1.0] + 1e-3

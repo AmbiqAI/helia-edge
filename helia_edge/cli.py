@@ -60,6 +60,14 @@ def export_create(
     state_tie_tolerance: Annotated[
         float, typer.Option(help="Largest relative scale change when tying a state pair's scales.")
     ] = 0.01,
+    dense_per_channel: Annotated[
+        bool,
+        typer.Option(
+            "--dense-per-channel/--dense-per-tensor",
+            help="For a8w8 and a16w8, FULLY_CONNECTED weights per channel or per tensor "
+            "(convolutions stay per channel).",
+        ),
+    ] = True,
     require_provenance: Annotated[
         bool, typer.Option(help="Refuse unless helia-edge is a release or a git install at a commit.")
     ] = False,
@@ -84,7 +92,12 @@ def export_create(
         if unavailable:
             raise ValueError(unavailable[0])
         options = ExportOptions.model_validate(
-            {"mode": mode.value, "strict": strict, "state_tie_tolerance": state_tie_tolerance}
+            {
+                "mode": mode.value,
+                "strict": strict,
+                "state_tie_tolerance": state_tie_tolerance,
+                "dense_per_channel": dense_per_channel,
+            }
         )
         with _reference_build():
             model = build(model_spec, batch_size=batch_size)

@@ -15,7 +15,16 @@ from pydantic import BaseModel, ConfigDict, Field, StrictBool, StrictFloat, Stri
 from ..importers.mapping import SHA256
 from ..models.spec import ModelSpec
 from .result import EnvironmentRecord, HeliaEdgeSource, TensorRecord
-from .spec import CALIBRATED, VALID_IO, ConversionMode, IODType, Precision, TensorRole, check_resets
+from .spec import (
+    CALIBRATED,
+    VALID_IO,
+    ConversionMode,
+    IODType,
+    Precision,
+    TensorRole,
+    check_dense_per_channel,
+    check_resets,
+)
 
 RECORD_SCHEMA = "helia-edge/export-record@1"
 GOLDEN_SCHEMA = "helia-model-zoo/golden@2"
@@ -61,6 +70,11 @@ class ExportOptions(BaseModel):
             between the scales of a state pair that export ties to one scale (see ``ExportSpec``).
         mode: How the model is traced: ``keras`` keeps the model's batch; ``concrete`` traces batch 1, so it
             exports ``batch_size`` 1 only.
+        dense_per_channel: For calibrated precisions, quantize FULLY_CONNECTED weights per output channel
+            (True, the converter's default) or with one scale per tensor (False). Convolutions stay per
+            channel either way. The CMSIS-NN int16 FULLY_CONNECTED kernel of LiteRT for Microcontrollers
+            accepts per-tensor weights only, so a16w8 exports for it use False; the reference and heliaRT
+            kernels run either. Float precisions refuse False.
     """
 
     model_config = _CONFIG
@@ -68,6 +82,7 @@ class ExportOptions(BaseModel):
     strict: StrictBool = True
     state_tie_tolerance: StrictFloat = Field(default=0.01, ge=0.0, le=0.5)
     mode: Literal[ConversionMode.KERAS, ConversionMode.CONCRETE] = ConversionMode.KERAS
+    dense_per_channel: StrictBool = True
 
 
 class CalibrationRecord(BaseModel):
@@ -105,6 +120,7 @@ class ExportSettings(BaseModel):
             raise ValueError(
                 f"precision {self.precision} {'needs' if self.precision in CALIBRATED else 'takes no'} calibration"
             )
+        check_dense_per_channel(self.precision, self.options.dense_per_channel)
         if self.calibration is not None:
             resets = self.calibration.resets
             check_resets(resets, self.calibration.samples, stateful=True, what="Calibration")
