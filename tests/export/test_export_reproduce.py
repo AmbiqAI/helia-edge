@@ -115,9 +115,7 @@ def test_other_weights_or_calibration_exit_3(created):
     garbage.write_bytes(b"not a zip")
     changed = invoke("export", "reproduce", record, "--weights", garbage, "--calibration", calibration)
     assert changed.exit_code == 3 and changed.output.strip().endswith("input"), changed.output
-    huge_batch = edit_record(record, lambda data: data["export"].update(batch_size=2**31))
-    changed = invoke("export", "reproduce", huge_batch, "--weights", weights, "--calibration", calibration)
-    assert changed.exit_code == 3 and "is not a readable export record" in changed.output
+
     binary = tmp / "binary.json"
     binary.write_bytes(b"\xff\xfe\x00garbage")
     changed = invoke("export", "reproduce", binary, "--weights", weights)
@@ -143,7 +141,7 @@ def scale_input(data):
 @pytest.mark.parametrize(
     ("change", "message"),
     [
-        (lambda data: data["export"].update(io_dtype="float32"), "different: artifact: sha256"),
+        (lambda data: data["export"].update(io_dtype="float32"), "different: artifact: {"),
         (scale_input, "different: io"),
     ],
 )
@@ -166,7 +164,7 @@ def test_the_calibration_uri_is_carried_and_a_changed_artifact_beside_the_record
     assert same.exit_code == 0, same.output
     (out / "model.tflite").write_bytes(b"TFL3 garbage")
     changed = invoke("export", "reproduce", out / "record.json", "--weights", weights, "--calibration", calibration)
-    assert changed.exit_code == 1 and "different: model.tflite beside the record has sha256" in changed.output
+    assert changed.exit_code == 1 and "different: model.tflite beside the record has 12 bytes" in changed.output
     (out / "model.tflite").chmod(0)
     try:
         unreadable = invoke(
@@ -376,6 +374,8 @@ def test_create_records_the_install_and_warns_unless_it_identifies_the_code(tmp_
         ("golden resets", "--golden-resets needs --golden-inputs"),
         ("yaml", "is not valid YAML"),
         ("npy", "invalid .npy header"),
+        ("npz", "is not a .npy array"),
+        ("keras", "error: "),
     ],
 )
 def test_create_reports_a_refused_export(tmp_path, change, message):
@@ -385,15 +385,40 @@ def test_create_reports_a_refused_export(tmp_path, change, message):
     weights = weights_file(spec, tmp_path / "w.weights.h5", seed=0)
     with open(tmp_path / "negative.npy", "wb") as file:
         np.lib.format.write_array_header_1_0(file, {"descr": "<f4", "fortran_order": False, "shape": (-1, 576)})
+    np.savez(tmp_path / "arrays.npz", x=np.zeros(3))
+    if change == "keras":
+        weights = tmp_path / "garbage.keras"
+        weights.write_bytes(b"not a zip")
     flags = {
         "mapping": ["--mapping", "nope"],
         "precision": ["--precision", "a16w8"],
         "io": ["--io-dtype", ""],
         "golden resets": ["--golden-resets", 2],
         "npy": ["--golden-inputs", tmp_path / "negative.npy"],
+        "npz": ["--golden-inputs", tmp_path / "arrays.npz"],
     }.get(change, [])
     precision = [] if change == "precision" else ["--precision", "fp32"]
     result = invoke("export", "create", spec_file, "--weights", weights, *precision, *flags, "--out", tmp_path / "out")
     assert result.exit_code == 1 and "error: " in result.stderr
     assert re.search(message, result.stderr), result.stderr
     assert not (tmp_path / "out").exists()
+
+
+def test_a_record_batch_beyond_int32_is_invalid(tmp_path):
+    from helia_edge.models import compact_tcn_params
+
+    spec = ModelSpec(params=compact_tcn_params(num_classes=2), input_shape=(32, 4))
+    spec_file = tmp_path / "spec.json"
+    spec_file.write_text(spec.model_dump_json())
+    weights = weights_file(spec, tmp_path / "w.weights.h5", seed=0)
+    result = invoke("export", "create", spec_file, "--weights", weights, "--precision", "fp32", "--out", tmp_path)
+    assert result.exit_code == 0, result.output + str(result.exception)
+
+    def batch_2_31(data):  # consistent with the I/O, so only the batch bound refuses it
+        data["export"]["batch_size"] = 2**31
+        for entry in (*data["io"]["inputs"], *data["io"]["outputs"]):
+            entry["shape"][0] = 2**31
+
+    edited = edit_record(tmp_path / "record.json", batch_2_31)
+    changed = invoke("export", "reproduce", edited, "--weights", weights)
+    assert changed.exit_code == 3 and "is not a readable export record" in changed.output

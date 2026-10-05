@@ -3,6 +3,7 @@
 import importlib.util
 import json
 import os
+import zipfile
 from enum import StrEnum
 from pathlib import Path
 from typing import Annotated
@@ -116,7 +117,7 @@ def export_create(
         if golden_inputs is not None:
             result = result.with_golden(load_npy(golden_inputs), golden_resets or ())
         path = result.write(out)
-    except (OSError, ValueError, EOFError) as exc:
+    except (OSError, ValueError, EOFError, zipfile.BadZipFile) as exc:
         typer.echo(f"error: {exc}", err=True)
         raise typer.Exit(1) from exc
     typer.echo(f"{result.record.artifact.file}: sha256 {result.record.artifact.sha256}")

@@ -48,9 +48,13 @@ def load_npy(path: Path | str) -> np.ndarray:
         ValueError: If the file is not a ``.npy`` array of the size its header states.
     """
     try:
-        return np.load(path, allow_pickle=False, mmap_mode="r")
+        array = np.load(path, allow_pickle=False, mmap_mode="r")
     except OverflowError as exc:  # a negative or overflowing dimension in the header
         raise ValueError(f"{path} has an invalid .npy header: {exc}") from exc
+    if not isinstance(array, np.ndarray):  # an .npz archive
+        array.close()
+        raise ValueError(f"{path} is not a .npy array")
+    return array
 
 
 def load_spec(path: Path | str):
@@ -129,7 +133,8 @@ def _files_beside(record_path: Path | str, record: ExportRecord) -> list[str]:
         path = Path(record_path).parent / Path(entry.file).name
         if path.is_file() and (path.stat().st_size, file_sha256(path)) != (entry.bytes, entry.sha256):
             differences.append(
-                f"{path.name} beside the record has sha256 {file_sha256(path)}; the record names {entry.sha256}"
+                f"{path.name} beside the record has {path.stat().st_size} bytes, sha256 {file_sha256(path)}; "
+                f"the record names {entry.bytes} bytes, sha256 {entry.sha256}"
             )
     return differences
 
@@ -226,7 +231,7 @@ def reproduce(
     if again.record.export != record.export:
         differences.append(f"export settings: {record.export} -> {again.record.export}")
     if again.record.artifact != record.artifact:
-        differences.append(f"artifact: sha256 {record.artifact.sha256} -> {again.record.artifact.sha256}")
+        differences.append(f"artifact: {record.artifact.model_dump()} -> {again.record.artifact.model_dump()}")
     if again.record.io != record.io:
         differences.append("io: the inputs, outputs or state ties differ")
     if golden is not None and again.record.golden != record.golden:
