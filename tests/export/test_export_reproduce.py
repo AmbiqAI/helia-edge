@@ -20,7 +20,7 @@ if keras.backend.backend() != "tensorflow":
 from helia_edge.cli import app
 from helia_edge.export import ExportRecord
 from helia_edge.importers import SourcePin
-from helia_edge.models import SileroVadParams, TcnParams
+from helia_edge.models import MlperfTinyParams, SileroVadParams, TcnParams
 from helia_edge.models.spec import ModelSpec, build
 
 KIT_SPECS = json.loads((Path(__file__).parents[1] / "fixtures" / "kit-tcn-specs.json").read_text())
@@ -459,19 +459,32 @@ def test_a_record_batch_beyond_int32_is_invalid(tmp_path):
     assert changed.exit_code == 3 and "is not a readable export record" in changed.output
 
 
-def test_dense_per_tensor_is_recorded_and_reproduces(tmp_path):
-    from helia_edge.models import compact_tcn_params
+def dense_weight_scale_counts(content):
+    """The weight scale counts of the FULLY_CONNECTED operators."""
+    from tensorflow.lite.python import schema_py_generated as schema
 
-    spec = ModelSpec(params=compact_tcn_params(num_classes=2), input_shape=(32, 4))
+    model = schema.ModelT.InitFromObj(schema.Model.GetRootAsModel(bytearray(content), 0))
+    graph = model.subgraphs[0]
+    counts = set()
+    for op in graph.operators:
+        code = model.operatorCodes[op.opcodeIndex]
+        if max(code.builtinCode, code.deprecatedBuiltinCode) == schema.BuiltinOperator.FULLY_CONNECTED:
+            counts.add(len(graph.tensors[op.inputs[1]].quantization.scale))
+    return counts
+
+
+def test_dense_per_tensor_is_recorded_and_reproduces(tmp_path):
+    spec = ModelSpec(params=MlperfTinyParams(architecture="ad"))
     spec_file, calibration = tmp_path / "spec.json", tmp_path / "calibration.npy"
     spec_file.write_text(spec.model_dump_json())
-    np.save(calibration, np.random.default_rng(3).normal(size=(8, 32, 4)).astype(np.float32))
+    np.save(calibration, np.random.default_rng(3).normal(size=(8, 640)).astype(np.float32))
     weights = weights_file(spec, tmp_path / "w.weights.h5", seed=0)
     args = ["--weights", weights, "--precision", "a16w8", "--calibration", calibration]
     result = invoke("export", "create", spec_file, *args, "--dense-per-tensor", "--out", tmp_path / "out")
     assert result.exit_code == 0, result.output + str(result.exception)
     record = ExportRecord.read(tmp_path / "out" / "record.json")
     assert record.export.options.dense_per_channel is False
+    assert dense_weight_scale_counts((tmp_path / "out" / "model.tflite").read_bytes()) == {1}
     same = invoke(
         "export", "reproduce", tmp_path / "out" / "record.json", "--weights", weights, "--calibration", calibration
     )

@@ -200,7 +200,8 @@ def export_model(
         BackendUnavailable: If the active Keras backend is not TensorFlow, which LiteRT conversion needs. A
             process cannot switch Keras backend: rebuild the model from its params and weights in a process
             started with ``KERAS_BACKEND=tensorflow``.
-        ValueError: If the calibration data is invalid, or a state pair cannot be tied.
+        ValueError: If the calibration data is invalid, a state pair cannot be tied, or
+            ``spec.dense_per_channel`` is False and this TensorFlow's converter lacks the setting that applies it.
     """
     try:
         import keras
@@ -433,7 +434,8 @@ def export(
     Raises:
         ValueError: If the batch differs from ``batch_size`` without ``spec``, the model's weight or input
             shapes differ from ``build(spec)``'s, a calibrated precision or ``concrete`` mode has
-            ``batch_size`` other than 1, or the calibration or resets are invalid.
+            ``batch_size`` other than 1, the calibration or resets are invalid, or ``options.dense_per_channel``
+            is False and this TensorFlow's converter lacks the setting that applies it.
     """
     calibration = None if calibration is None else _float32_samples(calibration, "Calibration")
     resets = _steps(resets)
