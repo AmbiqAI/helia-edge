@@ -7,7 +7,6 @@ import hashlib
 import io
 import operator
 import warnings
-import zipfile
 from collections.abc import Collection, Mapping
 from contextlib import contextmanager
 from dataclasses import dataclass, replace
@@ -514,11 +513,16 @@ def load_weights(model, path: Path | str) -> None:
     """Load a Keras weights file (``.weights.h5`` or ``.keras``) into ``model``.
 
     Raises:
+        FileNotFoundError: If the file does not exist.
         ValueError: If the file is not a weights file Keras can read for this model.
     """
+    from .reproduce import ARCHIVE_ERRORS
+
+    if not Path(path).exists():
+        raise FileNotFoundError(f"{path} does not exist")
     try:
         model.load_weights(path)
-    except (KeyError, zipfile.BadZipFile) as exc:  # an archive without weights, or not an archive
+    except (OSError, KeyError, *ARCHIVE_ERRORS) as exc:  # not HDF5, an archive without weights, a damaged archive
         raise ValueError(f"{path} is not a weights file for this model: {exc!r}") from exc
 
 
