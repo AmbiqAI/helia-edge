@@ -24,8 +24,9 @@ KERAS_BACKEND=tensorflow PYTHONPATH=. python examples/compact_tcn/generate.py \
 ```
 
 The output directory must not already exist. A partial failure leaves a
-partial directory, which must not be treated as complete; a written
-`manifest.json` marks a complete generation. Keep generated files outside Git.
+partial directory: an export directory without `record.json` is incomplete,
+and the generation is complete when all four records are written. Keep
+generated files outside Git.
 
 Each width has one seeded Keras weight lineage, which supplies an FP32 export
 and a fully INT8 export (four models in total).
@@ -34,7 +35,7 @@ Before conversion, the generator validates the connected Keras graph against
 the preset: SE pooling and gates, residual paths, pointwise kernels, dilations
 and the linear output.
 
-Conversion uses the existing strict concrete-function path, so dilation is
+Export uses the strict concrete-function path at batch 1, so dilation is
 preserved. The emitted depthwise kernel, dilation, stride and padding options
 are then checked in the exported graph. Operand types are restricted:
 
@@ -47,23 +48,24 @@ from graph types.
 
 INT8 calibration uses 32 deterministic uniform `[-1,1]` windows from seed+1
 (`--calibration-samples`, 1–256). On those windows, each FP32 export must agree
-with Keras at `rtol=1e-5, atol=1e-5`, and the maximum error is recorded. The
+with Keras at `rtol=1e-5, atol=1e-5`, or the generation stops. The
 windows are calibration data, not golden cases.
 
-`manifest.json` records:
+The output holds `calibration.npy`, `LICENSE` with `license.json` (BSD-3-Clause
+source, synthetic seeded weights), and one directory per export
+(`tcn-w8-fp32`, `tcn-w8-a8w8`, `tcn-w16-fp32`, `tcn-w16-a8w8`). Each holds the
+export record written by `helia_edge.export.export`:
 
-- source-file hashes, the Git head, Python and installed dependency versions;
-- the preset and seed;
-- calibration hashes and weight-array hashes;
-- artifact byte hashes;
-- I/O tensor details and quantization;
-- graph reports and full output sizes (480 bytes INT8, 1920 bytes FP32).
+- `model.tflite` and `model.weights.h5`;
+- `record.json`: the `ModelSpec`, the weights digest, the export settings, the
+  calibration sha256, the artifact sha256, the I/O tensors with their quantization,
+  and the environment (helia-edge install, Python, platform, package versions);
+- `graph.json`, the example's graph report.
 
-Retained weight archives restore exact arrays with `model.set_weights`. A seed
-alone does not guarantee identical bytes across dependency versions. New
-output directories retain `LICENSE` and BSD-3-Clause source and
-synthetic-weight provenance. Dependency versions are recorded for
-reproducibility; they are not a dependency-license audit.
+Reproduce any export with
+`helia-edge export reproduce tcn-w8-a8w8/record.json --weights tcn-w8-a8w8/model.weights.h5 --calibration calibration.npy`
+(no `--calibration` for FP32). A seed alone does not guarantee identical bytes
+across dependency versions; the record names the versions that produced them.
 
 Run the focused tests in the same environment:
 

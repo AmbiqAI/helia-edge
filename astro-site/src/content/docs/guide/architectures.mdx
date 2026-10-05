@@ -1,6 +1,6 @@
 ---
 title: Model architectures
-description: Choose a model family and understand the boundary between configuration, weights and execution.
+description: Choose a model family, describe it with a ModelSpec, and keep configuration, weights and export separate.
 ---
 
 import Button from '@ambiqai/helia-ui/astro/Button';
@@ -11,7 +11,7 @@ heliaEDGE provides configurable model constructors and reusable layers. Use a fa
 
 | Workload or design | Starting points | Read next |
 |---|---|---|
-| Temporal and sequence modeling | TCN, TsMixer | [Typed architecture configuration](../typed-architectures/) |
+| Temporal and sequence modeling | TCN, TsMixer | [Fixed and preset families](#fixed-and-preset-families) |
 | Image and convolutional models | ResNet, MobileNet, MobileOne, EfficientNet, RegNet, ConvMixer | [Architecture API](/helia-edge/reference/api/helia_edge/models/) |
 | Encoder/decoder models | UNet, UNext | [Architecture API](/helia-edge/reference/api/helia_edge/models/) |
 | Audio classification | MiniResNet | [MiniResNet example](/helia-edge/examples/miniresnet/) |
@@ -28,7 +28,7 @@ Input rank, output shape and configuration differ between families. The individu
 3. Construct the model, then initialize or load its weights.
 4. Train, evaluate and convert it in the application workflow.
 
-Factories do not select your backend, reset global seeds or export models. Typed parameter objects make architecture choices explicit; they do not include the trained weights or data-processing policy.
+Building a model does not select your backend, reset global seeds or export it. Typed parameter objects make architecture choices explicit; they do not include the trained weights or data-processing policy.
 
 ## Describe an architecture with a ModelSpec
 
@@ -47,6 +47,59 @@ spec_json = spec.model_dump_json()  # ModelSpec.model_validate_json(spec_json) r
 - **Validated parameters:** parameters are immutable and reject unknown fields; values from JSON or YAML (lists for tuples) parse as usual. `num_classes` is a parameter: the classes of the output layer, at least 1. With None, most families build without a dense layer; TCN, MobileNetV1, UNet and UNext (with `include_top`), TsMixer and MiniResNet refuse to build. Regressors and fixed-output families have no `num_classes`.
 - **Input shapes:** positive sizes, or None for a variable axis. For MLPerf Tiny, FastEnhancer and Silero VAD the shape follows from the parameters, so `input_shape` may be omitted.
 - **Each family's builder:** `helia_edge.models.<family>.build(params, input_shape, *, batch_size=None, name=None)`.
+
+## Fixed and preset families
+
+**MLPerf Tiny** has fixed architectures; the parameters select one and the input shape follows from it:
+
+```python
+from helia_edge.models import MlperfTinyParams, ModelSpec, build
+
+spec = ModelSpec(params=MlperfTinyParams(architecture="kws"))  # kws, vww, resnet or ad
+model = build(spec)
+```
+
+The parameters reject unknown fields and other architectures; there are no scaling, seed, calibration or precision controls. These are the architectures of the [MLPerf Tiny page](/helia-edge/examples/mlperf-tiny/).
+
+**The compact TCN preset** returns ordinary `TcnParams`:
+
+```python
+from helia_edge.models import ModelSpec, build, compact_tcn_params
+
+spec = ModelSpec(params=compact_tcn_params(filters=8, num_classes=2), input_shape=(240, 14))
+model = build(spec, batch_size=1)
+```
+
+- **The preset:** four small depthwise/pointwise blocks with SE ratio 4; batch normalization and ReLU6; kernels 1×3 and dilations 1/2/4/8; a linear 1×1 output head. Integer filters must be at least 8 to keep the SE path.
+- **Validation:** `TcnParams` and `TcnBlockParams` reject unknown fields at every level, nonpositive kernels, dilations, filters, depth, branches and expansion ratios, SE ratios that are not finite and nonnegative, and dropout outside [0, 1). They keep normal Pydantic coercion and do not validate every historical TCN combination.
+- **Older Keras-serialized params:** `TcnParams` is not a Keras-serializable object. To read JSON written by `keras.saving.serialize_keras_object(params)` in earlier versions, validate its `config` entry: `TcnParams.model_validate({k: v for k, v in encoded["config"].items() if k != "name"})`.
+
+## Specs and trained weights
+
+A spec describes the architecture only. Weights, the batch size, seeds and execution policy are kept separately:
+
+```python
+import keras
+from helia_edge.models import ModelSpec, build
+
+spec = ModelSpec.model_validate_json(architecture_json)
+model = build(spec)
+model.load_weights(checkpoint_path)  # a compatible .keras or .weights.h5; no skipped mismatches
+model.save("reconstructed.keras")
+restored = keras.models.load_model("reconstructed.keras", compile=False)
+```
+
+**Reconstructing heartKIT's `seg-4-tcn-sm`:** the trained artifact is rebuilt with `block_type="mb"`, not the compact `sm` preset.
+- **Its configuration:** input and output kernels (1,7) and batch normalization; four blocks with widths 16/24/32/48, dilations 1/2/4/8, SE ratios 0/2/2/2 and dropout 0.1; ReLU6; four logits per sample (`num_classes=4`).
+- **Converting it:** drop its legacy `model_name` field before parsing, because parameters reject unknown fields. Keep the architecture's `use_logits=True`; the export task's softmax policy is separate.
+- **Checks:** the model has 52 layers and 7,310 parameters. Weight loading and selected FP32 outputs were checked on CPU TensorFlow and Torch. This is compatibility evidence, not task accuracy.
+- **Loading the historical file:** it does not load directly on either backend, because its saved compile metrics are registered under an earlier name. Build the model from its spec and use `load_weights`. `helia_edge.models.load_model` renames dotted layer names when it loads a `.keras` file.
+- **Known differences:** historical SE 1×1 convolutions use same padding, while the current helper uses valid; with unit stride these behave identically. Names and untrained initializer metadata may differ. All loaded weights, graph connections, kernels, dilation, activation and normalization settings must agree.
+- **What this library doesn't ship:** trained checkpoints. Keep source hashes, original precision and verification inputs with the consumer. Accelerator arithmetic is not qualified by the CPU result.
+
+## Export a spec
+
+`helia_edge.export.export(model, ..., spec=spec)` exports `build(spec)` with the model's weights at a static batch, and writes an export record that names the spec, the weights digest and every setting, so `helia-edge export reproduce` can rebuild and compare it. Representative data, precisions and export policy stay outside the architecture parameters. See [Export and quantization](/helia-edge/guide/export/).
 
 ## Build something custom
 

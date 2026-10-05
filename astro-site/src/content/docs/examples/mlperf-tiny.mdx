@@ -84,14 +84,17 @@ KERAS_BACKEND=tensorflow PYTHONPATH=. python examples/mlperf_tiny/generate.py \
 ```
 
 Use `vww`, `resnet` or `ad` for the other constructors. The output directory must
-be new. It retains the initialized Keras model, exact model config, FP32 export,
-zero/signal input arrays, complete LiteRT outputs and Keras reference outputs,
-source/seed/dependency identities, licenses and hashes. LiteRT BUILTIN_REF runs
+be new. It holds the FP32 export with its export record (`model.tflite`,
+`model.weights.h5`, `record.json`: the `ModelSpec`, the weights digest, the settings,
+the artifact and its I/O, and the environment), `goldens.npz` with the zero and
+signal inputs, the LiteRT outputs and the Keras reference outputs, and the
+licenses. `helia-edge export reproduce record.json --weights model.weights.h5`
+exports it again and compares. LiteRT BUILTIN_REF runs
 single-thread without delegates; exported FP32 outputs must match Keras with
 `rtol=1e-5, atol=1e-5`. Seed alone is not a cross-version byte identity guarantee.
 To make initialized KWS/VWW models numerically discriminating, the helper increases
 the synthetic signal amplitude by powers of ten until its output differs from the
-zero case by at least0.01. It records the amplitude and fails if no finite signal
+zero case by at least0.01. It saves the amplitude in `goldens.npz` and fails if no finite signal
 qualifies. These diagnostic inputs are not representative task data; weights and
 architecture remain unchanged. Tests reject a converter returning the same output
 for both cases.
