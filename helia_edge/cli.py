@@ -59,8 +59,14 @@ def export_create(
         Path | None, typer.Option(help="Signal .npy for a golden@2 sequence.", exists=True)
     ] = None,
     golden_resets: Annotated[list[int] | None, typer.Option(help="Golden step that resets the state; repeat.")] = None,
-    batch_size: Annotated[int, typer.Option(help="Batch of the exported model.")] = 1,
+    batch_size: Annotated[int, typer.Option(help="Batch of the exported model.", min=1, max=2**31 - 1)] = 1,
     mode: Annotated[Mode, typer.Option(help="How the model is traced.")] = Mode.KERAS,
+    strict: Annotated[
+        bool, typer.Option(help="For a8w8 and a16w8, refuse operators without an integer kernel.")
+    ] = True,
+    state_tie_tolerance: Annotated[
+        float, typer.Option(help="Largest relative scale change when tying a state pair's scales.")
+    ] = 0.01,
     require_provenance: Annotated[
         bool, typer.Option(help="Refuse unless helia-edge is a release or a git install at a commit.")
     ] = False,
@@ -69,41 +75,48 @@ def export_create(
 
     Exit 1 when the install does not identify its code under --require-provenance, or the export is refused.
     """
-    import numpy as np
-
-    from .export import ExportOptions, export
-    from .export.api import _reference_build
-    from .export.reproduce import family_mapping, file_sha256, imported_source, load_spec
-    from .importers import import_weights
-    from .models.spec import build
-
+    if golden_resets and golden_inputs is None:
+        typer.echo("error: --golden-resets needs --golden-inputs", err=True)
+        raise typer.Exit(1)
     _check_install(require_provenance)
     try:
+        from .export import ExportOptions, export
+        from .export.api import _reference_build
+        from .export.reproduce import family_mapping, imported_source, litert_unavailable, load_npy, load_spec
+        from .importers import import_weights
+        from .models.spec import build
+
         model_spec = load_spec(spec)
+        unavailable = litert_unavailable()
+        if unavailable:
+            raise ValueError(unavailable[0])
+        options = ExportOptions.model_validate(
+            {"mode": mode.value, "strict": strict, "state_tie_tolerance": state_tie_tolerance}
+        )
         with _reference_build():
             model = build(model_spec, batch_size=batch_size)
         weights_import = None
         if mapping is not None:
             weight_mapping = family_mapping(model_spec, mapping)
-            import_weights(model, weight_mapping, weights)
-            weights_import = imported_source(weight_mapping, file_sha256(weights))
+            import_weights(model, weight_mapping, weights)  # checks the file against the mapping's sha256
+            weights_import = imported_source(weight_mapping, weight_mapping.source.sha256)
         else:
             model.load_weights(weights)
         result = export(
             model,
             precision=precision.value,
-            io_dtype=io_dtype or DEFAULT_IO[precision.value],
-            calibration=None if calibration is None else np.load(calibration, allow_pickle=False),
+            io_dtype=DEFAULT_IO[precision.value] if io_dtype is None else io_dtype,
+            calibration=None if calibration is None else load_npy(calibration),
             resets=resets or (),
             spec=model_spec,
             batch_size=batch_size,
-            options=ExportOptions.model_validate({"mode": mode.value}),
+            options=options,
             weights_import=weights_import,
         )
         if golden_inputs is not None:
-            result = result.with_golden(np.load(golden_inputs, allow_pickle=False), golden_resets or ())
+            result = result.with_golden(load_npy(golden_inputs), golden_resets or ())
         path = result.write(out)
-    except (OSError, ValueError) as exc:
+    except (OSError, ValueError, EOFError) as exc:
         typer.echo(f"error: {exc}", err=True)
         raise typer.Exit(1) from exc
     typer.echo(f"{result.record.artifact.file}: sha256 {result.record.artifact.sha256}")
@@ -122,21 +135,25 @@ def export_reproduce(
 ) -> None:
     """Export a record's model again and compare.
 
-    Exit 0 same bytes, 1 different, 2 environment differs, 3 missing or mismatched input.
+    Exit 0 same, 1 different, 2 environment differs or cannot export, 3 missing or mismatched input,
+    4 the export failed (with its traceback).
     """
-    import pydantic
+    import traceback
 
     from .export.reproduce import reproduce
 
     try:
         report = reproduce(record, weights, calibration, golden_inputs, allow_env_mismatch)
-    except (OSError, pydantic.ValidationError) as exc:
-        typer.echo(f"invalid record {record}: {exc}", err=True)
-        raise typer.Exit(3) from exc
+    except Exception:
+        traceback.print_exc()
+        typer.echo("error: the export failed, so nothing was compared", err=True)
+        raise typer.Exit(4) from None
     for line in report.environment:
         typer.echo(f"environment: {line}")
     for line in report.differences:
         typer.echo(f"{'input' if report.status == 'input' else 'different'}: {line}")
+    for line in report.skipped:
+        typer.echo(f"not compared: {line}")
     typer.echo(report.status)
     raise typer.Exit({"same": 0, "different": 1, "environment": 2, "input": 3}[report.status])
 

@@ -135,7 +135,7 @@ class ExportSpec(BaseModel):
 
 
 class BackendUnavailable(RuntimeError):
-    """The active Keras backend has no exporter for the requested format."""
+    """The active Keras backend cannot export: LiteRT export needs the TensorFlow backend."""
 
 
 def check_resets(resets: Collection[int], steps: int, stateful: bool, what: str) -> None:

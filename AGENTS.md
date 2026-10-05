@@ -23,7 +23,8 @@ Keras 3 add-on for training and exporting models to Ambiq edge targets. Full gui
   (they warn) and must not be used in new code or examples.
 - Command line: `helia-edge export create SPEC.yaml --weights W --precision P --out DIR` (`--mapping NAME` to
   import, `--require-provenance` for published exports), then `helia-edge export reproduce DIR/record.json --weights W`
-  (exit 0 same, 1 different, 2 environment mismatch, 3 missing or mismatched input); `helia-edge export schema`.
+  (exit 0 same, 1 different, 2 environment mismatch, 3 missing or mismatched input, 4 export failed);
+  `helia-edge export schema`.
   The reference build resets Keras layer numbering through `keras.src` and warns if a Keras release moved it.
 - Custom train steps use `helia_edge.trainers.gradient_step` (MaskedAutoencoder does; the contrastive trainers
   are TensorFlow-only).

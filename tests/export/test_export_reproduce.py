@@ -80,8 +80,8 @@ def test_a_created_record_reproduces_in_a_new_process(created):
     tmp, _, weights, calibration = created
     args = ["export", "reproduce", tmp / "out" / "record.json", "--weights", weights, "--calibration", calibration]
     source = "import sys; from helia_edge.cli import app; sys.argv[0] = 'helia-edge'; app()"
-    result = subprocess.run(
-        [sys.executable, "-c", source, *map(str, args)], text=True, capture_output=True, timeout=300
+    result = subprocess.run(  # outside the source tree, so the child imports the same helia_edge
+        [sys.executable, "-c", source, *map(str, args)], cwd=tmp, text=True, capture_output=True, timeout=300
     )
     assert result.returncode == 0 and result.stdout.strip().endswith("same"), result.stdout + result.stderr
 
@@ -101,6 +101,29 @@ def test_other_weights_or_calibration_exit_3(created):
     no_model = edit_record(record, lambda data: data.update(model=None))
     changed = invoke("export", "reproduce", no_model, "--weights", weights, "--calibration", calibration)
     assert changed.exit_code == 3 and "has no model spec" in changed.output
+    empty, huge = tmp / "empty.npy", tmp / "huge.npy"
+    empty.write_bytes(b"")
+    with open(huge, "wb") as file:  # a header that claims about 4 TB, and no data
+        np.lib.format.write_array_header_1_0(file, {"descr": "<f4", "fortran_order": False, "shape": (10**12, 1)})
+    for samples in (empty, huge):
+        changed = invoke("export", "reproduce", record, "--weights", weights, "--calibration", samples)
+        assert changed.exit_code == 3 and changed.output.strip().endswith("input"), changed.output
+    binary = tmp / "binary.json"
+    binary.write_bytes(b"\xff\xfe\x00garbage")
+    changed = invoke("export", "reproduce", binary, "--weights", weights)
+    assert changed.exit_code == 3 and "is not a readable export record" in changed.output
+    changed = invoke(
+        "export",
+        "reproduce",
+        record,
+        "--weights",
+        weights,
+        "--calibration",
+        calibration,
+        "--golden-inputs",
+        calibration,
+    )
+    assert changed.exit_code == 3 and "--golden-inputs was given, but the record has no golden" in changed.output
 
 
 def scale_input(data):
@@ -121,10 +144,57 @@ def test_a_record_whose_artifact_or_io_differs_exits_1(created, change, message)
     assert result.exit_code == 1 and message in result.output
 
 
+def test_the_calibration_uri_is_carried_and_a_changed_artifact_beside_the_record_differs(created, tmp_path):
+    import shutil
+
+    tmp, _, weights, calibration = created
+    out = shutil.copytree(tmp / "out", tmp_path / "out")
+    uri = edit_record(
+        out / "record.json", lambda data: data["export"]["calibration"].update(uri="https://example.com/c.npy")
+    )
+    same = invoke("export", "reproduce", uri, "--weights", weights, "--calibration", calibration)
+    assert same.exit_code == 0, same.output
+    (out / "model.tflite").write_bytes(b"TFL3 garbage")
+    changed = invoke("export", "reproduce", out / "record.json", "--weights", weights, "--calibration", calibration)
+    assert changed.exit_code == 1 and "different: model.tflite beside the record has sha256" in changed.output
+
+
+def test_a_failed_export_exits_4(created, monkeypatch):
+    from helia_edge.export import api
+
+    tmp, _, weights, calibration = created
+
+    def broken(*args, **kwargs):
+        raise RuntimeError("converter crashed")
+
+    monkeypatch.setattr(api, "export", broken)
+    result = invoke(
+        "export", "reproduce", tmp / "out" / "record.json", "--weights", weights, "--calibration", calibration
+    )
+    assert result.exit_code == 4 and "converter crashed" in result.stderr and "nothing was compared" in result.stderr
+
+
+def test_another_backend_cannot_export(created, tmp_path, monkeypatch):
+    tmp, spec, weights, calibration = created
+    monkeypatch.setattr(keras.backend, "backend", lambda: "torch")
+    message = "LiteRT export needs KERAS_BACKEND=tensorflow"
+    result = invoke(
+        "export", "reproduce", tmp / "out" / "record.json", "--weights", weights, "--calibration", calibration
+    )
+    assert result.exit_code == 2 and f"environment: the Keras backend is 'torch'; {message}" in result.output
+    result = invoke(
+        "export", "create", tmp / "spec.yaml", "--weights", weights, "--precision", "fp32", "--out", tmp_path
+    )
+    assert result.exit_code == 1 and message in result.stderr and not (tmp_path / "record.json").exists()
+
+
 @pytest.mark.parametrize(
     ("change", "message"),
     [
         (lambda environment: environment.update(python="0.0.0"), "python: 0.0.0 ->"),
+        (lambda environment: environment.update(platform="Plan9-mips"), "platform: Plan9-mips ->"),
+        (lambda environment: environment["helia_edge"].update(version="0.0.1"), "helia_edge.version: 0.0.1 ->"),
+        (lambda environment: environment["helia_edge"].update(source="vcs"), "helia_edge.source: vcs ->"),
         (lambda environment: environment["helia_edge"].update(commit="abc123"), "helia_edge.commit: abc123 ->"),
         (lambda environment: environment["packages"].update(keras="0.0.0"), "keras: 0.0.0 ->"),
     ],
@@ -164,6 +234,21 @@ def test_imported_weights_and_a_golden_reproduce(tmp_path, write_safetensors, si
     reproduce = ["export", "reproduce", out / "record.json", "--weights", source]
     same = invoke(*reproduce, "--golden-inputs", calls)
     assert same.exit_code == 0 and same.output.strip().endswith("same"), same.output
+    skipped = invoke(*reproduce)
+    assert skipped.exit_code == 0 and "not compared: golden: pass --golden-inputs" in skipped.output
+    uri = edit_record(
+        out / "record.json", lambda data: data["golden"]["inputs"].update(uri="https://example.com/g.npy")
+    )
+    same = invoke("export", "reproduce", uri, "--weights", source, "--golden-inputs", calls)
+    assert same.exit_code == 0, same.output
+    no_model = edit_record(out / "record.json", lambda data: data.update(model=None))
+    changed = invoke("export", "reproduce", no_model, "--weights", source)
+    assert changed.exit_code == 3 and "has no model spec" in changed.output
+    golden = (out / "golden.npz").read_bytes()
+    (out / "golden.npz").write_bytes(golden[:-1] + bytes([golden[-1] ^ 1]))
+    changed = invoke(*reproduce, "--golden-inputs", calls)
+    assert changed.exit_code == 1 and "different: golden.npz beside the record" in changed.output
+    (out / "golden.npz").write_bytes(golden)
     digest = edit_record(out / "record.json", lambda data: data["weights"].update(digest="sha256:" + "0" * 64))
     changed = invoke("export", "reproduce", digest, "--weights", source)
     assert changed.exit_code == 1 and "different: weights" in changed.output, changed.output
@@ -212,21 +297,26 @@ def test_a_streaming_calibrated_export_reproduces_with_its_resets(tmp_path):
 
 
 @pytest.mark.parametrize(
-    ("flags", "mode", "batch"), [(["--mode", "concrete"], "concrete", 1), (["--batch-size", 2], "keras", 2)]
+    ("flags", "options", "batch", "io"),
+    [
+        (["--mode", "concrete"], {"mode": "concrete"}, 1, "float32"),
+        (["--batch-size", 2], {"mode": "keras"}, 2, "float32"),
+        (["--no-strict", "--state-tie-tolerance", 0.2], {"strict": False, "state_tie_tolerance": 0.2}, 1, "float32"),
+        (["--precision", "fp16"], {}, 1, "float16"),
+    ],
 )
-def test_create_passes_the_mode_and_batch_size(tmp_path, flags, mode, batch):
+def test_create_passes_its_options(tmp_path, flags, options, batch, io):
     from helia_edge.models import compact_tcn_params
 
     spec = ModelSpec(params=compact_tcn_params(num_classes=2), input_shape=(32, 4))
     spec_file = tmp_path / "spec.json"
     spec_file.write_text(spec.model_dump_json())
     weights = weights_file(spec, tmp_path / "w.weights.h5", seed=0)
-    result = invoke(
-        "export", "create", spec_file, "--weights", weights, "--precision", "fp32", "--out", tmp_path, *flags
-    )
+    precision = [] if "--precision" in flags else ["--precision", "fp32"]
+    result = invoke("export", "create", spec_file, "--weights", weights, *precision, "--out", tmp_path, *flags)
     assert result.exit_code == 0, result.output + str(result.exception)
     record = ExportRecord.read(tmp_path / "record.json")
-    assert record.export.options.mode == mode and record.export.io_dtype == "float32"
+    assert record.export.options.model_dump(include=set(options)) == options and record.export.io_dtype == io
     assert record.export.batch_size == batch and record.io.inputs[0].shape[0] == batch
     same = invoke("export", "reproduce", tmp_path / "record.json", "--weights", weights)
     assert same.exit_code == 0, same.output
@@ -264,14 +354,22 @@ def test_create_records_the_install_and_warns_unless_it_identifies_the_code(tmp_
         ("mapping", "has no weight mapping 'nope'; it has \\['silero_vad_v6_onnx'\\]"),
         ("spec", "validation error"),
         ("precision", "calibration"),
+        ("io", "is not a valid IODType"),
+        ("golden resets", "--golden-resets needs --golden-inputs"),
+        ("yaml", "is not valid YAML"),
     ],
 )
 def test_create_reports_a_refused_export(tmp_path, change, message):
-    spec_file = tmp_path / "spec.json"
+    spec_file = tmp_path / ("spec.YML" if change == "yaml" else "spec.json")
     spec = ModelSpec(params=SileroVadParams())
-    spec_file.write_text("{}" if change == "spec" else spec.model_dump_json())
+    spec_file.write_text({"spec": "{}", "yaml": "params: [unclosed"}.get(change, spec.model_dump_json()))
     weights = weights_file(spec, tmp_path / "w.weights.h5", seed=0)
-    flags = {"mapping": ["--mapping", "nope"], "spec": [], "precision": ["--precision", "a16w8"]}[change]
+    flags = {
+        "mapping": ["--mapping", "nope"],
+        "precision": ["--precision", "a16w8"],
+        "io": ["--io-dtype", ""],
+        "golden resets": ["--golden-resets", 2],
+    }.get(change, [])
     precision = [] if change == "precision" else ["--precision", "fp32"]
     result = invoke("export", "create", spec_file, "--weights", weights, *precision, *flags, "--out", tmp_path / "out")
     assert result.exit_code == 1 and "error: " in result.stderr

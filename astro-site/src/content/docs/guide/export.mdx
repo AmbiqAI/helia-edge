@@ -111,12 +111,13 @@ KERAS_BACKEND=tensorflow helia-edge export reproduce exports/tcn-a8w8/record.jso
   --weights exports/tcn-a8w8/model.weights.h5 --calibration calibration.npy
 ```
 
-- **`create`:** `--weights` is a `.weights.h5` file, or with `--mapping NAME` the source file imported through that mapping of the spec's family (see [Import weights](/helia-edge/guide/import-weights/)). `--io-dtype` defaults to `float32`, `float16`, `int8` or `int16` for `fp32`, `fp16`, `a8w8` and `a16w8`. `--calibration` and `--golden-inputs` are `.npy` files, with `--resets` and `--golden-resets` repeated for each reset step. `--batch-size` (default 1) and `--mode keras|concrete` are passed to `export`.
-- **`reproduce`:** `--weights` is the record's weights (any file with the recorded digest), or for imported weights the source file with the recorded sha256. `--calibration` is required when the record has calibration, and `--golden-inputs` regenerates and compares the golden. Exit codes:
-  - 0: the weights digest, the artifact's sha256 and size, the I/O and (with `--golden-inputs`) the golden match;
+- **`create`:** `--weights` is a `.weights.h5` file, or with `--mapping NAME` the source file imported through that mapping of the spec's family (see [Import weights](/helia-edge/guide/import-weights/)). `--io-dtype` defaults to `float32`, `float16`, `int8` or `int16` for `fp32`, `fp16`, `a8w8` and `a16w8`. `--calibration` and `--golden-inputs` are `.npy` files, with `--resets` and `--golden-resets` repeated for each reset step. `--batch-size` (default 1), `--mode keras|concrete`, `--no-strict` and `--state-tie-tolerance` are passed to `export`. A refused export (an invalid spec or setting, a missing file, a backend other than TensorFlow) exits 1 with an error and writes no record.
+- **`reproduce`:** `--weights` is the record's weights (any file with the recorded digest), or for imported weights the source file with the recorded sha256. `--calibration` is required when the record has calibration and refused when it has none; `--golden-inputs` regenerates and compares the golden (without it, the output says the golden was not compared). A `model.tflite` or `golden.npz` beside the record is compared with the record's sha256. Exit codes:
+  - 0: the weights digest, the artifact's sha256 and size, the I/O, the golden (with `--golden-inputs`) and the files beside the record match;
   - 1: something differs, and each difference is listed;
-  - 2: the environment differs from the recorded one, and nothing is exported. `--allow-env-mismatch` compares anyway and lists the differences;
-  - 3: the record is missing or invalid, or a file is missing or does not match its recorded hash.
+  - 2: the environment differs from the recorded one, and nothing is exported. `--allow-env-mismatch` compares anyway and lists the differences. Also when this process cannot export: Keras is missing or its backend is not TensorFlow;
+  - 3: the record is missing, invalid or has no model spec, or an input file is missing, unreadable, does not match its recorded hash or is not used by the record;
+  - 4: the export failed with an error, printed with its traceback; nothing was compared.
 - **`schema`:** prints the record's JSON Schema.
 - **Environment:** the record names the helia-edge version, install source and commit, Python, the platform and the NumPy, Keras, TensorFlow and ai-edge-litert versions. Other versions may export other bytes.
 - **Provenance:** `environment.helia_edge.source` says whether the version identifies the code that exported:

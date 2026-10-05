@@ -1,7 +1,8 @@
 """Export entry points: ``export`` (an artifact with its export record) and ``export_model`` (the
-conversion), validating, then converting with the exporter for the active backend."""
+conversion), validating, then converting with LiteRT on the TensorFlow backend."""
 
 import collections
+import functools
 import hashlib
 import io
 import operator
@@ -185,7 +186,7 @@ def export_model(
     ``ExportSpec.state_tie_tolerance``), so a runtime can carry the raw state.
 
     Args:
-        model: Keras model built on a backend with an exporter for ``spec.format``.
+        model: Keras model built on the TensorFlow backend.
         spec: What to export.
         calibration: For A8W8 and A16W8 only: float32 samples along axis 0, shaped like the model input,
             or for a model with several inputs a mapping of every input name to its samples
@@ -224,6 +225,15 @@ def export_model(
     return export_litert(model, spec, calibration)
 
 
+def _naming_probe_class():
+    import keras
+
+    class _HeliaEdgeNamingProbe(keras.layers.Layer):
+        """A layer built only to see which table Keras numbers its auto-generated name in."""
+
+    return _HeliaEdgeNamingProbe
+
+
 @contextmanager
 def _reference_build():
     """Build with unnamed layers numbered from zero and a float32 dtype policy and ``floatx``, then restore those.
@@ -234,14 +244,15 @@ def _reference_build():
     and the dtype policy are per thread, but ``floatx`` is shared by the process: another thread building
     layers meanwhile sees float32.
 
-    Keras has no public way to reset layer numbering, so this swaps Keras's private name table. A probe layer
-    checks that Keras numbers names through the swapped table; if it does not (a Keras release that moved the
-    table), a ``RuntimeWarning`` says that the exported bytes may depend on layers built earlier.
+    Keras has no public way to reset layer numbering, so this swaps Keras's private name table. A probe layer,
+    whose class name no model uses, checks that Keras numbers names through the swapped table; if it does not
+    (a Keras release that moved or renamed the table), a ``RuntimeWarning`` says that the exported bytes may
+    depend on layers built earlier.
     """
     import keras
 
     policy, floatx = keras.config.dtype_policy(), keras.config.floatx()
-    names = global_state = None
+    restore = None
     try:
         keras.config.set_floatx("float32")
         keras.config.set_dtype_policy("float32")
@@ -251,10 +262,15 @@ def _reference_build():
             names = global_state.get_global_attribute("object_name_uids")
             table = collections.defaultdict(int)
             global_state.set_global_attribute("object_name_uids", table)
-            keras.layers.Identity()
+            restore = functools.partial(
+                global_state.set_global_attribute,
+                "object_name_uids",
+                names if names is not None else collections.defaultdict(int),
+            )
+            _naming_probe_class()()
             numbered = bool(table)
             global_state.set_global_attribute("object_name_uids", collections.defaultdict(int))
-        except (ImportError, AttributeError):
+        except Exception:  # a Keras without this private API
             numbered = False
         if not numbered:
             warnings.warn(
@@ -266,10 +282,8 @@ def _reference_build():
             )
         yield
     finally:
-        if global_state is not None:
-            global_state.set_global_attribute(
-                "object_name_uids", names if names is not None else collections.defaultdict(int)
-            )
+        if restore is not None:
+            restore()
         keras.config.set_floatx(floatx)
         keras.config.set_dtype_policy(policy)
 

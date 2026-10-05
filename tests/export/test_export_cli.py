@@ -22,7 +22,8 @@ def test_cli_prints_the_export_record_schema():
 
 @pytest.mark.parametrize("command", ["run", "verify"])
 def test_the_recipe_commands_are_gone(command):
-    assert CliRunner().invoke(app, ["export", command]).exit_code == 2
+    result = CliRunner().invoke(app, ["export", command, "recipe.yaml"])
+    assert result.exit_code == 2 and f"No such command '{command}'" in result.output
 
 
 def test_cli_info_and_schema_do_not_import_training_frameworks():
@@ -58,7 +59,7 @@ def test_reproduce_exits_3_for_a_missing_or_invalid_record(tmp_path, content):
     if content is not None:
         record.write_text(content)
     result = CliRunner().invoke(app, ["export", "reproduce", str(record), "--weights", str(tmp_path / "w.h5")])
-    assert result.exit_code == 3 and f"invalid record {record}" in result.stderr
+    assert result.exit_code == 3 and f"input: {record} is not a readable export record" in result.output
 
 
 @pytest.mark.parametrize("source", ["local", "unknown"])
@@ -75,3 +76,13 @@ def test_create_with_require_provenance_refuses_code_a_record_cannot_identify(tm
     args = ["export", "create", str(spec), "--weights", str(weights), "--precision", "fp32"]
     refused = CliRunner().invoke(app, [*args, "--out", str(tmp_path / "out"), "--require-provenance"])
     assert refused.exit_code == 1 and f"{source} install" in refused.stderr and not (tmp_path / "out").exists()
+
+
+@pytest.mark.parametrize("batch_size", [0, 2**31])
+def test_create_refuses_a_batch_size_outside_int32(tmp_path, batch_size):
+    spec, weights = tmp_path / "spec.json", tmp_path / "w.weights.h5"
+    spec.write_text("{}")
+    weights.write_bytes(b"")
+    args = ["export", "create", str(spec), "--weights", str(weights), "--precision", "fp32", "--out", str(tmp_path)]
+    result = CliRunner().invoke(app, [*args, "--batch-size", str(batch_size)])
+    assert result.exit_code == 2 and "--batch-size" in result.output

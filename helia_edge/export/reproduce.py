@@ -1,7 +1,6 @@
 """Reproduce an export from its record (``helia-edge export reproduce``) and create one from a spec file."""
 
 import hashlib
-import json
 import sys
 from dataclasses import dataclass
 from pathlib import Path
@@ -20,13 +19,15 @@ class Reproduction:
         status: ``same`` (same artifact, I/O and golden), ``different``, ``environment`` (the environment
             differs and the comparison was not made) or ``input`` (a file is missing or does not match the
             record).
-        differences: What differs, one line each.
-        environment: How the environment differs from the record's, one line each.
+        differences: What differs, or which input is missing or does not match, one line each.
+        environment: How the environment differs from the record's, or why it cannot export, one line each.
+        skipped: What the record names but was not compared, one line each.
     """
 
     status: Literal["same", "different", "environment", "input"]
     differences: tuple[str, ...] = ()
     environment: tuple[str, ...] = ()
+    skipped: tuple[str, ...] = ()
 
 
 def file_sha256(path: Path | str) -> str:
@@ -38,16 +39,29 @@ def file_sha256(path: Path | str) -> str:
     return digest.hexdigest()
 
 
+def load_npy(path: Path | str) -> np.ndarray:
+    """A ``.npy`` array, memory-mapped so that its header cannot make the load allocate more than the file holds."""
+    return np.load(path, allow_pickle=False, mmap_mode="r")
+
+
 def load_spec(path: Path | str):
-    """A ``ModelSpec`` from a YAML (``.yaml``/``.yml``) or JSON file."""
+    """A ``ModelSpec`` from a YAML (``.yaml``/``.yml``) or JSON file.
+
+    Raises:
+        ValueError: If the file is not valid YAML or JSON, or not a valid ``ModelSpec``.
+    """
     from ..models.spec import ModelSpec
 
     text = Path(path).read_text()
-    if Path(path).suffix in (".yaml", ".yml"):
+    if Path(path).suffix.lower() in (".yaml", ".yml"):
         import yaml
 
-        return ModelSpec.model_validate(yaml.safe_load(text))
-    return ModelSpec.model_validate(json.loads(text))
+        try:
+            data = yaml.safe_load(text)
+        except yaml.YAMLError as exc:
+            raise ValueError(f"{path} is not valid YAML: {exc}") from exc
+        return ModelSpec.model_validate(data)
+    return ModelSpec.model_validate_json(text)
 
 
 def family_mapping(spec, name: str):
@@ -81,10 +95,34 @@ def _load_samples(path: Path | str | None, what: str, sha256: str) -> np.ndarray
 
     if path is None:
         raise ValueError(f"The record names {what} (sha256 {sha256}); pass its .npy file")
-    samples = _float32_samples(np.load(path, allow_pickle=False), what)
+    samples = _float32_samples(load_npy(path), what)
     if _array_sha256(samples) != sha256:
         raise ValueError(f"{path} as float32 has sha256 {_array_sha256(samples)}; the record names {sha256}")
     return samples
+
+
+def litert_unavailable() -> tuple[str, ...]:
+    """Why this process cannot export LiteRT, one line each; empty when it can."""
+    try:
+        import keras
+    except ImportError as exc:
+        return (f"Keras cannot be imported ({exc}); install helia-edge[litert]",)
+    if keras.backend.backend() != "tensorflow":
+        return (f"the Keras backend is {keras.backend.backend()!r}; LiteRT export needs KERAS_BACKEND=tensorflow",)
+    return ()
+
+
+def _files_beside(record_path: Path | str, record: ExportRecord) -> list[str]:
+    """How the artifact and golden files beside the record differ from the record; absent files are not compared."""
+    entries = [record.artifact] + ([record.golden.file] if record.golden is not None else [])
+    differences = []
+    for entry in entries:
+        path = Path(record_path).parent / Path(entry.file).name
+        if path.is_file() and (path.stat().st_size, file_sha256(path)) != (entry.bytes, entry.sha256):
+            differences.append(
+                f"{path.name} beside the record has sha256 {file_sha256(path)}; the record names {entry.sha256}"
+            )
+    return differences
 
 
 def reproduce(
@@ -104,33 +142,50 @@ def reproduce(
         allow_env_mismatch: Compare even when the environment differs from the record's.
 
     Returns:
-        Reproduction: ``same`` when the artifact sha256, I/O and (with ``golden_inputs``) golden match.
+        Reproduction: ``same`` when the weights digest, the artifact, the I/O, the golden (with
+        ``golden_inputs``) and the ``model.tflite`` and ``golden.npz`` beside the record (when present) match.
     """
     from ..importers import import_weights
     from .api import _reference_build, export, load_export_record
     from .result import environment_record
 
-    record = ExportRecord.read(record_path)
+    try:
+        record = ExportRecord.read(record_path)
+    except (OSError, ValueError) as exc:
+        return Reproduction("input", (f"{record_path} is not a readable export record: {exc}",))
+    if record.model is None:
+        return Reproduction("input", (f"{record_path} has no model spec, so the model cannot be rebuilt",))
+    settings = record.export
+    unused = [
+        f"{flag} was given, but the record has no {what}"
+        for flag, given, what in (
+            ("--calibration", calibration, "calibration"),
+            ("--golden-inputs", golden_inputs, "golden"),
+        )
+        if given is not None and (settings.calibration if what == "calibration" else record.golden) is None
+    ]
+    if unused:
+        return Reproduction("input", tuple(unused))
+    unavailable = litert_unavailable()
+    if unavailable:
+        return Reproduction("environment", environment=unavailable)
     environment = tuple(environment_differences(record.environment, EnvironmentEntry.from_record(environment_record())))
     if environment and not allow_env_mismatch:
         return Reproduction("environment", environment=environment)
-    if record.model is None:
-        return Reproduction("input", (f"{record_path} has no model spec, so the model cannot be rebuilt",), environment)
+    skipped = ("golden: pass --golden-inputs to compare it",) if record.golden and golden_inputs is None else ()
     try:
         if record.weights.import_ is not None:
             from ..models.spec import build
 
             imported = record.weights.import_
-            if file_sha256(weights) != imported.source.sha256:
-                raise ValueError(
-                    f"{weights} has sha256 {file_sha256(weights)}; the record names {imported.source.sha256}"
-                )
+            sha256 = file_sha256(weights)
+            if sha256 != imported.source.sha256:
+                raise ValueError(f"{weights} has sha256 {sha256}; the record names {imported.source.sha256}")
             with _reference_build():
-                model = build(record.model, batch_size=record.export.batch_size)
+                model = build(record.model, batch_size=settings.batch_size)
             import_weights(model, family_mapping(record.model, imported.mapping), weights)
         else:
             model = load_export_record(record_path, weights)
-        settings = record.export
         samples = (
             None
             if settings.calibration is None
@@ -139,8 +194,8 @@ def reproduce(
         golden = None
         if record.golden is not None and golden_inputs is not None:
             golden = _load_samples(golden_inputs, "golden inputs", record.golden.inputs.sha256)
-    except (OSError, ValueError) as exc:
-        return Reproduction("input", (str(exc),), environment)
+    except (OSError, ValueError, EOFError) as exc:
+        return Reproduction("input", (str(exc),), environment, skipped)
     again = export(
         model,
         precision=settings.precision,
@@ -155,7 +210,7 @@ def reproduce(
     )
     if golden is not None and record.golden is not None:
         again = again.with_golden(golden, record.golden.resets, record.golden.inputs.uri)
-    differences = []
+    differences = _files_beside(record_path, record)
     if again.record.weights != record.weights:
         differences.append(f"weights: {record.weights.digest} -> {again.record.weights.digest}")
     if again.record.artifact != record.artifact:
@@ -164,7 +219,7 @@ def reproduce(
         differences.append("io: the inputs, outputs or state ties differ")
     if golden is not None and again.record.golden != record.golden:
         differences.append(f"golden: {record.golden} -> {again.record.golden}")
-    return Reproduction("different" if differences else "same", tuple(differences), environment)
+    return Reproduction("different" if differences else "same", tuple(differences), environment, skipped)
 
 
 def imported_source(mapping, sha256: str) -> WeightImport:

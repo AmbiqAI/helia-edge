@@ -199,9 +199,10 @@ def test_the_reference_build_restores_the_callers_state_when_it_fails():
         keras.config.set_dtype_policy(previous)
 
 
-@pytest.mark.parametrize("table", ["present", "moved", "unimportable"])
+@pytest.mark.parametrize("table", ["present", "moved", "unimportable", "probe fails"])
 def test_the_reference_build_warns_when_keras_numbers_names_elsewhere(monkeypatch, table):
-    """Layer numbering is reset through Keras's private name table; a Keras that moved it gets a warning."""
+    """Layer numbering is reset through Keras's private name table; a Keras that moved it gets a warning, and
+    the caller's dtype policy, floatx and numbering are restored either way."""
     import collections
     import sys
     import types
@@ -210,28 +211,40 @@ def test_the_reference_build_warns_when_keras_numbers_names_elsewhere(monkeypatc
     import keras.src.backend.common as common
     from keras.src.utils import naming
 
-    from helia_edge.export.api import _reference_build
+    from helia_edge.export import api
 
+    elsewhere = collections.defaultdict(int)
     if table == "moved":
-        elsewhere = collections.defaultdict(int)
         monkeypatch.setattr(
             naming, "global_state", types.SimpleNamespace(get_global_attribute=lambda *a, **k: elsewhere)
         )
     elif table == "unimportable":
         monkeypatch.delattr(common, "global_state")
         monkeypatch.setitem(sys.modules, "keras.src.backend.common.global_state", None)
-    previous = keras.config.dtype_policy()
+    elif table == "probe fails":
+
+        def failing():
+            raise RuntimeError("no layers here")
+
+        monkeypatch.setattr(api, "_naming_probe_class", lambda: failing)
+    previous, floatx = keras.config.dtype_policy(), keras.config.floatx()
     keras.config.set_dtype_policy("mixed_float16")
+    keras.config.set_floatx("float16")
     try:
+        before = keras.layers.Dense(2, dtype="float32").name
         with warnings.catch_warnings(record=True) as caught:
             warnings.simplefilter("always")
-            with _reference_build():
-                assert keras.config.dtype_policy().name == "float32"
+            with api._reference_build():
+                assert keras.config.dtype_policy().name == "float32" and keras.config.floatx() == "float32"
                 if table == "present":  # the probe layer leaves no name behind
                     assert keras.layers.Identity().name == "identity"
-        assert keras.config.dtype_policy().name == "mixed_float16"
+        assert keras.config.dtype_policy().name == "mixed_float16" and keras.config.floatx() == "float16"
+        index = int(before.rsplit("_", 1)[1]) if "_" in before else 0
+        assert keras.layers.Dense(2, dtype="float32").name == f"dense_{index + 1}"  # the caller's numbering goes on
     finally:
         keras.config.set_dtype_policy(previous)
+        keras.config.set_floatx(floatx)
+    assert all("naming_probe" in name for name in elsewhere if name != "dense")  # no name a model would use
     messages = [str(w.message) for w in caught if issubclass(w.category, RuntimeWarning)]
     if table == "present":
         assert messages == []
