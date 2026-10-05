@@ -6,8 +6,10 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from .recipe import NAME, SHA256
-from .result import EnvironmentRecord, HeliaEdgeSource, TensorRecord
-from .spec import ExportSpec, IODType, TensorRole
+from .record import GOLDEN_SCHEMA as GOLDEN_SCHEMA
+from .record import TensorEntry as TensorEntry
+from .result import EnvironmentRecord, HeliaEdgeSource
+from .spec import ExportSpec, check_resets
 
 MANIFEST_SCHEMA = "helia-edge/manifest@1"
 
@@ -20,28 +22,6 @@ class FileRecord(BaseModel):
     path: str
     sha256: SHA256
     bytes: int
-
-
-class TensorEntry(BaseModel):
-    """A model input or output; dynamic dimensions are -1. A state tensor has the index ``pair`` of its
-    state pair (``state_in_k`` and ``state_out_k``)."""
-
-    model_config = ConfigDict(frozen=True, extra="forbid")
-
-    name: str
-    role: TensorRole
-    shape: tuple[int, ...]
-    dtype: IODType
-    scale: float | None
-    zero_point: int | None
-    pair: int | None = None
-
-    @classmethod
-    def from_record(cls, record: TensorRecord) -> "TensorEntry":
-        return cls(**vars(record))
-
-
-GOLDEN_SCHEMA = "helia-model-zoo/golden@2"
 
 
 class GoldenSource(BaseModel):
@@ -69,6 +49,11 @@ class GoldenRecord(BaseModel):
     resets: tuple[int, ...] = ()
     source: GoldenSource
     resolver: Literal["builtin_ref"] = "builtin_ref"
+
+    @model_validator(mode="after")
+    def _resets_within_steps(self) -> "GoldenRecord":
+        check_resets(self.resets, self.steps, stateful=True, what="Golden")
+        return self
 
 
 class ReferenceRecord(BaseModel):

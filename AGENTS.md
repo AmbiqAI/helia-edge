@@ -17,7 +17,8 @@ Keras 3 add-on for training and exporting models to Ambiq edge targets. Full gui
   `helia_edge.models.build(ModelSpec(params=..., input_shape=...))`. Add a family by adding it to `ModelParams` and
   the `match` in `models/spec.py`; no registries or `XModel` classes. MLPerf Tiny, FastEnhancer and Silero VAD take
   `input_shape=None` (fixed by their params).
-- Export with `helia_edge.export.export_model` and run with `LiteRTRunner`, or `LiteRTStreamRunner` for streaming
+- Export with `helia_edge.export.export` (artifact plus `helia-edge/export-record@1`, static batch; `load_export_record`
+  rebuilds the model) or `export_model` (bytes only), and run with `LiteRTRunner`, or `LiteRTStreamRunner` for streaming
   models with state pairs (export guide); the `converters` and `interpreters.tflite` classes are deprecated
   (they warn) and must not be used in new code or examples.
 - Export recipes: `helia-edge export run RECIPE.yaml --out DIR` (`--require-provenance` for published exports),

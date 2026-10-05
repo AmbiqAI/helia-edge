@@ -1,6 +1,7 @@
 """Typed export specification; importable without Keras or a training backend."""
 
 import re
+from collections.abc import Collection
 from enum import StrEnum
 
 from pydantic import BaseModel, ConfigDict, Field, StrictBool, StrictFloat, model_validator
@@ -135,3 +136,18 @@ class ExportSpec(BaseModel):
 
 class BackendUnavailable(RuntimeError):
     """The active Keras backend has no exporter for the requested format."""
+
+
+def check_resets(resets: Collection[int], steps: int, stateful: bool, what: str) -> None:
+    """Refuse state resets that are not increasing steps from 1 to ``steps - 1`` of a streaming model.
+
+    Raises:
+        ValueError: If ``resets`` are given for a model without state, or are not increasing steps within
+            the sequence (step 0 always starts from zero states).
+    """
+    resets = list(resets)
+    if resets and not stateful:
+        raise ValueError(f"{what} resets apply to streaming models only")
+    if resets != sorted(set(resets)) or (resets and (resets[0] < 1 or resets[-1] >= steps)):
+        bound = f"increasing steps between 1 and {steps - 1}" if steps > 1 else "absent for a single step"
+        raise ValueError(f"{what} resets {resets} must be {bound}")

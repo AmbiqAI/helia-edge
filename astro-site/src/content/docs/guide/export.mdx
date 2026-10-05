@@ -47,6 +47,27 @@ Path("model.tflite").write_bytes(result.content)
 - `ExportSpec` values match helia-benchmark's precision names.
 - `LiteRTRunner` runs model bytes with ai-edge-litert, rounding and saturating integer inputs. It runs native float16 graphs where the runtime has float16 kernels for every operator.
 
+## Export with a record
+
+`export` exports a model with its export record (`helia-edge/export-record@1`): one JSON file per artifact with the model spec, the weights digest, every export setting, the artifact's sha256 and I/O, and the environment. It names the calibration and the weights by content hash only, never by path. `write` puts `model.tflite`, `model.weights.h5` and `record.json` in a directory, and `load_export_record` rebuilds the Keras model from them, checking the weights against the digest:
+
+```python
+from helia_edge.export import export, load_export_record
+from helia_edge.models import ModelSpec, build, compact_tcn_params
+
+spec = ModelSpec(params=compact_tcn_params(num_classes=2), input_shape=(256, 8))
+model = build(spec)  # trained with a dynamic batch
+result = export(model, precision="a8w8", io_dtype="int8", calibration=representative_x, spec=spec)
+record_path = result.write("exports/tcn-a8w8")
+model_again = load_export_record(record_path)
+```
+
+- **Static batch:** the exported model has batch `batch_size` (default 1). With `spec`, the export is `build(spec, batch_size=batch_size)` with the model's weights, whatever batch the model was built with, so a model trained with a dynamic batch exports with no `SPACE_TO_BATCH_ND`/`BATCH_TO_SPACE_ND` pairs or dynamic tensors, and the record re-exports the same bytes in another process. Without `spec`, the model is exported as it is and its batch must be `batch_size`.
+- **Weights digest:** sha256 over each weight's dtype, shape and value, in `model.weights` order (not the weight names, which Keras numbers per process for unnamed layers). It is the same whether the weights come from `.weights.h5`, `.keras` or an import (`weights_import` records the mapping and the source file's sha256).
+- **Calibrated precisions** (`a8w8`, `a16w8`) export with `batch_size` 1. Streaming `resets` are increasing steps within the calibration.
+- **Streaming models:** pass the signal as `calibration` with the state `resets`; `export` builds the state calibration with `stream_calibration`. `with_golden(inputs, resets)` adds a `helia-model-zoo/golden@2` sequence run with LiteRT's reference kernels.
+- **Options:** `ExportOptions(strict=True, state_tie_tolerance=0.01, mode="keras")`; `mode="keras"` keeps the model's batch; `concrete` traces batch 1 and exports `batch_size` 1 only.
+
 ## Streaming models
 
 A streaming model processes one step per call and carries its recurrent state as explicit inputs and outputs. Name each state pair with `state_input(k, ...)` and `state_output(k, ...)`: the runtime feeds `state_out_k` back as `state_in_k` and feeds zeros at the start of an independent sequence. `StreamingLSTMCell` is one LSTM step with the weight layout of `keras.layers.LSTMCell`.
