@@ -3,6 +3,7 @@
 import argparse
 import json
 import shutil
+import sys
 from pathlib import Path
 
 import keras
@@ -10,6 +11,7 @@ import numpy as np
 from ai_edge_litert.interpreter import Interpreter, OpResolverType
 
 from helia_edge.export import ExportOptions, export
+from helia_edge.export.result import environment_record, unidentified_install
 from helia_edge.models import MlperfTinyParams, ModelSpec, build
 
 SPECS = {a: ModelSpec(params=MlperfTinyParams(architecture=a)) for a in ("kws", "vww", "resnet", "ad")}
@@ -38,7 +40,9 @@ def check_outputs(actual, expected):
 
 def generate(name, output, seed=20260926):
     """Export the seeded model to ``output`` (``model.tflite``, ``model.weights.h5``, ``record.json``) with
-    ``goldens.npz`` (the diagnostic cases, run with LiteRT's reference kernels) and the MLPerf Tiny licenses.
+    ``goldens.npz`` (the diagnostic cases run with LiteRT's reference kernels, their amplitude and the seed),
+    ``references.json`` (the pinned upstream sources) and the MLPerf Tiny licenses. ``record.json`` is
+    written last.
 
     Returns:
         Path: The ``record.json``.
@@ -49,6 +53,9 @@ def generate(name, output, seed=20260926):
         raise ValueError(f"Unknown model {name}")
     if type(seed) is not int or not 0 <= seed < 2**32:
         raise ValueError("seed must be an unsigned32-bit integer")
+    install = environment_record()
+    if not install.identified:  # the record then cannot name the code that exported
+        print(f"warning: {unidentified_install(install)}", file=sys.stderr)
     output.mkdir(parents=True, exist_ok=False)
     keras.utils.set_random_seed(seed)
     model = build(SPECS[name])
@@ -70,13 +77,14 @@ def generate(name, output, seed=20260926):
         actual.append(interpreter.get_tensor(out["index"])[0])
     actual = np.stack(actual)
     check_outputs(actual, expected)
-    path = result.write(output)
-    np.savez(output / "goldens.npz", inputs=inputs, outputs=actual, keras_outputs=expected, amplitude=amplitude)
+    np.savez(
+        output / "goldens.npz", inputs=inputs, outputs=actual, keras_outputs=expected, amplitude=amplitude, seed=seed
+    )
     source = Path(__file__).resolve().parents[2] / "helia_edge/models/mlperf_tiny.py"
     shutil.copyfile(Path(__file__).with_name("references.json"), output / "references.json")
     for license_file in (source.parent / "licenses").glob("mlperf-tiny-*.txt"):
         shutil.copyfile(license_file, output / license_file.name)
-    return path
+    return result.write(output)  # record.json last: it marks a complete export
 
 
 if __name__ == "__main__":

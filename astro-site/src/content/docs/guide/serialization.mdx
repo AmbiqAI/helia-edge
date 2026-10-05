@@ -38,7 +38,7 @@ Registration initializes the selected backend. It does not turn a TensorFlow-onl
 
 Construct the same architecture and input signature, then call `model.load_weights(checkpoint_path)`. Check that graph connections, shapes and layer configuration agree with the checkpoint. Do not use skipped mismatches as a substitute for compatibility.
 
-The [model architectures guide](../architectures/#specs-and-trained-weights) explains TCN configuration hydration and the handling of historical trained artifacts. Cross-backend loading depends on the model's custom components and naming conventions; preserve the original backend and dependency versions with the checkpoint.
+The [model architectures guide](../architectures/#fixed-and-preset-families) explains reading older TCN configurations, and [specs and trained weights](../architectures/#specs-and-trained-weights) the handling of historical trained artifacts. Cross-backend loading depends on the model's custom components and naming conventions; preserve the original backend and dependency versions with the checkpoint.
 
 ## Include the experiment context
 

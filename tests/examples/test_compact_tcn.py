@@ -117,7 +117,8 @@ def test_emitted_graph_detects_builder_dilation_regression(tmp_path, monkeypatch
         return build(width, changed)
 
     monkeypatch.setattr(fixture, "build_model", wrong_builder)
-    with pytest.raises(ValueError, match="violates compact TCN preset"):
+    monkeypatch.setattr(fixture, "validate_model", lambda model, width: None)  # reach the emitted-graph check
+    with pytest.raises(ValueError, match="violates compact TCN preset kernel/dilation"):
         fixture.generate(tmp_path / "wrong-builder")
 
 
@@ -183,3 +184,10 @@ def test_retained_license_metadata_matches_copied_source(tmp_path):
     assert metadata["source_spdx"] == "BSD-3-Clause"
     assert metadata["sha256"] == fixture.sha256((ROOT / "LICENSE").read_bytes())
     assert (tmp_path / metadata["file"]).read_bytes() == (ROOT / "LICENSE").read_bytes()
+
+
+def test_a_record_naming_other_weights_is_refused(tmp_path, monkeypatch):
+    monkeypatch.setattr(fixture, "weights_digest", lambda model: "sha256:" + "0" * 64)
+    with pytest.raises(ValueError, match="does not name the source weights"):
+        fixture.generate(tmp_path / "exports")
+    assert not list((tmp_path / "exports").glob("*/record.json"))

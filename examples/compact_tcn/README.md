@@ -31,7 +31,8 @@ generated files outside Git.
 Each width has one seeded Keras weight lineage, which supplies an FP32 export
 and a fully INT8 export (four models in total).
 
-Before conversion, the generator validates the connected Keras graph against
+Before and after export, the generator validates the connected Keras graph
+(the source model, and the model `export` rebuilds from the spec and converts) against
 the preset: SE pooling and gates, residual paths, pointwise kernels, dilations
 and the linear output.
 
@@ -64,8 +65,13 @@ export record written by `helia_edge.export.export`:
 
 Reproduce any export with
 `helia-edge export reproduce tcn-w8-a8w8/record.json --weights tcn-w8-a8w8/model.weights.h5 --calibration calibration.npy`
-(no `--calibration` for FP32). A seed alone does not guarantee identical bytes
-across dependency versions; the record names the versions that produced them.
+(no `--calibration` for FP32), in the environment that generated it. A seed
+alone does not guarantee identical bytes across dependency versions; the record
+names the Python, platform and package versions. It names the helia-edge code
+only for a release or a git install at a commit
+(`uv pip install 'helia-edge @ git+https://github.com/AmbiqAI/helia-edge@<commit>'`);
+run from a checkout on `PYTHONPATH`, it records an `unknown` install and the
+generator warns.
 
 Run the focused tests in the same environment:
 

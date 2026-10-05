@@ -11,7 +11,7 @@ heliaEDGE provides configurable model constructors and reusable layers. Use a fa
 
 | Workload or design | Starting points | Read next |
 |---|---|---|
-| Temporal and sequence modeling | TCN, TsMixer | [Fixed and preset families](#fixed-and-preset-families) |
+| Temporal and sequence modeling | TCN, TsMixer | [Describe it with a ModelSpec](#describe-an-architecture-with-a-modelspec) · [compact TCN preset](#fixed-and-preset-families) |
 | Image and convolutional models | ResNet, MobileNet, MobileOne, EfficientNet, RegNet, ConvMixer | [Architecture API](/helia-edge/reference/api/helia_edge/models/) |
 | Encoder/decoder models | UNet, UNext | [Architecture API](/helia-edge/reference/api/helia_edge/models/) |
 | Audio classification | MiniResNet | [MiniResNet example](/helia-edge/examples/miniresnet/) |
@@ -99,7 +99,7 @@ restored = keras.models.load_model("reconstructed.keras", compile=False)
 
 ## Export a spec
 
-`helia_edge.export.export(model, ..., spec=spec)` exports `build(spec)` with the model's weights at a static batch, and writes an export record that names the spec, the weights digest and every setting, so `helia-edge export reproduce` can rebuild and compare it. Representative data, precisions and export policy stay outside the architecture parameters. See [Export and quantization](/helia-edge/guide/export/).
+`helia_edge.export.export(model, ..., spec=spec)` exports `build(spec)` with the model's weights at a static batch. It returns the artifact with an export record that names the spec, the weights digest and every setting, and its `write()` saves both, so `helia-edge export reproduce` can rebuild and compare it. Representative data, precisions and export policy stay outside the architecture parameters. See [Export and quantization](/helia-edge/guide/export/).
 
 ## Build something custom
 

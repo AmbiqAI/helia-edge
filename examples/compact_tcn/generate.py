@@ -5,6 +5,7 @@ import copy
 import hashlib
 import json
 import shutil
+import sys
 from pathlib import Path
 
 import keras
@@ -12,7 +13,8 @@ import numpy as np
 from ai_edge_litert.interpreter import Interpreter, OpResolverType
 from tensorflow.lite.python import schema_py_generated as schema
 
-from helia_edge.export import ExportOptions, export
+from helia_edge.export import ExportOptions, export, weights_digest
+from helia_edge.export.result import environment_record, unidentified_install
 from helia_edge.models import ModelSpec
 from helia_edge.models.tcn import TcnParams, build
 
@@ -285,6 +287,9 @@ def generate(output, calibration_samples=32):
         list[Path]: The ``record.json`` of each export, which ``helia-edge export reproduce`` checks.
     """
     calibration = calibration_inputs(calibration_samples)
+    install = environment_record()
+    if not install.identified:  # the records then cannot name the code that exported
+        print(f"warning: {unidentified_install(install)}", file=sys.stderr)
     output.mkdir(parents=True, exist_ok=False)
     np.save(output / "calibration.npy", calibration, allow_pickle=False)
     write_json(output / "license.json", retain_license(output))
@@ -292,7 +297,7 @@ def generate(output, calibration_samples=32):
     for width in WIDTHS:
         model, spec = build_model(width)
         validate_model(model, width)
-        weight_hashes = list(map(array_hash, model.get_weights()))
+        digest = weights_digest(model)
         for precision, io_dtype in (("fp32", "float32"), ("a8w8", "int8")):
             result = export(
                 model,
@@ -303,6 +308,9 @@ def generate(output, calibration_samples=32):
                 batch_size=1,
                 options=ExportOptions(mode="concrete"),
             )
+            validate_model(result.model, width)  # the model export converted, rebuilt from the spec
+            if result.record.weights.digest != digest:
+                raise ValueError("The export record does not name the source weights")
             graph = graph_info(result.content, precision)
             interpreter = runtime(result.content)
             (inp,) = interpreter.get_input_details()
@@ -316,11 +324,10 @@ def generate(output, calibration_samples=32):
                 exported = infer(interpreter, calibration)
                 reference = np.concatenate([model(x[None], training=False).numpy() for x in calibration])
                 np.testing.assert_allclose(exported, reference, rtol=1e-5, atol=1e-5)
-            if weight_hashes != list(map(array_hash, model.get_weights())):
-                raise ValueError("Conversion changed the source weights")
             directory = output / f"tcn-w{width}-{precision}"
-            records.append(result.write(directory))
+            directory.mkdir()
             write_json(directory / "graph.json", graph)
+            records.append(result.write(directory))  # record.json last: it marks a complete export
     return records
 
 
