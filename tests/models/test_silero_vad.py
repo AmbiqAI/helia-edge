@@ -16,35 +16,6 @@ from helia_edge.models import SileroVadParams
 from helia_edge.models.silero_vad import SAMPLES, UNITS, SileroBlockStft, SileroFrameConv, SileroLiveTaps, build
 from helia_edge.models.silero_vad_params import SILERO_VAD_V6_ONNX
 
-SHAPES = {
-    "model.stft.forward_basis_buffer": (258, 1, 256),
-    "model.encoder.0.reparam_conv.weight": (128, 129, 3),
-    "model.encoder.0.reparam_conv.bias": (128,),
-    "model.encoder.1.reparam_conv.weight": (64, 128, 3),
-    "model.encoder.1.reparam_conv.bias": (64,),
-    "model.encoder.2.reparam_conv.weight": (64, 64, 3),
-    "model.encoder.2.reparam_conv.bias": (64,),
-    "model.encoder.3.reparam_conv.weight": (128, 64, 3),
-    "model.encoder.3.reparam_conv.bias": (128,),
-    "model.decoder.rnn.weight_ih": (512, 128),
-    "model.decoder.rnn.weight_hh": (512, 128),
-    "model.decoder.rnn.bias_ih": (512,),
-    "model.decoder.rnn.bias_hh": (512,),
-    "model.decoder.decoder.2.weight": (1, 128, 1),
-    "model.decoder.decoder.2.bias": (1,),
-}
-"""Initializer names and shapes of silero_vad_16k_op15.onnx (v6.2.2)."""
-
-
-def synthetic_tensors(seed=0):
-    rng = np.random.default_rng(seed)
-    tensors = {
-        name: (rng.standard_normal(shape) / np.sqrt(np.prod(shape[1:]) or 1)).astype(np.float32)
-        for name, shape in SHAPES.items()
-    }
-    tensors["model.stft.forward_basis_buffer"] *= 4
-    return tensors
-
 
 def reference_step(w, x, h, c):
     """NumPy transcription of the v6.2.2 16 kHz graph for one call: x [576], h and c [128]."""
@@ -113,9 +84,9 @@ def frontend(stft, magnitude="sqrt"):
 
 
 @pytest.fixture
-def importer(tmp_path, write_safetensors):
+def importer(tmp_path, write_safetensors, silero_tensors):
     """Build ``params`` and import synthetic weights through the Silero mapping, from a safetensors file."""
-    tensors = synthetic_tensors()
+    tensors = silero_tensors()
     path = tmp_path / "silero.safetensors"
     write_safetensors(path, tensors)
     sha256 = hashlib.sha256(path.read_bytes()).hexdigest()
@@ -146,7 +117,7 @@ def test_the_model_has_the_streaming_interface():
 def test_the_mapping_uses_every_initializer_and_sets_every_weight(imported):
     model, tensors, report = imported
     used = {name for _, sources in report.assignments for name in sources}
-    assert used == set(SHAPES) == set(tensors)
+    assert used == set(tensors)
     assert sorted(path for path, _ in report.assignments) == sorted(w.path for w in model.weights)
 
 
@@ -204,8 +175,8 @@ def test_the_projected_magnitude_tracks_the_reference_graph(importer, params):
 
 
 @pytest.mark.parametrize("stft", ["conv1d", "conv_blocks"])
-def test_the_projected_magnitude_is_within_its_bound(stft):
-    basis = synthetic_tensors()["model.stft.forward_basis_buffer"].transpose(2, 1, 0)  # ONNX (258, 1, 256)
+def test_the_projected_magnitude_is_within_its_bound(stft, silero_tensors):
+    basis = silero_tensors()["model.stft.forward_basis_buffer"].transpose(2, 1, 0)  # ONNX (258, 1, 256)
     x = np.stack([audio(2, seed=s)[:SAMPLES] for s in range(3)])
     layers = [frontend(stft, magnitude) for magnitude in ("sqrt", "max_projection")]
     for layer in layers:

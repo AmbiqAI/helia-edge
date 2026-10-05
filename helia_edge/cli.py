@@ -10,29 +10,30 @@ from typing import Annotated
 import typer
 
 app = typer.Typer(no_args_is_help=True, add_completion=False, help="heliaEDGE model export tools.")
-export_app = typer.Typer(no_args_is_help=True, help="Run, verify and describe export recipes.")
+export_app = typer.Typer(no_args_is_help=True, help="Create and reproduce exports with their records.")
 app.add_typer(export_app, name="export")
 
-
-class SchemaKind(StrEnum):
-    """Document whose JSON Schema ``helia-edge export schema`` prints."""
-
-    RECIPE = "recipe"
-    MANIFEST = "manifest"
+DEFAULT_IO = {"fp32": "float32", "fp16": "float16", "a8w8": "int8", "a16w8": "int16"}
 
 
-@export_app.command("run")
-def export_run(
-    recipe: Annotated[Path, typer.Argument(help="Recipe file (YAML or JSON).", exists=True, dir_okay=False)],
-    out: Annotated[Path, typer.Option(help="Output directory.")] = Path("exports"),
-    only: Annotated[list[str] | None, typer.Option(help="Export name to run; repeat for several.")] = None,
-    require_provenance: Annotated[
-        bool, typer.Option(help="Refuse unless helia-edge is a release or a git install at a commit.")
-    ] = False,
-) -> None:
-    """Regenerate a recipe's exports and write OUT/manifest.json."""
-    from .export.result import environment_record
-    from .export.run import run_recipe, unidentified_install
+class Precision(StrEnum):
+    """Precisions ``helia-edge export create`` exports."""
+
+    FP32 = "fp32"
+    FP16 = "fp16"
+    A8W8 = "a8w8"
+    A16W8 = "a16w8"
+
+
+class Mode(StrEnum):
+    """How ``helia-edge export create`` traces the model."""
+
+    KERAS = "keras"
+    CONCRETE = "concrete"
+
+
+def _check_install(require_provenance: bool) -> None:
+    from .export.result import environment_record, unidentified_install
 
     record = environment_record()
     if not record.identified:
@@ -40,50 +41,112 @@ def export_run(
             typer.echo(f"error: {unidentified_install(record)}", err=True)
             raise typer.Exit(1)
         typer.echo(f"warning: {unidentified_install(record)}", err=True)
-    manifest = run_recipe(recipe, out, only=only, require_provenance=require_provenance)
-    for entry in manifest.entries:
-        typer.echo(f"{entry.name}: {entry.model.path} sha256 {entry.model.sha256}")
-    typer.echo(f"manifest: {Path(out) / 'manifest.json'}")
 
 
-@export_app.command("verify")
-def export_verify(
-    manifest: Annotated[Path, typer.Argument(help="manifest.json written by `export run`.")],
-    allow_env_mismatch: Annotated[
-        bool, typer.Option(help="Regenerate even if the environment differs; differences are listed.")
+@export_app.command("create")
+def export_create(
+    spec: Annotated[Path, typer.Argument(help="ModelSpec file (YAML or JSON).", exists=True, dir_okay=False)],
+    weights: Annotated[
+        Path, typer.Option(help="A .weights.h5 file, or with --mapping the source file it imports.", exists=True)
+    ],
+    precision: Annotated[Precision, typer.Option(help="Numeric format of the export.")],
+    out: Annotated[Path, typer.Option(help="Output directory.")],
+    io_dtype: Annotated[str | None, typer.Option(help="I/O dtype; by default int8, int16 or the float type.")] = None,
+    mapping: Annotated[str | None, typer.Option(help="Weight mapping of the spec's family to import with.")] = None,
+    calibration: Annotated[Path | None, typer.Option(help="Calibration .npy for a8w8 and a16w8.", exists=True)] = None,
+    resets: Annotated[list[int] | None, typer.Option(help="Calibration step that resets the state; repeat.")] = None,
+    golden_inputs: Annotated[
+        Path | None, typer.Option(help="Signal .npy for a golden@2 sequence.", exists=True)
+    ] = None,
+    golden_resets: Annotated[list[int] | None, typer.Option(help="Golden step that resets the state; repeat.")] = None,
+    batch_size: Annotated[int, typer.Option(help="Batch of the exported model.")] = 1,
+    mode: Annotated[Mode, typer.Option(help="How the model is traced.")] = Mode.KERAS,
+    require_provenance: Annotated[
+        bool, typer.Option(help="Refuse unless helia-edge is a release or a git install at a commit.")
     ] = False,
 ) -> None:
-    """Regenerate a manifest's exports and compare them.
+    """Build SPEC, load its weights, export it and write model.tflite, model.weights.h5 and record.json.
 
-    Exit 0 ok, 1 drift, 2 environment mismatch, 3 missing or invalid manifest.
+    Exit 1 when the install does not identify its code under --require-provenance, or the export is refused.
+    """
+    import numpy as np
+
+    from .export import ExportOptions, export
+    from .export.api import _reference_build
+    from .export.reproduce import family_mapping, file_sha256, imported_source, load_spec
+    from .importers import import_weights
+    from .models.spec import build
+
+    _check_install(require_provenance)
+    try:
+        model_spec = load_spec(spec)
+        with _reference_build():
+            model = build(model_spec, batch_size=batch_size)
+        weights_import = None
+        if mapping is not None:
+            weight_mapping = family_mapping(model_spec, mapping)
+            import_weights(model, weight_mapping, weights)
+            weights_import = imported_source(weight_mapping, file_sha256(weights))
+        else:
+            model.load_weights(weights)
+        result = export(
+            model,
+            precision=precision.value,
+            io_dtype=io_dtype or DEFAULT_IO[precision.value],
+            calibration=None if calibration is None else np.load(calibration, allow_pickle=False),
+            resets=resets or (),
+            spec=model_spec,
+            batch_size=batch_size,
+            options=ExportOptions.model_validate({"mode": mode.value}),
+            weights_import=weights_import,
+        )
+        if golden_inputs is not None:
+            result = result.with_golden(np.load(golden_inputs, allow_pickle=False), golden_resets or ())
+        path = result.write(out)
+    except (OSError, ValueError) as exc:
+        typer.echo(f"error: {exc}", err=True)
+        raise typer.Exit(1) from exc
+    typer.echo(f"{result.record.artifact.file}: sha256 {result.record.artifact.sha256}")
+    typer.echo(f"record: {path}")
+
+
+@export_app.command("reproduce")
+def export_reproduce(
+    record: Annotated[Path, typer.Argument(help="record.json written by `export create` or export().")],
+    weights: Annotated[Path, typer.Option(help="The weights file the record names (by digest or sha256).")],
+    calibration: Annotated[Path | None, typer.Option(help="The calibration .npy the record names.")] = None,
+    golden_inputs: Annotated[Path | None, typer.Option(help="The golden's input .npy, to compare the golden.")] = None,
+    allow_env_mismatch: Annotated[
+        bool, typer.Option(help="Compare even if the environment differs; differences are listed.")
+    ] = False,
+) -> None:
+    """Export a record's model again and compare.
+
+    Exit 0 same bytes, 1 different, 2 environment differs, 3 missing or mismatched input.
     """
     import pydantic
 
-    from .export.run import verify_manifest
+    from .export.reproduce import reproduce
 
     try:
-        report = verify_manifest(manifest, allow_env_mismatch=allow_env_mismatch)
-    except (FileNotFoundError, pydantic.ValidationError, ValueError) as exc:
-        typer.echo(f"invalid manifest {manifest}: {exc}", err=True)
+        report = reproduce(record, weights, calibration, golden_inputs, allow_env_mismatch)
+    except (OSError, pydantic.ValidationError) as exc:
+        typer.echo(f"invalid record {record}: {exc}", err=True)
         raise typer.Exit(3) from exc
-    for line in report.environment_differences:
+    for line in report.environment:
         typer.echo(f"environment: {line}")
     for line in report.differences:
-        typer.echo(f"drift: {line}")
+        typer.echo(f"{'input' if report.status == 'input' else 'different'}: {line}")
     typer.echo(report.status)
-    raise typer.Exit({"ok": 0, "drift": 1, "env_mismatch": 2}[report.status])
+    raise typer.Exit({"same": 0, "different": 1, "environment": 2, "input": 3}[report.status])
 
 
 @export_app.command("schema")
-def export_schema(
-    kind: Annotated[SchemaKind, typer.Option(help="Which document to describe.")] = SchemaKind.RECIPE,
-) -> None:
-    """Print the JSON Schema of an export recipe or manifest."""
-    from .export.manifest import ExportManifest
-    from .export.recipe import ExportRecipe
+def export_schema() -> None:
+    """Print the JSON Schema of the export record (helia-edge/export-record@1)."""
+    from .export.record import ExportRecord
 
-    model = ExportRecipe if kind == SchemaKind.RECIPE else ExportManifest
-    typer.echo(json.dumps(model.model_json_schema(by_alias=True), indent=1, sort_keys=True))
+    typer.echo(json.dumps(ExportRecord.model_json_schema(by_alias=True), indent=1, sort_keys=True))
 
 
 @app.command("inspect")

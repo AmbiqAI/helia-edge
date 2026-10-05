@@ -1,12 +1,10 @@
-"""State pair naming, records and manifest fields; runs without Keras or a training backend."""
-
-import json
+"""State pair naming and records; runs without Keras or a training backend."""
 
 import pydantic
 import pytest
 
-from helia_edge.export import ExportManifest, ExportSpec, TensorRecord, TensorRole
-from helia_edge.export.manifest import TensorEntry
+from helia_edge.export import ExportSpec, TensorRecord, TensorRole
+from helia_edge.export.record import TensorEntry
 from helia_edge.export.result import state_scales_tied
 from helia_edge.export.spec import state_input_name, state_output_name, state_pair
 
@@ -63,21 +61,3 @@ def test_tie_tolerance_is_a_fraction(tolerance):
 def test_tensor_entries_carry_the_pair():
     entry = TensorEntry.from_record(state("state_in_0", 0, 0.1, 0))
     assert entry.pair == 0 and entry.role == TensorRole.STATE
-
-
-def test_a_manifest_without_state_fields_still_reads(tmp_path):
-    file = {"path": "m/model.tflite", "sha256": "0" * 64, "bytes": 1}
-    tensor = {"name": "x", "role": "signal", "shape": [1, 4], "dtype": "float32", "scale": None, "zero_point": None}
-    spec = {"format": "litert", "precision": "fp32", "io_dtype": "float32", "mode": "concrete", "strict": True}
-    manifest = {
-        "schema": "helia-edge/manifest@1",
-        "recipe": {**file, "path": "recipe.yaml"},
-        "environment": {"helia_edge": "0.1.0", "helia_edge_commit": None, "python": "3.12", "platform": "Linux"}
-        | {"packages": {"numpy": "2.1.3"}},
-        "entries": [{"name": "m", "spec": spec, "model": file, "inputs": [tensor], "outputs": [tensor]}],
-    }
-    path = tmp_path / "manifest.json"
-    path.write_text(json.dumps(manifest))
-    entry = ExportManifest.read(path).entries[0]
-    assert entry.state_scales_tied is None and entry.inputs[0].pair is None
-    assert entry.spec is not None and entry.spec.state_tie_tolerance == 0.01

@@ -139,3 +139,12 @@ def environment_record() -> EnvironmentRecord:
         platform=f"{platform.system()}-{platform.machine()}",
         packages=tuple((name, _version(name)) for name in _VERSIONED),
     )
+
+
+def unidentified_install(record: EnvironmentRecord) -> str:
+    """Why ``record`` does not identify the helia-edge code, and how to install code that does."""
+    return (
+        f"helia-edge {record.helia_edge} ({record.helia_edge_source} install) does not identify its code; "
+        "install a release, or install from git at a commit: "
+        "uv pip install 'helia-edge @ git+https://github.com/AmbiqAI/helia-edge@<commit>'"
+    )

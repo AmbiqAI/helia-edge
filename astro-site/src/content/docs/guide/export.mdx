@@ -42,7 +42,7 @@ Path("model.tflite").write_bytes(result.content)
 
 - `mode` and `io_dtype` have no defaults, and an invalid precision/dtype pair is rejected.
 - `a8w8` and `a16w8` need calibration: a non-empty, finite float32 array shaped like the model input, used one sample at a time in stored order. Other precisions refuse calibration data.
-- Export needs a backend with an exporter for the format; the built-in `litert` exporter needs the TensorFlow backend. A model with several inputs takes calibration as a mapping of input name to samples and the `keras` or `saved_model` mode (see [Streaming models](#streaming-models)). A model trained with the Torch backend is rebuilt from its params and weights in a process started with `KERAS_BACKEND=tensorflow`.
+- `litert` is the export format, and it needs the TensorFlow backend. A model with several inputs takes calibration as a mapping of input name to samples and the `keras` or `saved_model` mode (see [Streaming models](#streaming-models)). A model trained with the Torch backend is rebuilt from its params and weights in a process started with `KERAS_BACKEND=tensorflow`.
 - Choose representative inputs from the distribution the model will encounter. Compare predictions against the original model and evaluate task quality on held-out data before deployment.
 - `ExportSpec` values match helia-benchmark's precision names.
 - `LiteRTRunner` runs model bytes with ai-edge-litert, rounding and saturating integer inputs. It runs native float16 graphs where the runtime has float16 kernels for every operator.
@@ -96,81 +96,37 @@ probabilities = runner.decode("prob", outputs["prob"])
 - **Mode:** use `keras`. `concrete` converts single-input models only, because its graph has no signature to name inputs and states. `saved_model` exports a dynamic batch, so integer state pairs cannot be tied.
 - **Records:** `result.inputs` and `result.outputs` list tensors in the model's subgraph order. State tensors have role `state` and the index `pair` of their pair; the converter may reorder inputs, so address them by name.
 - **Calibration:** `stream_calibration` runs the Keras model over the signal inputs and returns every input, the state inputs filled with the states the model produces (zero at the start and at the steps in `resets`).
-- **Tied state:** with integer I/O (`a8w8` with `int8`, `a16w8` with `int16`), the converter calibrates `state_in_k` and `state_out_k` separately. Export then gives each pair one scale and zero point whose range covers both tensors' ranges (for `int16`, the larger scale), so a raw `state_out_k` keeps its value as the next `state_in_k`; the bias of a fully connected or convolution layer that reads a state is requantized with it. It refuses when the tied scale differs from either original by more than `ExportSpec.state_tie_tolerance` of it (default 1%, at most 50%), or when an operator that needs the state tensor's parameters unchanged (such as a concatenation, or a tanh writing the state) reads or writes it; a reshape passes the tied parameters on to its output. State inputs and outputs must pair up with equal shapes and types, and every output needs its own name (two outputs of one layer share it). The manifest records `state_scales_tied`.
+- **Tied state:** with integer I/O (`a8w8` with `int8`, `a16w8` with `int16`), the converter calibrates `state_in_k` and `state_out_k` separately. Export then gives each pair one scale and zero point whose range covers both tensors' ranges (for `int16`, the larger scale), so a raw `state_out_k` keeps its value as the next `state_in_k`; the bias of a fully connected or convolution layer that reads a state is requantized with it. It refuses when the tied scale differs from either original by more than `ExportSpec.state_tie_tolerance` of it (default 1%, at most 50%), or when an operator that needs the state tensor's parameters unchanged (such as a concatenation, or a tanh writing the state) reads or writes it; a reshape passes the tied parameters on to its output. State inputs and outputs must pair up with equal shapes and types, and every output needs its own name (two outputs of one layer share it). The export record's `io` records `state_scales_tied`.
 - **Running:** `LiteRTStreamRunner` runs a stream on raw tensors, carrying the state unchanged; it returns every input as fed and every output, stacked by step. `LiteRTRunner` stays single-input.
-- Export recipes take streaming models with one signal input; see [Export recipes](#export-recipes-and-the-command-line).
+- `export` takes streaming models with one signal input; see [Export with a record](#export-with-a-record).
 
-## Export recipes and the command line
+## The command line
 
-An export recipe (`schema: helia-edge/export@1`) states the model source, calibration and reference data, and every export. Every file it names carries a sha256:
-
-```yaml
-schema: helia-edge/export@1
-model: {kind: params_seed, architecture: mlperf_tiny, params: {architecture: ad}, seed: 20260929}
-calibration:
-  source: {kind: array, file: {kind: path, path: calibration.npy, sha256: <sha256>}}
-  samples: 256
-reference:
-  source: {kind: array, file: {kind: url, url: https://example.com/reference.npz, sha256: <sha256>}, key: x}
-exports:
-  - {name: fp32, precision: fp32, io_dtype: float32, mode: concrete}
-  - {name: a8w8, precision: a8w8, io_dtype: int8, mode: concrete}
-```
+`helia-edge export create` builds a model from a `ModelSpec` file (YAML or JSON), loads its weights, exports it with `export` and writes the record directory. `helia-edge export reproduce` exports a record's model again and compares:
 
 ```sh
-KERAS_BACKEND=tensorflow helia-edge export run recipe.yaml --out exports
-helia-edge export verify exports/manifest.json
+KERAS_BACKEND=tensorflow helia-edge export create spec.yaml --weights trained.weights.h5 \
+  --precision a8w8 --calibration calibration.npy --out exports/tcn-a8w8
+KERAS_BACKEND=tensorflow helia-edge export reproduce exports/tcn-a8w8/record.json \
+  --weights exports/tcn-a8w8/model.weights.h5 --calibration calibration.npy
 ```
 
-- **Model kinds:**
-  - `params_seed`: an architecture from `BUILTIN_ARCHITECTURES` (`tcn`, `mlperf_tiny`, `miniresnet_v1`, `timeppg`, `cornet`, `vad_silero_v6`), built from params with a seeded initialization;
-  - `params_weights`: the same architectures, with trained weights loaded;
-  - `params_import`: the same architectures, with weights imported from a file trained elsewhere through a mapping named from a family's `MAPPINGS` (see [Import weights](/helia-edge/guide/import-weights/)); the file's sha256 must be the one the mapping is pinned to;
-  - `keras_file`: a saved `.keras` model;
-  - `tflite_import`: an existing `.tflite` file, taken as is.
-- **TCN params:** for `tcn`, `params` are `TcnParams`, which reject unknown fields, so remove the `name` field from older recipes. The recipe's `num_classes` must match any `num_classes` in `params`.
-- **Sources:** `path` sources resolve relative to the recipe. `url` sources are downloaded once into `~/.cache/helia-edge/sources` (set `HELIA_EDGE_CACHE` to move it). A source whose sha256 differs is refused.
-- **Calibration and reference data:** calibration uses the first `samples` rows in stored order (more rows than stored is an error). Reference inputs are run with LiteRT's reference kernels; the inputs as fed and the outputs are saved as `.npy` files next to each model.
-- **Streaming models:** for a model with state pairs and one signal input, calibration and reference rows are consecutive calls of the signal input.
-  - Calibration feeds the states the model produces (`stream_calibration`), zero at the start and at the steps in `resets`.
-  - The reference becomes a `helia-model-zoo/golden@2` sequence golden (`reference/golden.npz`): `input_i`/`output_i` in subgraph order, raw values stacked by step, each `state_out_k` carried into the next `state_in_k` and reset at `resets` (steps after 0).
-  - The manifest's `reference.golden` records its file, steps, resets and source; the model zoo's `golden.check` validates it.
-- **Batch size and session:** models are exported with batch size 1. Each is built in a fresh Keras session, because auto-generated layer names become tensor names in the exported bytes.
-- **Manifest:** `manifest.json` (`schema: helia-edge/manifest@1`) records the recipe's sha256, the environment (helia-edge version and install source, plus its commit when installed from a git URL; Python; platform; NumPy, Keras, TensorFlow and ai-edge-litert versions), and each file's sha256. `run` writes into `--out` without removing files from earlier runs; only the entries in the manifest are verified. `helia-edge export schema --kind recipe|manifest` prints the JSON Schemas.
-- **Provenance:** `environment.helia_edge_source` says whether the version identifies the code that exported:
+- **`create`:** `--weights` is a `.weights.h5` file, or with `--mapping NAME` the source file imported through that mapping of the spec's family (see [Import weights](/helia-edge/guide/import-weights/)). `--io-dtype` defaults to `float32`, `float16`, `int8` or `int16` for `fp32`, `fp16`, `a8w8` and `a16w8`. `--calibration` and `--golden-inputs` are `.npy` files, with `--resets` and `--golden-resets` repeated for each reset step. `--batch-size` (default 1) and `--mode keras|concrete` are passed to `export`.
+- **`reproduce`:** `--weights` is the record's weights (any file with the recorded digest), or for imported weights the source file with the recorded sha256. `--calibration` is required when the record has calibration, and `--golden-inputs` regenerates and compares the golden. Exit codes:
+  - 0: the weights digest, the artifact's sha256 and size, the I/O and (with `--golden-inputs`) the golden match;
+  - 1: something differs, and each difference is listed;
+  - 2: the environment differs from the recorded one, and nothing is exported. `--allow-env-mismatch` compares anyway and lists the differences;
+  - 3: the record is missing or invalid, or a file is missing or does not match its recorded hash.
+- **`schema`:** prints the record's JSON Schema.
+- **Environment:** the record names the helia-edge version, install source and commit, Python, the platform and the NumPy, Keras, TensorFlow and ai-edge-litert versions. Other versions may export other bytes.
+- **Provenance:** `environment.helia_edge.source` says whether the version identifies the code that exported:
   - `release`: installed from a package index (a wheel built from a modified tree and served from a private index looks the same, so prefer `vcs` for published exports);
-  - `vcs`: installed from a git URL, at `helia_edge_commit` (from a local `git+file://` repository, that commit may never have been pushed);
+  - `vcs`: installed from a git URL, at the recorded commit (from a local `git+file://` repository, that commit may never have been pushed);
   - `local`: installed from a directory or an archive (local or by URL), or with only egg-info metadata (a source tree, some system packages), none of which the version identifies;
   - `unknown`.
 
-  `export run` warns unless it is `release` or `vcs`. For exports you publish, `--require-provenance` (`run_recipe(..., require_provenance=True)`) refuses such an install. Install from git at a commit instead: `uv pip install 'helia-edge @ git+https://github.com/AmbiqAI/helia-edge@<commit>'`.
-- **`export verify`:** checks in this order:
-  - Exit 1 (drift): a file, a source or the recipe changed. Environment differences are still listed.
-  - Exit 2 (environment mismatch): the environment differs from the recorded one; nothing is regenerated. `--allow-env-mismatch` regenerates anyway and lists the differences.
-  - Otherwise it regenerates every entry and exits 1 if any file's sha256 or size, spec or tensor record differs, and 0 when all match.
-  - Exit 3: the manifest is missing or invalid.
-
-## Add an exporter or architecture
-
-`helia_edge.registry` holds the exporters (keyed `"<format>:<backend>"`) and the architectures that recipes build. An exporter is called as `exporter(model, spec, calibration)` and may receive a model with several inputs, with `calibration` a mapping of input name to samples; an exporter that supports single-input models only should refuse others with a `ValueError`. Built-in entries are `"module:attr"` strings, imported only when used. Another package adds entries through the `helia_edge.plugins` entry-point group, without changes to heliaEDGE:
-
-```toml
-# pyproject.toml of your package
-[project.entry-points."helia_edge.plugins"]
-mypkg = "mypkg.edge:register"
-```
-
-```python
-# mypkg/edge.py
-def register(registry):
-    registry.architectures.add("my_tcn", "mypkg.models:build_my_tcn")
-    registry.exporters.add("litert:torch", "mypkg.export:export_torch_litert")
-```
-
-- **Architecture builders** take `(params, input_shape, num_classes)` and return a Keras model with batch size 1 (`mlperf_tiny` keeps a dynamic batch).
-- **Exporters** take `(model, spec, calibration)` and return an `ExportResult`.
-- **Loading:** plugins load once, the first time a key is not found, for example an exporter for a format on the active backend. A plugin that fails does not stop the others; the failures are raised together as `PluginError`. An unknown key raises `NotRegistered`, a `ValueError` that lists what is registered.
-- **Recipes:** they export the `litert` format only, because they write and inspect `.tflite` files. Exporters for other formats are used through `export_model`.
+  `create` warns unless it is `release` or `vcs`; with `--require-provenance` it refuses. For exports you publish, install from git at a commit: `uv pip install 'helia-edge @ git+https://github.com/AmbiqAI/helia-edge@<commit>'`.
+- **Layer names:** unnamed layers' names become tensor names in the exported bytes, and Keras numbers them per process. `export` with `spec`, `load_export_record` and both commands build with the numbering started from zero, through a private Keras name table. If a Keras release no longer numbers names through it, they warn (`RuntimeWarning`) that the bytes may depend on layers built earlier in the process.
 
 ## Legacy converters (deprecated)
 

@@ -3,6 +3,7 @@
 import re
 from collections.abc import Collection
 from enum import StrEnum
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, StrictBool, StrictFloat, model_validator
 
@@ -101,8 +102,7 @@ class ExportSpec(BaseModel):
     """What to export. ``precision``, ``io_dtype`` and ``mode`` have no defaults.
 
     Attributes:
-        format: Export format. ``litert`` (a ``.tflite`` flatbuffer), the default, is built in;
-            other formats come from exporters registered in ``helia_edge.registry.exporters``.
+        format: Export format: ``litert``, a ``.tflite`` flatbuffer (the only one).
         precision: Numeric format of the graph.
         io_dtype: Input and output element type; must be valid for ``precision`` (``VALID_IO``).
         mode: How the model is traced for conversion.
@@ -116,7 +116,7 @@ class ExportSpec(BaseModel):
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
-    format: str = "litert"
+    format: Literal["litert"] = "litert"
     precision: Precision
     io_dtype: IODType
     mode: ConversionMode

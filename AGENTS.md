@@ -21,16 +21,16 @@ Keras 3 add-on for training and exporting models to Ambiq edge targets. Full gui
   rebuilds the model) or `export_model` (bytes only), and run with `LiteRTRunner`, or `LiteRTStreamRunner` for streaming
   models with state pairs (export guide); the `converters` and `interpreters.tflite` classes are deprecated
   (they warn) and must not be used in new code or examples.
-- Export recipes: `helia-edge export run RECIPE.yaml --out DIR` (`--require-provenance` for published exports),
-  then `helia-edge export verify DIR/manifest.json` (exit 0 ok, 1 drift, 2 environment mismatch);
-  `helia-edge export schema --kind recipe|manifest`.
-- Extensions register in `helia_edge.registry` (exporters, architectures) or through the `helia_edge.plugins`
-  entry-point group; custom train steps use `helia_edge.trainers.gradient_step` (MaskedAutoencoder does; the
-  contrastive trainers are TensorFlow-only).
+- Command line: `helia-edge export create SPEC.yaml --weights W --precision P --out DIR` (`--mapping NAME` to
+  import, `--require-provenance` for published exports), then `helia-edge export reproduce DIR/record.json --weights W`
+  (exit 0 same, 1 different, 2 environment mismatch, 3 missing or mismatched input); `helia-edge export schema`.
+  The reference build resets Keras layer numbering through `keras.src` and warns if a Keras release moved it.
+- Custom train steps use `helia_edge.trainers.gradient_step` (MaskedAutoencoder does; the contrastive trainers
+  are TensorFlow-only).
 - Weights trained elsewhere load through `helia_edge.importers.import_weights` with a `WeightMapping` pinned to
-  the source file's sha256 and format (extra `onnx` for ONNX), or a recipe's `params_import` model source. A
-  family's mappings live in `models/<family>_params.py` as `MAPPINGS`, keyed by mapping name; streaming
-  recipes write `helia-model-zoo/golden@2` sequence goldens.
+  the source file's sha256 and format (extra `onnx` for ONNX), or `export create --mapping NAME`. A family's
+  mappings live in `models/<family>_params.py` as `MAPPINGS`, keyed by mapping name; `Export.with_golden`
+  writes `helia-model-zoo/golden@2` sequence goldens for streaming models.
 - Data: `helia_edge.data.to_grain` (extra `grain`) reads indexed records; `to_tf_dataset` and `to_torch_loader`
   wrap its batches. The tf.data generator helpers live in `helia_edge.data.tf_data` (re-exported by
   `helia_edge.utils`).

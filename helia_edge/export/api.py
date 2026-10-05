@@ -5,6 +5,7 @@ import collections
 import hashlib
 import io
 import operator
+import warnings
 from collections.abc import Collection, Mapping
 from contextlib import contextmanager
 from dataclasses import dataclass, replace
@@ -195,38 +196,21 @@ def export_model(
         ExportResult: The exported bytes, their sha256, the I/O tensor records and the environment.
 
     Raises:
-        BackendUnavailable: If ``helia_edge.registry.exporters`` (built-ins and plugins) has no
-            exporter for ``spec.format`` on the active Keras backend. A process cannot switch Keras
-            backend: rebuild the model from its params and weights in a process started with a
-            backend that has one (``KERAS_BACKEND=tensorflow`` for the built-in LiteRT exporter).
-        ValueError: If the format is unknown, the calibration data is invalid, or a state pair cannot be
-            tied.
-        PluginError: If a ``helia_edge.plugins`` entry point fails while plugins load.
+        BackendUnavailable: If the active Keras backend is not TensorFlow, which LiteRT conversion needs. A
+            process cannot switch Keras backend: rebuild the model from its params and weights in a process
+            started with ``KERAS_BACKEND=tensorflow``.
+        ValueError: If the calibration data is invalid, or a state pair cannot be tied.
     """
-    from ..registry import exporters, load_plugins
-
-    def backends_for(fmt: str) -> list[str]:
-        return [key.split(":", 1)[1] for key in exporters if key.split(":", 1)[0] == fmt]
-
-    if not backends_for(spec.format):
-        load_plugins()
-    backends = backends_for(spec.format)
-    if not backends:
-        formats = sorted({key.split(":", 1)[0] for key in exporters})
-        raise ValueError(f"Unknown export format {spec.format!r}; available: {', '.join(map(repr, formats))}")
     try:
         import keras
     except ModuleNotFoundError as exc:
         raise ImportError("export_model requires Keras and a backend. Install helia-edge[litert].") from exc
 
     backend = keras.backend.backend()
-    if backend not in backends:
-        load_plugins()
-        backends = backends_for(spec.format)
-    if backend not in backends:
+    if backend != "tensorflow":
         raise BackendUnavailable(
-            f"{spec.format} export needs the {' or '.join(backends)} backend; the active Keras backend is "
-            f"{backend!r}. Rebuild the model from its params and weights with KERAS_BACKEND={backends[0]}."
+            f"{spec.format} export needs the tensorflow backend; the active Keras backend is {backend!r}. "
+            "Rebuild the model from its params and weights with KERAS_BACKEND=tensorflow."
         )
     if len(model.inputs) == 1:
         if isinstance(calibration, Mapping):
@@ -235,7 +219,9 @@ def export_model(
     else:
         shapes = {tensor.name: tuple(tensor.shape) for tensor in model.inputs}
         check_named_calibration(spec, calibration, shapes)
-    return exporters.get(f"{spec.format}:{backend}")(model, spec, calibration)
+    from .litert import export_litert
+
+    return export_litert(model, spec, calibration)
 
 
 @contextmanager
@@ -247,21 +233,43 @@ def _reference_build():
     build fails; the build itself, like any Keras build, may draw from the random generators. Layer numbering
     and the dtype policy are per thread, but ``floatx`` is shared by the process: another thread building
     layers meanwhile sees float32.
+
+    Keras has no public way to reset layer numbering, so this swaps Keras's private name table. A probe layer
+    checks that Keras numbers names through the swapped table; if it does not (a Keras release that moved the
+    table), a ``RuntimeWarning`` says that the exported bytes may depend on layers built earlier.
     """
     import keras
-    from keras.src.backend.common import global_state
 
-    names = global_state.get_global_attribute("object_name_uids")
     policy, floatx = keras.config.dtype_policy(), keras.config.floatx()
-    global_state.set_global_attribute("object_name_uids", collections.defaultdict(int))
-    keras.config.set_floatx("float32")
-    keras.config.set_dtype_policy("float32")
+    names = global_state = None
     try:
+        keras.config.set_floatx("float32")
+        keras.config.set_dtype_policy("float32")
+        try:
+            from keras.src.backend.common import global_state
+
+            names = global_state.get_global_attribute("object_name_uids")
+            table = collections.defaultdict(int)
+            global_state.set_global_attribute("object_name_uids", table)
+            keras.layers.Identity()
+            numbered = bool(table)
+            global_state.set_global_attribute("object_name_uids", collections.defaultdict(int))
+        except (ImportError, AttributeError):
+            numbered = False
+        if not numbered:
+            warnings.warn(
+                f"Keras {keras.version()} does not number layer names through the table helia-edge resets "
+                "(keras.src.backend.common.global_state 'object_name_uids'), so unnamed layers' names, and the "
+                "exported tensor names and bytes, may depend on layers built earlier in this process.",
+                RuntimeWarning,
+                stacklevel=3,
+            )
         yield
     finally:
-        global_state.set_global_attribute(
-            "object_name_uids", names if names is not None else collections.defaultdict(int)
-        )
+        if global_state is not None:
+            global_state.set_global_attribute(
+                "object_name_uids", names if names is not None else collections.defaultdict(int)
+            )
         keras.config.set_floatx(floatx)
         keras.config.set_dtype_policy(policy)
 

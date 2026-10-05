@@ -199,6 +199,44 @@ def test_the_reference_build_restores_the_callers_state_when_it_fails():
         keras.config.set_dtype_policy(previous)
 
 
+@pytest.mark.parametrize("table", ["present", "moved", "unimportable"])
+def test_the_reference_build_warns_when_keras_numbers_names_elsewhere(monkeypatch, table):
+    """Layer numbering is reset through Keras's private name table; a Keras that moved it gets a warning."""
+    import collections
+    import sys
+    import types
+    import warnings
+
+    import keras.src.backend.common as common
+    from keras.src.utils import naming
+
+    from helia_edge.export.api import _reference_build
+
+    if table == "moved":
+        elsewhere = collections.defaultdict(int)
+        monkeypatch.setattr(
+            naming, "global_state", types.SimpleNamespace(get_global_attribute=lambda *a, **k: elsewhere)
+        )
+    elif table == "unimportable":
+        monkeypatch.delattr(common, "global_state")
+        monkeypatch.setitem(sys.modules, "keras.src.backend.common.global_state", None)
+    previous = keras.config.dtype_policy()
+    keras.config.set_dtype_policy("mixed_float16")
+    try:
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            with _reference_build():
+                assert keras.config.dtype_policy().name == "float32"
+        assert keras.config.dtype_policy().name == "mixed_float16"
+    finally:
+        keras.config.set_dtype_policy(previous)
+    messages = [str(w.message) for w in caught if issubclass(w.category, RuntimeWarning)]
+    if table == "present":
+        assert messages == []
+    else:
+        assert len(messages) == 1 and "may depend on layers built earlier" in messages[0]
+
+
 def test_a_record_loads_under_any_caller_policy(tmp_path):
     model = seeded(SPEC, batch_size=1)
     path = export(model, precision="fp32", io_dtype="float32", spec=SPEC).write(tmp_path)
@@ -383,12 +421,6 @@ def test_a_streaming_export_records_its_calibration_import_and_golden(tmp_path, 
     for resets in ([4.5], ["3"]):
         with pytest.raises(ValueError, match="integer steps"):
             export(model, precision="a16w8", io_dtype="int16", calibration=calls, resets=resets, spec=spec)
-    from helia_edge.export.manifest import GoldenRecord as ManifestGolden
-
-    manifest_golden = {"file": {"path": "g.npz", "sha256": "0" * 64, "bytes": 1}, "kind": "sequence", "steps": 4}
-    manifest_golden |= {"source": {"uri": "file://x", "sha256": "0" * 64}}
-    with pytest.raises(pydantic.ValidationError, match="resets"):
-        ManifestGolden.model_validate({**manifest_golden, "resets": (4,)})
     assert from_array.record.export.calibration.resets == (32,)
     assert record.io.state_scales_tied is True
     assert record.golden.inputs == Source(sha256=npy_sha256(calls[:16]), uri="https://example.com/calls.npy")
