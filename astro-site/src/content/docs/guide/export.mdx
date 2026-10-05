@@ -35,7 +35,6 @@ Path("model.tflite").write_bytes(result.content)
 | Precision | Graph | Input/output dtype |
 |---|---|---|
 | `fp32` | float32 weights and compute | `float32` |
-| `fp32-w16` | float16 weights, dequantized at runtime; float32 compute | `float32` |
 | `fp16` | native float16 graph | `float16` |
 | `a8w8` | int8 activations and weights | `int8` or `float32` |
 | `a16w8` | int16 activations, int8 weights | `int16` or `float32` |
@@ -128,20 +127,6 @@ KERAS_BACKEND=tensorflow helia-edge export reproduce exports/tcn-a8w8/record.jso
 
   `create` warns unless it is `release` or `vcs`; with `--require-provenance` it refuses. For exports you publish, install from git at a commit: `uv pip install 'helia-edge @ git+https://github.com/AmbiqAI/helia-edge@<commit>'`.
 - **Layer names:** unnamed layers' names become tensor names in the exported bytes, and Keras numbers them per process. `export` with `spec`, `load_export_record` and both commands build with the numbering started from zero, through a private Keras name table. If a Keras release no longer numbers names through it, they warn (`RuntimeWarning`) that the bytes may depend on layers built earlier in the process.
-
-## Legacy converters (deprecated)
-
-`TfLiteKerasConverter`, `LiteRTKerasConverter` and `TfLiteKerasInterpreter` still work but emit a `DeprecationWarning`. They produce the same bytes as `export_model` for the same settings. Move to `export_model` and `LiteRTRunner`:
-
-| Legacy | Replacement |
-|---|---|
-| `LiteRTKerasConverter(model).convert(x, quantization=QuantizationType.INT8, mode=ConversionType.CONCRETE)` | `export_model(model, ExportSpec(precision="a8w8", io_dtype="int8", mode="concrete"), calibration=x.astype(np.float32))` |
-| `QuantizationType.FP32`, `FP16`, `FP16_NATIVE`, `INT8`, `INT16X8` | `fp32`, `fp32-w16`, `fp16`, `a8w8`, `a16w8` (`LEGACY_PRECISION` maps them) |
-| `converter.predict(x)`, `TfLiteKerasInterpreter(...).predict(x)` | `LiteRTRunner(result.content).predict(x)` |
-| `converter.export(path)` | `Path(path).write_bytes(result.content)` |
-| `converter.export_header(header_path)` | write the bytes to `path`, then `helia_edge.converters.cpp.xxd_c_dump(path, header_path, var_name="model", chunk_len=20, is_header=True)` |
-
-`ExportSpec` has no defaults for `mode` and `io_dtype`. The legacy converters defaulted to `keras` mode and, without `io_type`, to int8 I/O for `INT8` and float32 I/O for every other precision except `FP16_NATIVE` (float16). For the same bytes, `INT16X8` therefore maps to `a16w8` with `io_dtype="float32"`.
 
 ## Hand off to an Ambiq deployment
 

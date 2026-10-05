@@ -1,15 +1,19 @@
-"""Native float16 conversion: graph invariants against the weight-only float16 export."""
+"""Native float16 export: graph invariants against TensorFlow's weight-only float16 conversion."""
 
 import flatbuffers
 import keras
 import numpy as np
+import pydantic
 import pytest
-import tensorflow as tf
-from tensorflow.lite.python import schema_py_generated as schema
 
-from helia_edge.converters.litert import LiteRTKerasConverter
-from helia_edge.converters.tflite import ConversionType, QuantizationType, TfLiteKerasConverter, to_native_fp16
-from helia_edge.converters.tflite.converter import _reject_native_fp16
+if keras.backend.backend() != "tensorflow":
+    pytest.skip("LiteRT export runs on the TensorFlow backend", allow_module_level=True)
+
+import tensorflow as tf  # noqa: E402
+from tensorflow.lite.python import schema_py_generated as schema  # noqa: E402
+
+from helia_edge.export import ExportSpec, export_model  # noqa: E402
+from helia_edge.export.fp16 import to_native_fp16  # noqa: E402
 
 OPS = {v: k for k, v in vars(schema.BuiltinOperator).items() if isinstance(v, int)}
 TYPES = {v: k for k, v in vars(schema.TensorType).items() if isinstance(v, int)}
@@ -25,12 +29,21 @@ def build_model():
     return keras.Model(inputs, outputs)
 
 
-def convert(model, quantization, mode=ConversionType.CONCRETE, **kwargs):
-    converter = TfLiteKerasConverter(model)
-    try:
-        return converter.convert(quantization=quantization, mode=mode, **kwargs)
-    finally:
-        converter.cleanup()
+def fp16_weights(model, mode="concrete"):
+    """TensorFlow's float16 weight storage with float32 compute: the graph the native rewrite starts from."""
+    if mode == "keras":
+        converter = tf.lite.TFLiteConverter.from_keras_model(model)
+    else:
+        spec = tf.TensorSpec((1, *model.input_shape[1:]), model.input_dtype)
+        converter = tf.lite.TFLiteConverter.from_concrete_functions([tf.function(model).get_concrete_function(spec)])
+    converter.optimizations = [tf.lite.Optimize.DEFAULT]
+    converter.target_spec.supported_types = [tf.float16]
+    return converter.convert()
+
+
+def export(model, precision, mode="concrete"):
+    io_dtype = {"fp32": "float32", "fp16": "float16"}[precision]
+    return export_model(model, ExportSpec(precision=precision, io_dtype=io_dtype, mode=mode)).content
 
 
 def unpack(content):
@@ -105,7 +118,7 @@ def graph(content):
 @pytest.fixture(scope="module")
 def exports():
     model = build_model()
-    return convert(model, QuantizationType.FP16), convert(model, QuantizationType.FP16_NATIVE)
+    return fp16_weights(model), export(model, "fp16")
 
 
 def test_native_graph_is_float16_end_to_end(exports):
@@ -134,7 +147,7 @@ def test_constants_are_float16_of_the_weight_only_export(exports):
     assert sorted(raw for _, raw in graph(native)[3]) == expected
 
 
-def test_rewrite_is_deterministic_and_idempotent(exports):
+def test_fp16_export_is_the_rewritten_weight_only_conversion(exports):
     weight_only, native = exports
     assert to_native_fp16(weight_only) == native
     assert graph(to_native_fp16(native))[:3] == graph(native)[:3]
@@ -146,9 +159,9 @@ def test_fp16_weight_storage_is_unchanged(exports):
     assert "DEQUANTIZE" in ops and "FLOAT16" in types and "FLOAT32" in types
 
 
-def test_native_rejects_other_io_types():
-    with pytest.raises(ValueError, match="float16"):
-        convert(build_model(), QuantizationType.FP16_NATIVE, io_type="float32")
+def test_native_refuses_other_io_types():
+    with pytest.raises(pydantic.ValidationError, match="not valid for"):
+        ExportSpec(precision="fp16", io_dtype="float32", mode="concrete")
 
 
 def test_shared_constant_buffer_is_converted_once():
@@ -159,7 +172,7 @@ def test_shared_constant_buffer_is_converted_once():
     kernel = np.arange(16, dtype=np.float32).reshape(4, 4) / 16 + 0.1
     model.get_layer("a").set_weights([kernel, np.zeros(4, np.float32)])
     model.get_layer("b").set_weights([kernel.T.copy(), np.zeros(4, np.float32)])
-    flat = schema.ModelT.InitFromObj(schema.Model.GetRootAsModel(bytearray(convert(model, QuantizationType.FP32)), 0))
+    flat = schema.ModelT.InitFromObj(schema.Model.GetRootAsModel(bytearray(export(model, "fp32")), 0))
     sub = flat.subgraphs[0]
     weights = [
         t
@@ -181,7 +194,7 @@ def test_shared_constant_buffer_is_converted_once():
 
 
 def test_float32_constants_are_converted_to_float16_values():
-    fp32 = convert(build_model(), QuantizationType.FP32)
+    fp32 = export(build_model(), "fp32")
     expected = sorted(
         np.frombuffer(raw, np.float32).astype(np.float16).tobytes() if dtype == "FLOAT32" else raw
         for dtype, raw in graph(fp32)[3]
@@ -191,21 +204,10 @@ def test_float32_constants_are_converted_to_float16_values():
     assert sorted(raw for _, raw in graph(native)[3]) == expected
 
 
-def test_predict_rejects_native_float16():
-    pytest.importorskip("ai_edge_litert.interpreter")
-    converter = LiteRTKerasConverter(build_model())
-    try:
-        converter.convert(quantization=QuantizationType.FP16_NATIVE, mode=ConversionType.CONCRETE)
-        with pytest.raises(ValueError, match="float16 kernels"):
-            converter.predict(np.zeros((1, 16, 16, 3), np.float32))
-    finally:
-        converter.cleanup()
-
-
 def test_out_of_range_float32_constants_saturate():
     inputs = keras.Input((2,), batch_size=1)
     outputs = keras.ops.minimum(keras.layers.Dense(2)(inputs), 1e5)
-    native = to_native_fp16(convert(keras.Model(inputs, outputs), QuantizationType.FP32))
+    native = to_native_fp16(export(keras.Model(inputs, outputs), "fp32"))
     values = np.concatenate([np.frombuffer(raw, np.float16) for dtype, raw in graph(native)[3] if dtype == "FLOAT16"])
     assert np.isfinite(values).all() and values.max() == np.finfo(np.float16).max
 
@@ -259,8 +261,8 @@ def test_inputs_placed_after_dropped_tensors_are_renumbered(exports):
 
 def test_signature_indices_follow_renumbered_tensors():
     model = build_model()
-    weight_only = unpack(convert(model, QuantizationType.FP16, mode=ConversionType.KERAS))
-    native = unpack(convert(model, QuantizationType.FP16_NATIVE, mode=ConversionType.KERAS))
+    weight_only = unpack(fp16_weights(model, mode="keras"))
+    native = unpack(export(model, "fp16", mode="keras"))
     assert weight_only.signatureDefs and len(native.signatureDefs) == len(weight_only.signatureDefs)
     for before, after in zip(weight_only.signatureDefs, native.signatureDefs, strict=True):
         tensors_before = weight_only.subgraphs[before.subgraphIndex].tensors
@@ -277,7 +279,7 @@ def test_control_flow_subgraphs_are_pruned_consistently():
     keras.utils.set_random_seed(3)
     inputs = keras.Input((6, 3), batch_size=1)
     outputs = keras.layers.Dense(2)(keras.layers.LSTM(4)(inputs))
-    weight_only = convert(keras.Model(inputs, outputs), QuantizationType.FP16)
+    weight_only = fp16_weights(keras.Model(inputs, outputs))
     native = to_native_fp16(weight_only)
     assert len(unpack(native).subgraphs) == len(unpack(weight_only).subgraphs) > 1
     # The converter leaves one unreferenced tensor of its own here; the rewrite must add none.
@@ -322,25 +324,8 @@ def test_pruned_graph_computes_the_weight_only_outputs(name):
         keras.utils.set_random_seed(3)
         inputs = keras.Input((6, 3), batch_size=1)
         model, shape = keras.Model(inputs, keras.layers.Dense(2)(keras.layers.LSTM(4)(inputs))), (1, 6, 3)
-    weight_only = convert(model, QuantizationType.FP16)
+    weight_only = fp16_weights(model)
     native = to_native_fp16(weight_only)
     assert len(unpack(native).subgraphs[0].tensors) < len(unpack(weight_only).subgraphs[0].tensors)
     x = np.random.default_rng(0).standard_normal(shape).astype(np.float16).astype(np.float32)
     np.testing.assert_allclose(run(as_float32(native), x), run(weight_only, x), rtol=0, atol=1e-6)
-
-
-def test_tflite_predict_rejects_native_float16():
-    converter = TfLiteKerasConverter(build_model())
-    try:
-        converter.convert(quantization=QuantizationType.FP16_NATIVE, mode=ConversionType.CONCRETE)
-        with pytest.raises(ValueError, match="float16 kernels"):
-            converter.predict(np.zeros((1, 16, 16, 3), np.float32))
-    finally:
-        converter.cleanup()
-
-
-def test_reject_native_fp16_guard(exports):
-    weight_only, native = exports
-    with pytest.raises(ValueError, match="float16 kernels"):
-        _reject_native_fp16(tf.lite.Interpreter(model_content=native))
-    _reject_native_fp16(tf.lite.Interpreter(model_content=weight_only))

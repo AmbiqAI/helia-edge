@@ -13,14 +13,12 @@ class Precision(StrEnum):
 
     Attributes:
         FP32: float32 weights and compute.
-        FP32_FP16W: float16 weight storage, dequantized at runtime; compute stays float32.
         FP16: native float16 graph; inputs, weights, activations and outputs are float16.
         A8W8: int8 activations and weights, calibrated.
         A16W8: int16 activations and int8 weights, calibrated.
     """
 
     FP32 = "fp32"
-    FP32_FP16W = "fp32-w16"
     FP16 = "fp16"
     A8W8 = "a8w8"
     A16W8 = "a16w8"
@@ -70,26 +68,8 @@ def state_pair(name: str) -> tuple[str, int] | None:
     return None if match is None else (match.group(1), int(match.group(2)))
 
 
-# Legacy converter values map through this table only; values are never case-folded.
-# Keys are QuantizationType values, so QuantizationType members look up directly.
-LEGACY_PRECISION: dict[str, Precision] = {
-    "FP32": Precision.FP32,
-    "FP16": Precision.FP32_FP16W,
-    "FP16_NATIVE": Precision.FP16,
-    "INT8": Precision.A8W8,
-    "INT16X8": Precision.A16W8,
-}
-
-# Legacy ConversionType values map through this table only.
-LEGACY_MODE: dict[str, ConversionMode] = {
-    "KERAS": ConversionMode.KERAS,
-    "SAVED_MODEL": ConversionMode.SAVED_MODEL,
-    "CONCRETE": ConversionMode.CONCRETE,
-}
-
 VALID_IO: dict[Precision, frozenset[IODType]] = {
     Precision.FP32: frozenset({IODType.FLOAT32}),
-    Precision.FP32_FP16W: frozenset({IODType.FLOAT32}),
     Precision.FP16: frozenset({IODType.FLOAT16}),
     Precision.A8W8: frozenset({IODType.INT8, IODType.FLOAT32}),
     Precision.A16W8: frozenset({IODType.INT16, IODType.FLOAT32}),

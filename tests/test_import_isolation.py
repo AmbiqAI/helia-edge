@@ -20,8 +20,6 @@ import helia_edge as helia
 from helia_edge.utils.file import compute_checksum
 assert callable(helia.utils.setup_logger)
 assert callable(helia.utils.env_flag)
-assert callable(helia.utils.ItemFactory)
-assert callable(helia.utils.create_factory)
 assert list(helia.utils.uniform_id_generator([1, 2], repeat=False, shuffle=False)) == [1, 2]
 assert helia.utils.parse_factor((None, 0.5)) == (0.5, 0.5)
 spec = helia.export.ExportSpec(precision='a8w8', io_dtype='int8', mode='concrete')

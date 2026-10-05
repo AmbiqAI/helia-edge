@@ -1,4 +1,4 @@
-"""export_model on the TensorFlow backend: guards, records and identity with the legacy converter."""
+"""export_model on the TensorFlow backend: guards and records."""
 
 import hashlib
 
@@ -9,17 +9,10 @@ import pytest
 if keras.backend.backend() != "tensorflow":
     pytest.skip("LiteRT export runs on the TensorFlow backend", allow_module_level=True)
 
-from helia_edge.converters.tflite import ConversionType, QuantizationType, TfLiteKerasConverter  # noqa: E402
 from helia_edge.export import VALID_IO, ExportSpec, IODType, Precision, TensorRole, export_model  # noqa: E402
 
-LEGACY = {
-    Precision.FP32: (QuantizationType.FP32, None, IODType.FLOAT32),
-    Precision.FP32_FP16W: (QuantizationType.FP16, None, IODType.FLOAT32),
-    Precision.FP16: (QuantizationType.FP16_NATIVE, None, IODType.FLOAT16),
-    Precision.A8W8: (QuantizationType.INT8, "int8", IODType.INT8),
-    Precision.A16W8: (QuantizationType.INT16X8, "int16", IODType.INT16),
-}
-MODES = {"keras": ConversionType.KERAS, "concrete": ConversionType.CONCRETE, "saved_model": ConversionType.SAVED_MODEL}
+MODES = ("keras", "concrete", "saved_model")
+FLOAT_IO = {Precision.FP32: IODType.FLOAT32, Precision.FP16: IODType.FLOAT16}
 
 
 def build_model():
@@ -41,25 +34,16 @@ def calibration():
     return np.random.default_rng(0).standard_normal((8, 16, 16, 3)).astype(np.float32)
 
 
-def legacy_convert(model, precision, mode, calibration):
-    quantization, io_type, _ = LEGACY[precision]
-    converter = TfLiteKerasConverter(model)
-    try:
-        test_x = calibration if precision in (Precision.A8W8, Precision.A16W8) else None
-        return converter.convert(test_x, quantization=quantization, io_type=io_type, mode=MODES[mode])
-    finally:
-        converter.cleanup()
-
-
-@pytest.mark.parametrize("mode", list(MODES))
+@pytest.mark.parametrize("mode", MODES)
 @pytest.mark.parametrize("precision", list(Precision))
-def test_export_model_matches_the_legacy_converter(model, calibration, precision, mode):
-    spec = ExportSpec(precision=precision, io_dtype=LEGACY[precision][2], mode=mode)
+def test_every_precision_exports_in_every_mode(model, calibration, precision, mode):
+    io_dtype = FLOAT_IO.get(precision, IODType.INT8 if precision is Precision.A8W8 else IODType.INT16)
+    spec = ExportSpec(precision=precision, io_dtype=io_dtype, mode=mode)
     data = calibration if precision in (Precision.A8W8, Precision.A16W8) else None
     result = export_model(model, spec, data)
-    assert result.content == legacy_convert(model, precision, mode, calibration)
+    assert result.content[4:8] == b"TFL3" and result.spec == spec
     assert result.sha256 == hashlib.sha256(result.content).hexdigest()
-    assert result.spec == spec
+    assert export_model(model, spec, data).content == result.content  # deterministic
 
 
 @pytest.mark.parametrize(("precision", "io_dtype"), [(p, d) for p in Precision for d in sorted(VALID_IO[p])])
@@ -69,39 +53,22 @@ def test_exported_io_dtype_is_the_requested_one(model, calibration, precision, i
     assert [r.dtype for r in (*result.inputs, *result.outputs)] == [io_dtype, io_dtype]
 
 
-@pytest.mark.parametrize(
-    ("quantization", "expected"),
-    [(QuantizationType.INT8, IODType.INT8), (QuantizationType.INT16X8, IODType.FLOAT32)],
-)
-def test_legacy_default_io_types(model, calibration, quantization, expected):
-    from helia_edge.export.litert import tensor_records
-
-    converter = TfLiteKerasConverter(model)
-    try:
-        content = converter.convert(calibration, quantization=quantization, mode=ConversionType.CONCRETE)
-    finally:
-        converter.cleanup()
-    inputs, outputs = tensor_records(content)
-    assert inputs[0].dtype == outputs[0].dtype == expected
-
-
 @pytest.mark.parametrize("strict", [True, False])
 def test_strict_reaches_the_converter(model, calibration, monkeypatch, strict):
     import tensorflow as tf
 
     from helia_edge.export import litert
 
-    seen = []
-    convert = litert.convert_litert
+    converters = []
+    factory = tf.lite.TFLiteConverter.from_concrete_functions
 
     def spy(*args, **kwargs):
-        conversion = convert(*args, **kwargs)
-        seen.append(list(conversion.converter.target_spec.supported_ops))
-        return conversion
+        converters.append(factory(*args, **kwargs))
+        return converters[-1]
 
-    monkeypatch.setattr(litert, "convert_litert", spy)
+    monkeypatch.setattr(litert.tf.lite.TFLiteConverter, "from_concrete_functions", spy)
     export_model(model, ExportSpec(precision="a8w8", io_dtype="int8", mode="concrete", strict=strict), calibration)
-    assert (tf.lite.OpsSet.TFLITE_BUILTINS in seen[0]) is (not strict)
+    assert (tf.lite.OpsSet.TFLITE_BUILTINS in converters[0].target_spec.supported_ops) is (not strict)
 
 
 def test_records_describe_quantized_io(model, calibration):
@@ -261,26 +228,3 @@ def test_unknown_format_is_refused():
 
     with pytest.raises(pydantic.ValidationError, match="'litert'"):
         ExportSpec(format="onnx", precision="fp32", io_dtype="float32", mode="concrete")
-
-
-@pytest.mark.parametrize("quantization", [QuantizationType.INT8, QuantizationType.INT16X8])
-def test_legacy_converter_refuses_calibrated_conversion_without_data(model, quantization):
-    converter = TfLiteKerasConverter(model)
-    try:
-        with pytest.raises(ValueError, match="requires representative data"):
-            converter.convert(quantization=quantization, mode=ConversionType.CONCRETE)
-    finally:
-        converter.cleanup()
-
-
-def test_legacy_converter_keeps_permissive_io_type_and_defaults(model, calibration):
-    converter = TfLiteKerasConverter(model)
-    try:
-        # io_type is ignored for float formats, as before; heartKIT passes "int8" for every format.
-        fp32 = converter.convert(quantization=QuantizationType.FP32, io_type="int8", mode=ConversionType.CONCRETE)
-        int16 = converter.convert(calibration, quantization=QuantizationType.INT16X8, mode=ConversionType.CONCRETE)
-    finally:
-        converter.cleanup()
-    assert fp32 == export_model(model, ExportSpec(precision="fp32", io_dtype="float32", mode="concrete")).content
-    spec = ExportSpec(precision="a16w8", io_dtype="float32", mode="concrete")  # legacy INT16X8 default IO
-    assert int16 == export_model(model, spec, calibration).content

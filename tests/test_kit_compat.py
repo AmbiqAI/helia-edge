@@ -1,7 +1,8 @@
 """Names used by heartKIT 64cd51b, sleepKIT 799bf7c and compressionKIT 7fb3663 still resolve.
 
 The list holds every ``helia_edge`` name those kits reference in Python that resolved on main
-a342b107, except the names removed in 0.8.0 (the family `XModel` classes and constructor functions).
+a342b107, except the names removed in 0.8.0: the family `XModel` classes and constructor functions, the
+converters and interpreters, and the item factory. The kits pin helia-edge below 0.8.
 """
 
 import importlib
@@ -11,14 +12,10 @@ import pytest
 keras = pytest.importorskip("keras")
 pytest.importorskip("tensorflow")
 if keras.backend.backend() != "tensorflow":
-    pytest.skip("Kit names include TensorFlow-only converters", allow_module_level=True)
+    pytest.skip("Kit names include TensorFlow-only trainers", allow_module_level=True)
 
 CORE = [
     "helia_edge.callbacks.TQDMProgressBar",
-    "helia_edge.converters.tflite.ConversionType",
-    "helia_edge.converters.tflite.QuantizationType",
-    "helia_edge.converters.tflite.TfLiteKerasConverter",
-    "helia_edge.interpreters.tflite.TfLiteKerasInterpreter",
     "helia_edge.layers.EmaResidualVectorQuantizer",
     "helia_edge.layers.ResidualVectorQuantizer",
     "helia_edge.layers.preprocessing.AddSineWave",
@@ -49,9 +46,7 @@ CORE = [
     "helia_edge.trainers.SimCLRTrainer.AUG_SAMPLES_1",
     "helia_edge.trainers.SimCLRTrainer.SAMPLES",
     "helia_edge.trainers.VQAutoencoder",
-    "helia_edge.utils.ItemFactory",
     "helia_edge.utils.compute_checksum",
-    "helia_edge.utils.create_factory",
     "helia_edge.utils.download_file",
     "helia_edge.utils.env_flag",
     "helia_edge.utils.get_output_signature_from_gen",

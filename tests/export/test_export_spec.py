@@ -4,8 +4,6 @@ import pydantic
 import pytest
 
 from helia_edge.export import (
-    LEGACY_MODE,
-    LEGACY_PRECISION,
     VALID_IO,
     ConversionMode,
     ExportSpec,
@@ -15,29 +13,14 @@ from helia_edge.export import (
 
 
 def test_values_are_the_benchmark_strings():
-    assert [p.value for p in Precision] == ["fp32", "fp32-w16", "fp16", "a8w8", "a16w8"]
+    assert [p.value for p in Precision] == ["fp32", "fp16", "a8w8", "a16w8"]
     assert [d.value for d in IODType] == ["float32", "float16", "int8", "int16"]
 
 
-@pytest.mark.parametrize("legacy", ["FP16", "fp32_fp16w", "A8W8", "INT8"])
+@pytest.mark.parametrize("legacy", ["FP16", "fp32-w16", "fp32_fp16w", "A8W8", "INT8"])
 def test_precision_values_are_not_case_folded(legacy):
     with pytest.raises(ValueError):
         Precision(legacy)
-
-
-def test_legacy_tables_are_explicit():
-    assert LEGACY_PRECISION == {
-        "FP32": Precision.FP32,
-        "FP16": Precision.FP32_FP16W,
-        "FP16_NATIVE": Precision.FP16,
-        "INT8": Precision.A8W8,
-        "INT16X8": Precision.A16W8,
-    }
-    assert LEGACY_MODE == {
-        "KERAS": ConversionMode.KERAS,
-        "SAVED_MODEL": ConversionMode.SAVED_MODEL,
-        "CONCRETE": ConversionMode.CONCRETE,
-    }
 
 
 @pytest.mark.parametrize("precision", list(Precision))
@@ -54,7 +37,6 @@ def test_io_dtype_matrix(precision, io_dtype):
 def test_matrix_is_the_documented_one():
     assert {p.value: sorted(d.value for d in VALID_IO[p]) for p in Precision} == {
         "fp32": ["float32"],
-        "fp32-w16": ["float32"],
         "fp16": ["float16"],
         "a8w8": ["float32", "int8"],
         "a16w8": ["float32", "int16"],

@@ -79,14 +79,10 @@ def test_keras_file_roundtrip(tmp_path):
 def test_litert_lowering_form(unroll):
     from tensorflow.lite.python import schema_py_generated as schema
 
-    from helia_edge.converters.litert import ConversionType, LiteRTKerasConverter, QuantizationType
+    from helia_edge.export import ExportSpec, export_model
 
     model = build(unroll=unroll, params=CorNetParams(lstm_units=16), batch_size=1)
-    converter = LiteRTKerasConverter(model)
-    try:
-        content = converter.convert(quantization=QuantizationType.FP32, mode=ConversionType.CONCRETE)
-    finally:
-        converter.cleanup()
+    content = export_model(model, ExportSpec(precision="fp32", io_dtype="float32", mode="concrete")).content
     flat = schema.Model.GetRootAsModel(content, 0)
     names = {v: k for k, v in vars(schema.BuiltinOperator).items() if isinstance(v, int)}
     ops = set()
