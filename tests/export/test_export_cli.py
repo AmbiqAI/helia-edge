@@ -2,6 +2,7 @@
 
 import dataclasses
 import json
+import re
 import subprocess
 import sys
 
@@ -10,6 +11,12 @@ from typer.testing import CliRunner
 
 from helia_edge.cli import app
 from helia_edge.export import ExportRecord
+
+
+def plain(text):
+    """``text`` without ANSI styling: Typer styles the usage errors it renders when it forces a terminal
+    (``GITHUB_ACTIONS``, ``FORCE_COLOR`` or ``PY_COLORS``), which can split an option name."""
+    return re.sub(r"\x1b\[[0-9;]*m", "", text)
 
 
 def test_cli_prints_the_export_record_schema():
@@ -23,7 +30,7 @@ def test_cli_prints_the_export_record_schema():
 @pytest.mark.parametrize("command", ["run", "verify"])
 def test_the_recipe_commands_are_gone(command):
     result = CliRunner().invoke(app, ["export", command, "recipe.yaml"])
-    assert result.exit_code == 2 and f"No such command '{command}'" in result.output
+    assert result.exit_code == 2 and f"No such command '{command}'" in plain(result.output)
 
 
 def test_cli_info_and_schema_do_not_import_training_frameworks():
@@ -50,7 +57,7 @@ def test_cli_inspect_without_tensorflow_says_what_to_install(tmp_path):
     model = tmp_path / "m.tflite"
     model.write_bytes(b"TFL3")
     result = CliRunner().invoke(app, ["inspect", str(model)])
-    assert result.exit_code != 0 and "helia-edge[litert]" in result.output
+    assert result.exit_code != 0 and "helia-edge[litert]" in plain(result.output)
 
 
 @pytest.mark.parametrize("content", [None, "{}", "not json"])
@@ -85,4 +92,4 @@ def test_create_refuses_a_batch_size_outside_int32(tmp_path, batch_size):
     weights.write_bytes(b"")
     args = ["export", "create", str(spec), "--weights", str(weights), "--precision", "fp32", "--out", str(tmp_path)]
     result = CliRunner().invoke(app, [*args, "--batch-size", str(batch_size)])
-    assert result.exit_code == 2 and "--batch-size" in result.output
+    assert result.exit_code == 2 and "--batch-size" in plain(result.output)
