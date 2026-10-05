@@ -28,7 +28,7 @@ The model is a streaming model (see [Streaming models](/helia-edge/guide/export/
 
 The derived kernels are computed from the weights in the graph, and the export folds them into constants. All three together make the model sqrt-free and mirror-pad-free: its export has no SQRT, MIRROR_PAD or TRANSPOSE operators. Use them for toolchains without an int16 square root (such as Vela for Ethos-U) or without reflect padding: `SileroVadParams(stft="conv_blocks", magnitude="max_projection", encoder_tail="live_taps")`. Calibrate the audio input with full-scale speech so its int16 range covers [-1, 1].
 
-An export recipe imports the same way with a `params_import` model source, naming the mapping: `{kind: params_import, architecture: vad_silero_v6, params: {}, mapping: silero_vad_v6_onnx, weights: {kind: path, path: silero_vad_16k_op15.onnx, sha256: 7ed98ddb…}}` (see [Export recipes](/helia-edge/guide/export/#export-recipes-and-the-command-line)).
+`helia-edge export create` imports the same way, naming the mapping: `helia-edge export create silero.yaml --mapping silero_vad_v6_onnx --weights silero_vad_16k_op15.onnx --precision fp32 --out exports/silero`. The record names the mapping and the source file's sha256, and `export reproduce` takes the same source file (see [The command line](/helia-edge/guide/export/#the-command-line)).
 
 To check the import, the repository's parity test compares the model with ONNX Runtime with the state carried: set `HELIA_EDGE_SILERO_ONNX` to the file, and `HELIA_EDGE_SILERO_AUDIO` to 16 kHz speech (a 16-bit mono WAV) to also compare speech decisions, then run `pytest tests/models/test_silero_vad.py`.
 

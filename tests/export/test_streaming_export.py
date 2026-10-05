@@ -314,21 +314,18 @@ def test_the_stream_runner_checks_its_inputs(model):
         runner.step(feed)
 
 
-def test_the_manifest_entry_records_pairs_and_the_tie(model, calibration, tmp_path):
-    from helia_edge.export.run import _entry
+def test_the_tensor_entries_record_pairs_and_the_tie(model, calibration):
+    from helia_edge.export.record import TensorEntry
+    from helia_edge.export.result import state_scales_tied
 
-    entry = _entry("detector", INT16, export_model(model, INT16, calibration).content, None, tmp_path)
-    assert entry.state_scales_tied is True
-    assert sorted(t.pair for t in entry.inputs if t.role == TensorRole.STATE) == [0, 1]
-    assert sorted(t.pair for t in entry.outputs if t.role == TensorRole.STATE) == [0, 1]
-    float_entry = _entry(
-        "float",
-        None,
-        export_model(model, ExportSpec(precision="fp32", io_dtype="float32", mode="keras")).content,
-        None,
-        tmp_path,
-    )
-    assert float_entry.state_scales_tied is None
+    result = export_model(model, INT16, calibration)
+    inputs = [TensorEntry.from_record(r) for r in result.inputs]
+    outputs = [TensorEntry.from_record(r) for r in result.outputs]
+    assert state_scales_tied(result.inputs, result.outputs) is True
+    assert sorted(t.pair for t in inputs if t.role == TensorRole.STATE) == [0, 1]
+    assert sorted(t.pair for t in outputs if t.role == TensorRole.STATE) == [0, 1]
+    floats = export_model(model, ExportSpec(precision="fp32", io_dtype="float32", mode="keras"))
+    assert state_scales_tied(floats.inputs, floats.outputs) is None
 
 
 def litert_interpreter(content):

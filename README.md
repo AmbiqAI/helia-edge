@@ -34,7 +34,7 @@ The goal is simple: keep the developer experience high while making edge deploym
 
 * [**Callbacks**](https://ambiqai.github.io/helia-edge/reference/api/helia_edge/callbacks): Training lifecycle and monitoring helpers
 * [**Data**](https://ambiqai.github.io/helia-edge/reference/api/helia_edge/data): Grain record pipelines with TensorFlow and Torch adapters
-* [**Export**](https://ambiqai.github.io/helia-edge/reference/api/helia_edge/export): Typed LiteRT export, recipes, manifests and the `helia-edge` command
+* [**Export**](https://ambiqai.github.io/helia-edge/reference/api/helia_edge/export): Typed LiteRT export, export records and the `helia-edge` command
 * [**Layers**](https://ambiqai.github.io/helia-edge/reference/api/helia_edge/layers): Edge-centric layers, including data preprocessing components
 * [**Losses**](https://ambiqai.github.io/helia-edge/reference/api/helia_edge/losses): Additional losses for modern training workflows
 * [**Metrics**](https://ambiqai.github.io/helia-edge/reference/api/helia_edge/metrics): Extended evaluation metrics for edge model analysis

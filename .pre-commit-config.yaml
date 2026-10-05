@@ -33,7 +33,7 @@ repos:
         stages: [pre-push]
       - id: pytest-fast
         name: pytest (fast set)
-        entry: uv run --no-sync pytest -q tests/test_import_isolation.py tests/test_optional_dependencies.py tests/utils/test_rng.py tests/export/test_export_spec.py tests/export/test_state_records.py tests/importers/test_mapping.py tests/export/test_export_recipe.py tests/test_registry.py tests/data/test_data.py tests/test_removed_modules.py
+        entry: uv run --no-sync pytest -q tests/test_import_isolation.py tests/test_optional_dependencies.py tests/utils/test_rng.py tests/export/test_export_spec.py tests/export/test_state_records.py tests/importers/test_mapping.py tests/export/test_export_cli.py tests/data/test_data.py tests/test_removed_modules.py
         language: system
         pass_filenames: false
         always_run: true
