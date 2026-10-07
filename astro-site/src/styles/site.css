@@ -42,7 +42,8 @@
 .edge-home .edge-eyebrow { font-size:.7rem; font-weight:650; letter-spacing:.12em; color:var(--helia-product-accent); margin:0 0 1rem; }
 .edge-hero-meta { grid-column:1/-1; display:flex; align-items:center; justify-content:space-between; gap:1rem; margin:0 0 1rem; }
 .edge-hero-name { font-size:1.5rem; letter-spacing:-.035em; white-space:nowrap; }
-.edge-hero-name > span { color:var(--helia-product-accent); margin-right:.35rem; }
+.edge-hero-name { display:inline-flex; align-items:center; gap:.5rem; }
+.edge-hero-name > img { object-fit:contain; flex-shrink:0; }
 .edge-hero-version { margin:0!important; border:1px solid #505966; border-radius:999px; padding:.35rem .75rem; font-size:.8rem; color:#c8ced8; white-space:nowrap; }
 .edge-home .edge-intro h1 { color:#f5f6f8; margin:0; font-size:clamp(2.2rem,4.4vw,3.5rem); line-height:1.08; letter-spacing:-.04em; }
 .edge-intro em { font-style:normal; color:var(--helia-product-accent); }
