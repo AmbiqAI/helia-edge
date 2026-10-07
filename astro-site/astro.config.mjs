@@ -33,7 +33,7 @@ export default defineConfig({
         { label: 'Reference', href: `${base}/reference/`, sidebar: [page('API catalog','reference'), ...apiSidebar] },
       ],
       discoverability: { ogImage:true, jsonLd:true, markdown:true, llms:true },
-      footer: { logo:'ambiq', tagline:'Part of the Ambiq HELIA AI platform', links:[{label:'GitHub',href:'https://github.com/AmbiqAI/helia-edge'},{label:'Backend support',href:`${base}/getting-started/backends/`}] },
+      footer: { logo:'ambiq', logoLightTone:'blue', tagline:'Part of the Ambiq HELIA AI platform', links:[{label:'GitHub',href:'https://github.com/AmbiqAI/helia-edge'},{label:'Backend support',href:`${base}/getting-started/backends/`}] },
     })],
   })],
 });
