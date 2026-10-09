@@ -74,8 +74,92 @@ run from a checkout (on `PYTHONPATH`, or installed editable) it records an
 `unknown` or `local` install and the generator warns. Two such checkouts record
 the same environment, so `reproduce` cannot tell their code apart.
 
-Run the focused tests in the same environment:
+## Identified install and normal CLI export
+
+For a code-identified record, use a checkout at a **published commit** and
+install that commit in an external environment. From the checkout root:
 
 ```sh
-KERAS_BACKEND=tensorflow PYTHONPATH=. pytest -q tests/examples/test_compact_tcn.py
+TCN_COMMIT="$(git rev-parse HEAD)"
+TCN_ENV=/absolute/external/path/tcn-env
+export TCN_OUT=/absolute/external/path/tcn-exports
+uv venv --python 3.12 "$TCN_ENV"
+uv pip install --python "$TCN_ENV/bin/python" \
+  "helia-edge[litert] @ git+https://github.com/AmbiqAI/helia-edge@$TCN_COMMIT"
+export KERAS_BACKEND=tensorflow
+env -u PYTHONPATH "$TCN_ENV/bin/python" "$PWD/examples/compact_tcn/generate.py" \
+  --output "$TCN_OUT"
+```
+
+Keep using this environment with `PYTHONPATH` unset, outside the checkout when
+running inline Python, so the identified install supplies `helia_edge`.
+`record.json` records the resolved dependency versions; the install command
+alone does not pin them. Reproduction requires that recorded environment.
+
+The record's `model` field is already a normal `ModelSpec`. Extract it, then
+create the same width-8 A8W8 artifact with the ordinary CLI and saved weights:
+
+```sh
+cd "$TCN_OUT"
+env -u PYTHONPATH "$TCN_ENV/bin/python" - <<'PY'
+import json
+from pathlib import Path
+
+record = json.loads(Path("tcn-w8-a8w8/record.json").read_text())
+Path("spec.json").write_text(json.dumps(record["model"], indent=2) + "\n")
+PY
+env -u PYTHONPATH "$TCN_ENV/bin/helia-edge" export create spec.json \
+  --weights tcn-w8-a8w8/model.weights.h5 --calibration calibration.npy \
+  --precision a8w8 --batch-size 1 --mode concrete --require-provenance \
+  --out cli-create
+env -u PYTHONPATH "$TCN_ENV/bin/helia-edge" inspect cli-create/model.tflite
+env -u PYTHONPATH "$TCN_ENV/bin/helia-edge" export reproduce cli-create/record.json \
+  --weights cli-create/model.weights.h5 --calibration calibration.npy
+```
+
+Use a new `cli-create` directory. Successful reproduction prints `same` and
+returns zero; environment or artifact differences must be investigated.
+Pass the standard `record.json`, model, saved weights, calibration and license
+files to consumers. Tensor order, names, shapes, dtypes and quantizers are in
+the record. This model has one signal input, one signal output and no state
+pairs; consumers need no cache initialization or reset schedule.
+
+## Complete-input host smoke
+
+From the output directory above, invoke the original A8W8 export once with
+the first synthetic calibration window. The maintained runner encodes all
+3360 input elements with the actual scale and zero point, then returns all
+480 raw INT8 output elements. Save both arrays outside Git:
+
+```sh
+env -u PYTHONPATH "$TCN_ENV/bin/python" - <<'PY'
+from pathlib import Path
+
+import numpy as np
+from helia_edge.export import LiteRTRunner
+
+runner = LiteRTRunner(
+    Path("tcn-w8-a8w8/model.tflite").read_bytes(), reference_kernels=True
+)
+fed = runner.encode(np.load("calibration.npy", allow_pickle=False)[:1])
+outputs = runner.run(fed)
+assert fed.shape == (1, 240, 14) and fed.dtype == np.int8
+assert outputs.shape == (1, 240, 2) and outputs.dtype == np.int8
+np.save("host-input.npy", fed, allow_pickle=False)
+np.save("host-output.npy", outputs, allow_pickle=False)
+print("Invoke passed:", fed.shape, "->", outputs.shape)
+PY
+```
+
+This checks complete host invocation and output extents. It establishes neither
+task accuracy nor target execution, kernel selection, memory fit or timing.
+The saved output is a smoke result, not a task-qualified golden reference.
+
+Focused contributor tests exercise the checkout source in a separate repository
+development environment, with pytest installed by the `ci` group. Return to the
+checkout root; this does not change the external `TCN_ENV` used for exports:
+
+```sh
+uv sync --locked --all-extras --group ci
+KERAS_BACKEND=tensorflow PYTHONPATH=. uv run --no-sync pytest -q tests/examples/test_compact_tcn.py
 ```
