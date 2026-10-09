@@ -155,8 +155,11 @@ This checks complete host invocation and output extents. It establishes neither
 task accuracy nor target execution, kernel selection, memory fit or timing.
 The saved output is a smoke result, not a task-qualified golden reference.
 
-Return to the checkout root to run the focused tests in the same environment:
+Focused contributor tests exercise the checkout source in a separate repository
+development environment, with pytest installed by the `ci` group. Return to the
+checkout root; this does not change the external `TCN_ENV` used for exports:
 
 ```sh
-KERAS_BACKEND=tensorflow PYTHONPATH=. pytest -q tests/examples/test_compact_tcn.py
+uv sync --locked --all-extras --group ci
+KERAS_BACKEND=tensorflow PYTHONPATH=. uv run --no-sync pytest -q tests/examples/test_compact_tcn.py
 ```
