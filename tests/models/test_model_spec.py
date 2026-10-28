@@ -9,6 +9,7 @@ import pydantic
 import pytest
 
 from helia_edge.models import (
+    ConformerParams,
     FastEnhancerParams,
     MiniResNetV1Params,
     MlperfTinyParams,
@@ -32,7 +33,12 @@ def family_of(cls):
 
 
 def default_params(cls):
-    return cls(architecture="kws") if cls is MlperfTinyParams else cls()
+    if cls is MlperfTinyParams:
+        return cls(architecture="kws")
+    if cls is ConformerParams:
+        # ConformerParams requires at least one subsample block.
+        return cls(subsamples=[{"depth": 16}])
+    return cls()
 
 
 @pytest.mark.parametrize("params_cls", FAMILIES, ids=lambda cls: cls.__name__)
